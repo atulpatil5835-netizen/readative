@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+    <script>
+      // Fix for libraries trying to overwrite read-only window.fetch
+      try {
+        const originalFetch = window.fetch;
+        // Try to delete it first (if configurable)
+        try {
+          if (delete window.fetch) {
+            window.fetch = originalFetch;
+          } else {
+            // If delete fails, try defineProperty
+            Object.defineProperty(window, 'fetch', {
+              value: originalFetch,
+              writable: true,
+              configurable: true
+            });
+          }
+        } catch (e) {
+          // Fallback to defineProperty if delete throws
+          Object.defineProperty(window, 'fetch', {
+            value: originalFetch,
+            writable: true,
+            configurable: true
+          });
+        }
+      } catch (e) {
+        // console.warn('Failed to fix window.fetch', e);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
