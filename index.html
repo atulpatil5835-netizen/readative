@@ -3,42 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>Readative</title>
-    
+
     <link rel="icon" type="image/png" href="/logo.png" />
-    
-    <script>
-      // Fix for libraries trying to overwrite read-only window.fetch
-      try {
-        const originalFetch = window.fetch;
-        // Try to delete it first (if configurable)
-        try {
-          if (delete window.fetch) {
-            window.fetch = originalFetch;
-          } else {
-            // If delete fails, try defineProperty
-            Object.defineProperty(window, 'fetch', {
-              value: originalFetch,
-              writable: true,
-              configurable: true
-            });
-          }
-        } catch (e) {
-          // Fallback to defineProperty if delete throws
-          Object.defineProperty(window, 'fetch', {
-            value: originalFetch,
-            writable: true,
-            configurable: true
-          });
-        }
-      } catch (e) {
-        // console.warn('Failed to fix window.fetch', e);
-      }
-    </script>
+
+    <!-- Basic SEO -->
+    <meta name="description" content="Readative - Read. Write. Learn. Grow. A smart AI-powered platform for readers and writers." />
+    <meta name="keywords" content="Readative, AI learning, SmartTalk, reading app, writing platform, exams, AI bot" />
+    <meta name="author" content="Readative Official" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Readative - Read. Write. Learn. Grow." />
+    <meta property="og:description" content="AI-powered reading, smart discussions, personalized exams, and intelligent problem solving." />
+    <meta property="og:type" content="website" />
+
+    <!-- Theme color -->
+    <meta name="theme-color" content="#4f46e5" />
   </head>
+
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

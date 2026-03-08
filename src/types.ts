@@ -1,9 +1,13 @@
+export type PostCategory = 'story' | 'joke' | 'motivation' | 'poetry' | 'shayari' | 'knowledge' | 'questions';
+
 export interface Post {
   id: string;
   author: string;
+  authorId: string;
   content: string;
-  type: 'joke' | 'motivation' | 'story';
+  type: PostCategory;
   hashtags: string[];
+  likes: string[];        // array of user IDs
   stars: number;
   ratingCount: number;
   comments: Comment[];
@@ -22,8 +26,10 @@ export interface Highlight {
 export interface Comment {
   id: string;
   author: string;
+  authorId?: string;
   text: string;
   createdAt: number;
+  isAI?: boolean;
 }
 
 export interface UserProfile {
@@ -32,9 +38,11 @@ export interface UserProfile {
   photo: string;
   readingScore: number;
   examScore: number;
-  readPosts: string[]; // IDs of posts read
-  following: string[]; // IDs/Names of followed users
+  readPosts: string[];
+  following: string[];
   preferredLanguage?: string;
+  email?: string;
+  avatar?: string;
 }
 
 export interface ExamQuestion {
