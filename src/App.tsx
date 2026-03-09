@@ -1,10 +1,7 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase/firebase";
 import { Header } from "./components/Header";
 import { Feed } from "./components/Feed";
 import { SmartTalk } from "./components/SmartTalk";
@@ -18,28 +15,46 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"home" | "smarttalk" | "exam" | "profile">("home");
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // ✅ Listen to Firebase auth state — survives minimize/tab switch
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const profile: UserProfile = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Reader",
+          photo: firebaseUser.photoURL ||
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || "User")}&background=10b981&color=fff`,
+          email: firebaseUser.email || "",
+          readingScore: 0,
+          examScore: 0,
+          readPosts: [],
+          following: [],
+        };
+        setUser(profile);
+        setIsGuest(false);
+      } else {
+        // Only reset if not guest
+        setUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const refreshProfile = () => {
-    if (user) {
-      fetch(`/api/profile/${user.id}`)
-        .then(res => res.json())
-        .then(data => setUser(data));
-    }
+    // Profile data is now from Firebase — no API call needed
+    // If you store extra data in Firestore, fetch it here
   };
 
   const toggleFollow = (authorName: string) => {
     if (!user) return;
     const isFollowing = user.following.includes(authorName);
     const newFollowing = isFollowing
-      ? user.following.filter(name => name !== authorName)
+      ? user.following.filter(n => n !== authorName)
       : [...user.following, authorName];
-    const updatedUser = { ...user, following: newFollowing };
-    setUser(updatedUser);
-    fetch(`/api/profile/${user.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updatedUser)
-    });
+    setUser({ ...user, following: newFollowing });
   };
 
   const handleLogin = (loggedInUser: UserProfile) => {
@@ -47,7 +62,8 @@ export default function App() {
     setIsGuest(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await auth.signOut();
     setUser(null);
     setIsGuest(false);
     setActiveTab("home");
@@ -55,7 +71,20 @@ export default function App() {
 
   const handleGuest = () => {
     setIsGuest(true);
+    setAuthLoading(false);
   };
+
+  // Show loading spinner while Firebase checks auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400 font-medium">Loading Readative...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user && !isGuest) {
     return <Auth onLogin={handleLogin} onGuest={handleGuest} />;

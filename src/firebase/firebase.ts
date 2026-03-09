@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app"
-import { getAuth } from "firebase/auth"
+import { getAuth, setPersistence, browserLocalStorage } from "firebase/auth"
 import { getFirestore } from "firebase/firestore"
 
 const firebaseConfig = {
@@ -13,6 +13,8 @@ const firebaseConfig = {
 }
 
 const app = initializeApp(firebaseConfig)
-
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+// ✅ Persist session across tab switches and minimizing
+setPersistence(auth, browserLocalStorage).catch(console.error)
