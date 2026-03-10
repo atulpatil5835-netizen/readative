@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { motion } from "motion/react";
 import { Post, UserProfile, Highlight } from "../types";
 import { geminiService } from "../services/gemini";
-import { Heart, Star, MessageCircle, Share2, Play, Pause, Highlighter, Underline, Languages, Loader2, Sparkles } from "lucide-react";
+import { Heart, MessageCircle, Share2, Play, Pause, Highlighter, Underline, Languages, Loader2, Sparkles } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -34,11 +34,20 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+
+  // Local state for live updates without re-fetch
   const [localLikes, setLocalLikes] = useState<string[]>(post.likes || []);
-  const [localStars, setLocalStars] = useState<number>(post.stars || 0);
-  const [localRatingCount, setLocalRatingCount] = useState<number>(post.ratingCount || 0);
-  const [userRating, setUserRating] = useState<number>(0);
-  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [localComments, setLocalComments] = useState(post.comments || []);
+
+  // Sync comments from server polling (via prop update)
+  const prevCommentsRef = useRef(post.comments);
+  if (post.comments !== prevCommentsRef.current) {
+    prevCommentsRef.current = post.comments;
+    // Only update if server has more comments (don't overwrite local optimistic adds)
+    if (post.comments.length > localComments.length) {
+      setLocalComments(post.comments);
+    }
+  }
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -48,8 +57,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
 
   const handleLike = async () => {
     if (!user) return;
-    // Optimistic update
-    const previousLikes = localLikes;
+    // Optimistic update — instant feedback
     const newLikes = isLiked
       ? localLikes.filter((id) => id !== user.id)
       : [...localLikes, user.id];
@@ -61,13 +69,12 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id }),
       });
-      if (!res.ok) {
-        throw new Error(`Failed to like post (${res.status})`);
-      }
+      if (!res.ok) throw new Error(`Failed to like post (${res.status})`);
       const data = await res.json();
       setLocalLikes(data.likes);
     } catch {
-      setLocalLikes(previousLikes); // revert on error
+      // Revert on error
+      setLocalLikes(post.likes || []);
     }
   };
 
@@ -80,7 +87,6 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     }
     setIsTranslating(true);
     try {
-      // Fixed method name: translateText (matches gemini.ts)
       const translated = await geminiService.translateText(post.content, user.preferredLanguage);
       setTranslatedContent(translated);
       setShowTranslation(true);
@@ -94,7 +100,6 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const handleTTS = async () => {
     if (isReading) { audioRef.current?.pause(); setIsReading(false); return; }
     if (!audioUrl) {
-      // Fixed method name: generateTTS (matches gemini.ts)
       const url = await geminiService.generateTTS(post.content);
       if (url) {
         setAudioUrl(url);
@@ -126,43 +131,22 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     }
   };
 
-  const handleRate = async (stars: number) => {
-    if (!user) { alert("Please login to rate posts."); return; }
-    if (userRating === stars) return;
-
-    const prevRating = userRating;
-    const prevStars = localStars;
-    const prevCount = localRatingCount;
-
-    setUserRating(stars);
-    const newCount = userRating === 0 ? localRatingCount + 1 : localRatingCount;
-    const newAvg = userRating === 0
-      ? (localStars * localRatingCount + stars) / newCount
-      : (localStars * localRatingCount - userRating + stars) / newCount;
-    setLocalStars(newAvg);
-    setLocalRatingCount(newCount);
-
-    try {
-      const res = await fetch(`/api/posts/${post.id}/rate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stars }),
-      });
-      if (!res.ok) throw new Error("Failed to rate");
-      const data = await res.json();
-      setLocalStars(data.stars);
-      setLocalRatingCount(data.ratingCount);
-    } catch (error) {
-      console.error("Failed to rate post:", error);
-      setUserRating(prevRating);
-      setLocalStars(prevStars);
-      setLocalRatingCount(prevCount);
-    }
-  };
-
   const handleComment = async () => {
     if (!user || !commentText.trim()) return;
     setIsCommenting(true);
+
+    // Optimistic comment — appears instantly
+    const optimisticComment = {
+      id: `temp-${Date.now()}`,
+      author: user.name,
+      authorId: user.id,
+      text: commentText,
+      createdAt: Date.now(),
+      isAI: false,
+    };
+    setLocalComments(prev => [...prev, optimisticComment]);
+    setCommentText("");
+
     try {
       const res = await fetch(`/api/posts/${post.id}/comments`, {
         method: "POST",
@@ -170,18 +154,19 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         body: JSON.stringify({
           author: user.name,
           authorId: user.id,
-          text: commentText,
+          text: optimisticComment.text,
         }),
       });
-      if (!res.ok) {
-        throw new Error(`Failed to comment on post (${res.status})`);
-      }
-      setCommentText("");
-      // Poll for AI reply after short delay
-      setTimeout(onUpdate, 3000);
-      onUpdate();
+      if (!res.ok) throw new Error(`Failed to comment (${res.status})`);
+      const savedComment = await res.json();
+      // Replace optimistic comment with real one from server
+      setLocalComments(prev => prev.map(c => c.id === optimisticComment.id ? savedComment : c));
+      // Poll for AI reply after delay
+      setTimeout(() => onUpdate(), 3000);
     } catch (error) {
       console.error("Failed to add comment:", error);
+      // Remove optimistic comment on error
+      setLocalComments(prev => prev.filter(c => c.id !== optimisticComment.id));
     } finally {
       setIsCommenting(false);
     }
@@ -209,15 +194,14 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const renderContent = () => {
     const contentToRender = showTranslation && translatedContent ? translatedContent : post.content;
     if (showTranslation) return <div className="whitespace-pre-wrap">{contentToRender}</div>;
-
     if (highlights.length === 0) {
       return words.map((word, i) => (
-        <span key={i} className={cn("transition-colors duration-200", currentWordIndex === i ? "bg-emerald-200 text-emerald-900 rounded px-0.5" : "")}>
+        <span key={i} className={cn("transition-colors duration-200",
+          currentWordIndex === i ? "bg-emerald-200 text-emerald-900 rounded px-0.5" : "")}>
           {word}{" "}
         </span>
       ));
     }
-
     let result: React.ReactNode[] = [];
     let lastIndex = 0;
     const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start);
@@ -250,8 +234,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden"
-    >
+      className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
       <div className="p-6">
         {/* Header */}
         <div className="flex justify-between items-start mb-4">
@@ -280,7 +263,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
               <Underline className="w-4 h-4" />
             </button>
             <button onClick={handleTranslate} title={showTranslation ? "Show Original" : "Translate"} disabled={isTranslating}
-              className={cn("p-2 rounded-lg transition-colors flex items-center gap-1", showTranslation ? "bg-indigo-100 text-indigo-600" : "hover:bg-gray-100 text-gray-400")}>
+              className={cn("p-2 rounded-lg transition-colors", showTranslation ? "bg-indigo-100 text-indigo-600" : "hover:bg-gray-100 text-gray-400")}>
               {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
             </button>
             <button onClick={handleTTS} title="Read Aloud"
@@ -305,46 +288,21 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           ))}
         </div>
 
-        {/* Actions */}
+        {/* Actions — rating removed */}
         <div className="flex items-center justify-between pt-4 border-t border-black/5">
           <div className="flex items-center gap-4">
             {/* Like */}
             <button onClick={handleLike} disabled={!user}
-              className={cn("flex items-center gap-1.5 transition-colors", isLiked ? "text-red-500" : "text-gray-400 hover:text-red-400")}>
-              <Heart className={cn("w-5 h-5", isLiked ? "fill-current" : "")} />
+              className={cn("flex items-center gap-1.5 transition-all", isLiked ? "text-red-500 scale-110" : "text-gray-400 hover:text-red-400")}>
+              <Heart className={cn("w-5 h-5 transition-all", isLiked ? "fill-current" : "")} />
               <span className="text-sm font-medium">{localLikes.length}</span>
             </button>
-            {/* Stars */}
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((s) => {
-                const displayRating = hoverRating || userRating;
-                const filledByUser = displayRating > 0 && s <= displayRating;
-                const filledByCommunity = displayRating === 0 && localRatingCount > 0 && s <= Math.round(localStars);
-                return (
-                  <button key={s}
-                    onClick={() => handleRate(s)}
-                    onMouseEnter={() => setHoverRating(s)}
-                    onMouseLeave={() => setHoverRating(0)}
-                    title={`Rate ${s} star${s > 1 ? "s" : ""}`}>
-                    <Star className={cn(
-                      "w-4 h-4 transition-colors",
-                      filledByUser ? "text-yellow-400 fill-yellow-400" :
-                      filledByCommunity ? "text-yellow-300 fill-yellow-300" :
-                      hoverRating >= s ? "text-yellow-200 fill-yellow-200" :
-                      "text-gray-200 fill-transparent"
-                    )} />
-                  </button>
-                );
-              })}
-              <span className="text-xs font-bold text-gray-400 ml-1">
-                {localRatingCount > 0 ? `${localStars.toFixed(1)} (${localRatingCount})` : "Rate"}
-              </span>
-            </div>
             {/* Comments */}
             <button onClick={() => setShowComments(!showComments)}
-              className="flex items-center gap-1.5 text-gray-500 hover:text-emerald-600 transition-colors">
+              className={cn("flex items-center gap-1.5 transition-colors",
+                showComments ? "text-emerald-600" : "text-gray-500 hover:text-emerald-600")}>
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm font-medium">{post.comments?.length || 0}</span>
+              <span className="text-sm font-medium">{localComments.length}</span>
             </button>
           </div>
           <button onClick={handleShare} className="text-gray-400 hover:text-emerald-600 transition-colors">
@@ -361,7 +319,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
               <input
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleComment()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
                 placeholder="Add a comment..."
                 className="flex-1 bg-white border border-black/5 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
               />
@@ -375,7 +333,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           )}
 
           <div className="space-y-3">
-            {post.comments?.map((comment) => (
+            {localComments.map((comment) => (
               <div key={comment.id} className="flex gap-3">
                 <div className={cn(
                   "w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold",
