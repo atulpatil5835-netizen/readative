@@ -1,15 +1,13 @@
 {
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
   "rewrites": [
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
     { "source": "/api/posts/:id/comments", "destination": "/api/posts?id=:id&action=comments" },
-    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" },
-    { "source": "/api/(.*)", "destination": "/api/$1" }
+    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" }
   ]
 }
-```
-
-**Step 5 — Add env variable in Vercel:**
-Go to Vercel dashboard → your project → **Settings** → **Environment Variables** → add:
-```
-GEMINI_API_KEY = AIzaSyCgKpxbZREpDZuMV7TxYOmXYatRk3GRZ50

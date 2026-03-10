@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase/firebase";
+import { auth, authPersistenceReady } from "./firebase/firebase";
 import { Header } from "./components/Header";
 import { Feed } from "./components/Feed";
 import { SmartTalk } from "./components/SmartTalk";
@@ -17,42 +17,54 @@ export default function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // ✅ Listen to Firebase auth state — survives minimize/tab switch
+  // Listen to Firebase auth state and wait for persistence setup first.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        const profile: UserProfile = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Reader",
-          photo: firebaseUser.photoURL ||
-            `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || "User")}&background=10b981&color=fff`,
-          email: firebaseUser.email || "",
-          readingScore: 0,
-          examScore: 0,
-          readPosts: [],
-          following: [],
-        };
-        setUser(profile);
-        setIsGuest(false);
-      } else {
-        // Only reset if not guest
-        setUser(null);
-      }
-      setAuthLoading(false);
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    authPersistenceReady.finally(() => {
+      if (!isMounted) return;
+
+      unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        if (!isMounted) return;
+
+        if (firebaseUser) {
+          const profile: UserProfile = {
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Reader",
+            photo: firebaseUser.photoURL ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || "User")}&background=10b981&color=fff`,
+            email: firebaseUser.email || "",
+            readingScore: 0,
+            examScore: 0,
+            readPosts: [],
+            following: [],
+          };
+          setUser(profile);
+          setIsGuest(false);
+        } else {
+          setUser(null);
+        }
+
+        setAuthLoading(false);
+      });
     });
-    return () => unsubscribe();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const refreshProfile = () => {
-    // Profile data is now from Firebase — no API call needed
-    // If you store extra data in Firestore, fetch it here
+    // Profile data is currently local/session-based.
   };
 
   const toggleFollow = (authorName: string) => {
     if (!user) return;
     const isFollowing = user.following.includes(authorName);
     const newFollowing = isFollowing
-      ? user.following.filter(n => n !== authorName)
+      ? user.following.filter((n) => n !== authorName)
       : [...user.following, authorName];
     setUser({ ...user, following: newFollowing });
   };
@@ -102,7 +114,6 @@ export default function App() {
           {activeTab === "profile"   && <Profile user={user} />}
         </main>
 
-        {/* Mobile Navigation */}
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 px-6 py-3 flex justify-between items-center md:hidden z-50">
           <button onClick={() => setActiveTab("home")} className={`p-2 ${activeTab === "home" ? "text-emerald-600" : "text-gray-400"}`}>
             <HomeIcon />

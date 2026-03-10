@@ -45,6 +45,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const handleLike = async () => {
     if (!user) return;
     // Optimistic update
+    const previousLikes = localLikes;
     const newLikes = isLiked
       ? localLikes.filter((id) => id !== user.id)
       : [...localLikes, user.id];
@@ -56,10 +57,13 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id }),
       });
+      if (!res.ok) {
+        throw new Error(`Failed to like post (${res.status})`);
+      }
       const data = await res.json();
       setLocalLikes(data.likes);
     } catch {
-      setLocalLikes(localLikes); // revert on error
+      setLocalLikes(previousLikes); // revert on error
     }
   };
 
@@ -105,30 +109,38 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
       audioRef.current?.play();
     }
     if (user && !user.readPosts.includes(post.id)) {
-      await fetch(`/api/profile/${user.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...user, readingScore: user.readingScore + 10, readPosts: [...user.readPosts, post.id] }),
-      });
+      try {
+        await fetch(`/api/profile/${user.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...user, readingScore: user.readingScore + 10, readPosts: [...user.readPosts, post.id] }),
+        });
+      } catch (error) {
+        console.error("Failed to update reading profile:", error);
+      }
       refreshProfile();
     }
   };
 
   const handleRate = async (stars: number) => {
     if (!user) { alert("Please login to rate posts."); return; }
-    await fetch(`/api/posts/${post.id}/rate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stars }),
-    });
-    onUpdate();
+    try {
+      await fetch(`/api/posts/${post.id}/rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stars }),
+      });
+      onUpdate();
+    } catch (error) {
+      console.error("Failed to rate post:", error);
+    }
   };
 
   const handleComment = async () => {
     if (!user || !commentText.trim()) return;
     setIsCommenting(true);
     try {
-      await fetch(`/api/posts/${post.id}/comments`, {
+      const res = await fetch(`/api/posts/${post.id}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,10 +149,15 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           text: commentText,
         }),
       });
+      if (!res.ok) {
+        throw new Error(`Failed to comment on post (${res.status})`);
+      }
       setCommentText("");
       // Poll for AI reply after short delay
       setTimeout(onUpdate, 3000);
       onUpdate();
+    } catch (error) {
+      console.error("Failed to add comment:", error);
     } finally {
       setIsCommenting(false);
     }

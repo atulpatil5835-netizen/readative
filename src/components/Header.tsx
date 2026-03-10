@@ -3,8 +3,8 @@ import { Logo } from "./Logo"
 import { UserProfile } from "../types"
 
 interface HeaderProps {
-  activeTab: string
-  setActiveTab: (tab: string) => void
+  activeTab: "home" | "smarttalk" | "exam" | "profile"
+  setActiveTab: (tab: "home" | "smarttalk" | "exam" | "profile") => void
   user: UserProfile | null
   onLogout: () => void
 }
@@ -13,6 +13,7 @@ export function Header({ activeTab, setActiveTab, user, onLogout }: HeaderProps)
   const displayName = user?.name || user?.email?.split("@")[0] || "Guest"
   const photoURL = user?.photo ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=10b981&color=fff`
+  const tabs = ["home", "smarttalk", "exam", "profile"] as const
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-black/5 z-50">
@@ -31,9 +32,9 @@ export function Header({ activeTab, setActiveTab, user, onLogout }: HeaderProps)
           </div>
         </div>
 
-        {/* Navigation — Bot removed */}
+        {/* Navigation */}
         <nav className="hidden md:flex items-center gap-8">
-          {["home", "smarttalk", "exam", "profile"].map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

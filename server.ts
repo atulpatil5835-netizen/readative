@@ -11,7 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env") })
 dotenv.config({ path: path.resolve(process.cwd(), ".env") })
 dotenv.config()
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyCgKpxbZREpDZuMV7TxYOmXYatRk3GRZ50"
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ""
 
 console.log("🔑 GEMINI KEY:", GEMINI_API_KEY ? `${GEMINI_API_KEY.slice(0, 8)}...` : "❌ NOT FOUND")
 
@@ -46,7 +46,20 @@ interface Post {
   aiCommentPosted?: boolean
 }
 
+interface ProfileData {
+  id: string
+  name?: string
+  photo?: string
+  email?: string
+  readingScore?: number
+  examScore?: number
+  readPosts?: string[]
+  following?: string[]
+  preferredLanguage?: string
+}
+
 let posts: Post[] = []
+const profiles = new Map<string, ProfileData>()
 
 async function callGemini(prompt: string): Promise<string> {
   if (!GEMINI_API_KEY) {
@@ -203,6 +216,31 @@ app.post("/api/posts/:id/comments", async (req, res) => {
   }
   post.comments.push(comment)
   res.json(comment)
+})
+
+app.get("/api/profile/:id", (req, res) => {
+  const id = req.params.id
+  const current = profiles.get(id) ?? {
+    id,
+    readingScore: 0,
+    examScore: 0,
+    readPosts: [],
+    following: [],
+    preferredLanguage: "English",
+  }
+  res.json(current)
+})
+
+app.post("/api/profile/:id", (req, res) => {
+  const id = req.params.id
+  const previous = profiles.get(id) ?? { id }
+  const next = {
+    ...previous,
+    ...req.body,
+    id,
+  }
+  profiles.set(id, next)
+  res.json(next)
 })
 
 app.post("/api/ai", async (req, res) => {

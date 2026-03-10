@@ -42,10 +42,14 @@ export function Feed({ user, refreshProfile }: FeedProps) {
     try {
       const url = activeFilter === 'all' ? '/api/posts' : `/api/posts?category=${activeFilter}`;
       const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch posts (${res.status})`);
+      }
       const data = await res.json();
-      setPosts(data);
+      setPosts(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("Failed to fetch posts", e);
+      setPosts([]);
     } finally {
       setIsLoading(false);
     }
@@ -57,7 +61,7 @@ export function Feed({ user, refreshProfile }: FeedProps) {
 
     try {
       const hashtags = await geminiService.generateHashtags(newPost);
-      await fetch("/api/posts", {
+      const response = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -68,6 +72,9 @@ export function Feed({ user, refreshProfile }: FeedProps) {
           hashtags,
         }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to create post (${response.status})`);
+      }
       setNewPost("");
       fetchPosts();
     } catch (error) {

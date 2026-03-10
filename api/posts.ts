@@ -61,10 +61,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(200).end()
 
   const { id, action } = req.query
+  const postId = Array.isArray(id) ? id[0] : id
+  const postAction = Array.isArray(action) ? action[0] : action
 
   // GET /api/posts
-  if (req.method === "GET" && !id) {
-    const { category } = req.query
+  if (req.method === "GET" && !postId) {
+    const rawCategory = req.query.category
+    const category = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory
     if (category && category !== "all") {
       return res.json(posts.filter((p) => p.type === category))
     }
@@ -72,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // POST /api/posts
-  if (req.method === "POST" && !id) {
+  if (req.method === "POST" && !postId) {
     const scheduledAt = Date.now() + randomDelayMs()
     const newPost: Post = {
       id: Math.random().toString(36).substr(2, 9),
@@ -93,8 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // POST /api/posts/:id/like
-  if (req.method === "POST" && id && action === "like") {
-    const post = posts.find((p) => p.id === id)
+  if (req.method === "POST" && postId && postAction === "like") {
+    const post = posts.find((p) => p.id === postId)
     if (!post) return res.status(404).json({ error: "Post not found" })
     const { userId } = req.body
     const idx = post.likes.indexOf(userId)
@@ -103,8 +106,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // POST /api/posts/:id/rate
-  if (req.method === "POST" && id && action === "rate") {
-    const post = posts.find((p) => p.id === id)
+  if (req.method === "POST" && postId && postAction === "rate") {
+    const post = posts.find((p) => p.id === postId)
     if (!post) return res.status(404).json({ error: "Post not found" })
     const { stars } = req.body
     post.ratingCount += 1
@@ -113,15 +116,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // GET /api/posts/:id/comments
-  if (req.method === "GET" && id && action === "comments") {
-    const post = posts.find((p) => p.id === id)
+  if (req.method === "GET" && postId && postAction === "comments") {
+    const post = posts.find((p) => p.id === postId)
     if (!post) return res.status(404).json([])
     return res.json(post.comments)
   }
 
   // POST /api/posts/:id/comments
-  if (req.method === "POST" && id && action === "comments") {
-    const post = posts.find((p) => p.id === id)
+  if (req.method === "POST" && postId && postAction === "comments") {
+    const post = posts.find((p) => p.id === postId)
     if (!post) return res.status(404).json({ error: "Post not found" })
     const comment: Comment = {
       id: Math.random().toString(36).substr(2, 9),

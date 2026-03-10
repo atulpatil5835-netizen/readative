@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useState } from "react";
+import { motion } from "motion/react";
 import { geminiService } from "../services/gemini";
 import { UserProfile, ExamQuestion } from "../types";
 import { Brain, CheckCircle2, XCircle, ArrowRight, Trophy } from "lucide-react";
 import { SEO } from "./SEO";
-// import confetti from "canvas-confetti";
 
 interface ExamProps {
   user: UserProfile | null;
@@ -26,6 +25,9 @@ export function Exam({ user, refreshProfile }: ExamProps) {
       // Get topics from read posts (mocking for now, in real app we'd fetch post details)
       const topics = ["Motivation", "Short Stories", "Life Lessons"];
       const questions = await geminiService.generateExam(topics);
+      if (!questions.length) {
+        throw new Error("No valid exam questions were generated.");
+      }
       setExam(questions);
       setCurrentIndex(0);
       setScore(0);
@@ -58,20 +60,18 @@ export function Exam({ user, refreshProfile }: ExamProps) {
     setIsFinished(true);
     const finalScore = Math.round((score / exam!.length) * 100);
     if (user) {
-      await fetch(`/api/profile/${user.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...user, examScore: user.examScore + finalScore })
-      });
+      try {
+        await fetch(`/api/profile/${user.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...user, examScore: user.examScore + finalScore })
+        });
+      } catch (error) {
+        console.error("Failed to update exam score:", error);
+      }
       refreshProfile();
     }
-    if (finalScore > 70) {
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    }
+    // High score celebration can be wired here if a confetti library is installed.
   };
 
   if (!user || user.readPosts.length === 0) {

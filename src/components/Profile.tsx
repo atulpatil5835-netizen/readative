@@ -29,18 +29,27 @@ export function Profile({ user }: ProfileProps) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState("English");
 
   useEffect(() => {
     fetchAllPosts();
   }, []);
 
+  useEffect(() => {
+    setSelectedLanguage(user?.preferredLanguage || "English");
+  }, [user?.preferredLanguage]);
+
   const fetchAllPosts = async () => {
     try {
       const res = await fetch("/api/posts");
+      if (!res.ok) {
+        throw new Error(`Failed to fetch posts (${res.status})`);
+      }
       const data = await res.json();
-      setAllPosts(data);
+      setAllPosts(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("Failed to fetch posts", e);
+      setAllPosts([]);
     } finally {
       setIsLoading(false);
     }
@@ -70,13 +79,22 @@ export function Profile({ user }: ProfileProps) {
 
   const handleLanguageChange = async (langName: string) => {
     setIsUpdating(true);
-    await fetch(`/api/profile/${user.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...user, preferredLanguage: langName }),
-    });
-    window.location.reload();
-    setIsUpdating(false);
+    setSelectedLanguage(langName);
+    try {
+      const res = await fetch(`/api/profile/${user.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...user, preferredLanguage: langName }),
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to update profile language (${res.status})`);
+      }
+    } catch (error) {
+      console.error("Failed to update language:", error);
+      setSelectedLanguage(user.preferredLanguage || "English");
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const tabs: { key: ProfileTab; label: string; icon: React.ReactNode; count: number }[] = [
@@ -134,7 +152,7 @@ export function Profile({ user }: ProfileProps) {
                 onClick={() => handleLanguageChange(lang.name)}
                 disabled={isUpdating}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                  (user.preferredLanguage || "English") === lang.name
+                  selectedLanguage === lang.name
                     ? "bg-emerald-600 text-white shadow-md"
                     : "bg-gray-50 text-gray-600 hover:bg-gray-100"
                 }`}
