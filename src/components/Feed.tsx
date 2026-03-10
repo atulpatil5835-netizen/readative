@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { PostCard } from "./PostCard";
 import { Post, UserProfile, PostCategory } from "../types";
 import { geminiService } from "../services/gemini";
 import { Send, Sparkles } from "lucide-react";
 import { SEO } from "./SEO";
+import {
+  collection, addDoc, onSnapshot, query,
+  orderBy, where, serverTimestamp
+} from "firebase/firestore";
+import { db } from "../firebase/firebase";
 
 interface FeedProps {
   user: UserProfile | null;
@@ -12,7 +17,6 @@ interface FeedProps {
 }
 
 const CATEGORIES: PostCategory[] = ['story', 'joke', 'motivation', 'poetry', 'shayari', 'knowledge', 'questions'];
-
 const CATEGORY_EMOJI: Record<PostCategory, string> = {
   story: '📖', joke: '😄', motivation: '🔥',
   poetry: '🌸', shayari: '🌙', knowledge: '💡', questions: '❓',
@@ -26,61 +30,50 @@ export function Feed({ user, refreshProfile }: FeedProps) {
   const [isPosting, setIsPosting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Merge server posts — only updates comments, preserves local like state in PostCard
-  const mergePosts = useCallback((incoming: Post[]) => {
-    setPosts(prev => {
-      if (prev.length === 0) return incoming;
-      const prevMap = new Map(prev.map(p => [p.id, p]));
-      return incoming.map(serverPost => {
-        const existing = prevMap.get(serverPost.id);
-        if (!existing) return serverPost;
-        // Keep existing post but update only comments from server
-        return { ...existing, comments: serverPost.comments };
-      });
-    });
-  }, []);
-
-  const fetchPosts = useCallback(async (showLoader = false) => {
-    try {
-      if (showLoader) setIsLoading(true);
-      const url = activeFilter === 'all' ? '/api/posts' : `/api/posts?category=${activeFilter}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to fetch posts (${res.status})`);
-      const data = await res.json();
-      mergePosts(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch posts", e);
-      if (showLoader) setPosts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeFilter, mergePosts]);
-
+  // Realtime listener — no polling needed with Firestore!
   useEffect(() => {
-    fetchPosts(true);
-    const interval = setInterval(() => fetchPosts(false), 8000);
-    return () => clearInterval(interval);
-  }, [fetchPosts]);
+    setIsLoading(true);
+    const postsRef = collection(db, "posts");
+
+    const q = activeFilter === 'all'
+      ? query(postsRef, orderBy("createdAt", "desc"))
+      : query(postsRef, where("type", "==", activeFilter), orderBy("createdAt", "desc"));
+
+    // onSnapshot gives realtime updates automatically
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        // Firestore timestamp to number
+        createdAt: doc.data().createdAt?.toMillis?.() || doc.data().createdAt || Date.now(),
+      })) as Post[];
+      setPosts(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Firestore error:", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe(); // cleanup on unmount
+  }, [activeFilter]);
 
   const handlePost = async () => {
     if (!newPost.trim() || !user) return;
     setIsPosting(true);
     try {
       const hashtags = await geminiService.generateHashtags(newPost);
-      const response = await fetch("/api/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          author: user.name,
-          authorId: user.id,
-          content: newPost,
-          type: postType,
-          hashtags,
-        }),
+      await addDoc(collection(db, "posts"), {
+        author: user.name,
+        authorId: user.id,
+        content: newPost,
+        type: postType,
+        hashtags,
+        likes: [],
+        comments: [],
+        createdAt: serverTimestamp(),
+        aiCommentPosted: false,
       });
-      if (!response.ok) throw new Error(`Failed to create post (${response.status})`);
       setNewPost("");
-      fetchPosts(false);
     } catch (error) {
       console.error("Error posting:", error);
     } finally {
@@ -160,7 +153,7 @@ export function Feed({ user, refreshProfile }: FeedProps) {
             {posts.map((post) => (
               <PostCard key={post.id} post={post} user={user}
                 refreshProfile={refreshProfile}
-                onUpdate={() => fetchPosts(false)} />
+                onUpdate={() => {}} />
             ))}
           </AnimatePresence>
         </div>

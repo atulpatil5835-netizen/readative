@@ -5,6 +5,8 @@ import { geminiService } from "../services/gemini";
 import { Heart, MessageCircle, Share2, Play, Pause, Highlighter, Underline, Languages, Loader2, Sparkles } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { db } from "../firebase/firebase";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -35,49 +37,86 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
 
-  // Local state for live updates without re-fetch
+  // Local optimistic state — Firestore onSnapshot keeps these in sync automatically
   const [localLikes, setLocalLikes] = useState<string[]>(post.likes || []);
   const [localComments, setLocalComments] = useState(post.comments || []);
 
-  // Sync comments from server polling (via prop update)
-  const prevCommentsRef = useRef(post.comments);
-  if (post.comments !== prevCommentsRef.current) {
-    prevCommentsRef.current = post.comments;
-    // Only update if server has more comments (don't overwrite local optimistic adds)
-    if (post.comments.length > localComments.length) {
-      setLocalComments(post.comments);
-    }
+  // Sync when Firestore pushes updates via onSnapshot
+  const prevPostRef = useRef(post);
+  if (post !== prevPostRef.current) {
+    prevPostRef.current = post;
+    setLocalLikes(post.likes || []);
+    setLocalComments(post.comments || []);
   }
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-
   const words = (showTranslation && translatedContent ? translatedContent : post.content).split(/\s+/);
   const isLiked = user ? localLikes.includes(user.id) : false;
 
+  // ── Like ──────────────────────────────────────────────────────────────
   const handleLike = async () => {
     if (!user) return;
-    // Optimistic update — instant feedback
+    const postRef = doc(db, "posts", post.id);
     const newLikes = isLiked
-      ? localLikes.filter((id) => id !== user.id)
+      ? localLikes.filter(id => id !== user.id)
       : [...localLikes, user.id];
-    setLocalLikes(newLikes);
+
+    setLocalLikes(newLikes); // optimistic
 
     try {
-      const res = await fetch(`/api/posts/${post.id}/like`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-      });
-      if (!res.ok) throw new Error(`Failed to like post (${res.status})`);
-      const data = await res.json();
-      setLocalLikes(data.likes);
-    } catch {
-      // Revert on error
-      setLocalLikes(post.likes || []);
+      if (isLiked) {
+        await updateDoc(postRef, { likes: arrayRemove(user.id) });
+      } else {
+        await updateDoc(postRef, { likes: arrayUnion(user.id) });
+      }
+      // onSnapshot will confirm the final state
+    } catch (e) {
+      console.error("Like failed:", e);
+      setLocalLikes(post.likes || []); // revert
     }
   };
 
+  // ── Comment ───────────────────────────────────────────────────────────
+  const handleComment = async () => {
+    if (!user || !commentText.trim()) return;
+    setIsCommenting(true);
+
+    const optimisticComment = {
+      id: `temp-${Date.now()}`,
+      author: user.name,
+      authorId: user.id,
+      text: commentText,
+      createdAt: Date.now(),
+      isAI: false,
+    };
+
+    setLocalComments(prev => [...prev, optimisticComment]);
+    const savedText = commentText;
+    setCommentText("");
+
+    try {
+      const postRef = doc(db, "posts", post.id);
+      const realComment = {
+        id: Math.random().toString(36).substr(2, 9),
+        author: user.name,
+        authorId: user.id,
+        text: savedText,
+        createdAt: Date.now(),
+        isAI: false,
+      };
+      await updateDoc(postRef, { comments: arrayUnion(realComment) });
+      // Replace optimistic with real
+      setLocalComments(prev => prev.map(c => c.id === optimisticComment.id ? realComment : c));
+    } catch (e) {
+      console.error("Comment failed:", e);
+      setLocalComments(prev => prev.filter(c => c.id !== optimisticComment.id));
+    } finally {
+      setIsCommenting(false);
+    }
+  };
+
+  // ── Translate ─────────────────────────────────────────────────────────
   const handleTranslate = async () => {
     if (showTranslation) { setShowTranslation(false); return; }
     if (translatedContent) { setShowTranslation(true); return; }
@@ -90,13 +129,14 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
       const translated = await geminiService.translateText(post.content, user.preferredLanguage);
       setTranslatedContent(translated);
       setShowTranslation(true);
-    } catch (error) {
-      console.error("Translation failed", error);
+    } catch (e) {
+      console.error("Translation failed", e);
     } finally {
       setIsTranslating(false);
     }
   };
 
+  // ── TTS ───────────────────────────────────────────────────────────────
   const handleTTS = async () => {
     if (isReading) { audioRef.current?.pause(); setIsReading(false); return; }
     if (!audioUrl) {
@@ -117,61 +157,9 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     } else {
       audioRef.current?.play();
     }
-    if (user && !user.readPosts.includes(post.id)) {
-      try {
-        await fetch(`/api/profile/${user.id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...user, readingScore: user.readingScore + 10, readPosts: [...user.readPosts, post.id] }),
-        });
-      } catch (error) {
-        console.error("Failed to update reading profile:", error);
-      }
-      refreshProfile();
-    }
   };
 
-  const handleComment = async () => {
-    if (!user || !commentText.trim()) return;
-    setIsCommenting(true);
-
-    // Optimistic comment — appears instantly
-    const optimisticComment = {
-      id: `temp-${Date.now()}`,
-      author: user.name,
-      authorId: user.id,
-      text: commentText,
-      createdAt: Date.now(),
-      isAI: false,
-    };
-    setLocalComments(prev => [...prev, optimisticComment]);
-    setCommentText("");
-
-    try {
-      const res = await fetch(`/api/posts/${post.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          author: user.name,
-          authorId: user.id,
-          text: optimisticComment.text,
-        }),
-      });
-      if (!res.ok) throw new Error(`Failed to comment (${res.status})`);
-      const savedComment = await res.json();
-      // Replace optimistic comment with real one from server
-      setLocalComments(prev => prev.map(c => c.id === optimisticComment.id ? savedComment : c));
-      // Poll for AI reply after delay
-      setTimeout(() => onUpdate(), 3000);
-    } catch (error) {
-      console.error("Failed to add comment:", error);
-      // Remove optimistic comment on error
-      setLocalComments(prev => prev.filter(c => c.id !== optimisticComment.id));
-    } finally {
-      setIsCommenting(false);
-    }
-  };
-
+  // ── Text Selection ────────────────────────────────────────────────────
   const handleTextSelection = () => {
     if (penMode === 'none') return;
     const selection = window.getSelection();
@@ -204,8 +192,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     }
     let result: React.ReactNode[] = [];
     let lastIndex = 0;
-    const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start);
-    sortedHighlights.forEach((h) => {
+    [...highlights].sort((a, b) => a.start - b.start).forEach((h) => {
       if (h.start > lastIndex) result.push(contentToRender.substring(lastIndex, h.start));
       result.push(
         <span key={h.id} style={{
@@ -254,19 +241,19 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           </div>
           {/* Tools */}
           <div className="flex gap-1">
-            <button onClick={() => setPenMode(penMode === 'highlight' ? 'none' : 'highlight')} title="Highlight"
+            <button onClick={() => setPenMode(penMode === 'highlight' ? 'none' : 'highlight')}
               className={cn("p-2 rounded-lg transition-colors", penMode === 'highlight' ? "bg-yellow-100 text-yellow-600" : "hover:bg-gray-100 text-gray-400")}>
               <Highlighter className="w-4 h-4" />
             </button>
-            <button onClick={() => setPenMode(penMode === 'underline' ? 'none' : 'underline')} title="Underline"
+            <button onClick={() => setPenMode(penMode === 'underline' ? 'none' : 'underline')}
               className={cn("p-2 rounded-lg transition-colors", penMode === 'underline' ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400")}>
               <Underline className="w-4 h-4" />
             </button>
-            <button onClick={handleTranslate} title={showTranslation ? "Show Original" : "Translate"} disabled={isTranslating}
+            <button onClick={handleTranslate} disabled={isTranslating}
               className={cn("p-2 rounded-lg transition-colors", showTranslation ? "bg-indigo-100 text-indigo-600" : "hover:bg-gray-100 text-gray-400")}>
               {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
             </button>
-            <button onClick={handleTTS} title="Read Aloud"
+            <button onClick={handleTTS}
               className="p-2 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors">
               {isReading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </button>
@@ -288,16 +275,14 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           ))}
         </div>
 
-        {/* Actions — rating removed */}
+        {/* Actions */}
         <div className="flex items-center justify-between pt-4 border-t border-black/5">
           <div className="flex items-center gap-4">
-            {/* Like */}
             <button onClick={handleLike} disabled={!user}
-              className={cn("flex items-center gap-1.5 transition-all", isLiked ? "text-red-500 scale-110" : "text-gray-400 hover:text-red-400")}>
-              <Heart className={cn("w-5 h-5 transition-all", isLiked ? "fill-current" : "")} />
+              className={cn("flex items-center gap-1.5 transition-all", isLiked ? "text-red-500" : "text-gray-400 hover:text-red-400")}>
+              <Heart className={cn("w-5 h-5", isLiked ? "fill-current" : "")} />
               <span className="text-sm font-medium">{localLikes.length}</span>
             </button>
-            {/* Comments */}
             <button onClick={() => setShowComments(!showComments)}
               className={cn("flex items-center gap-1.5 transition-colors",
                 showComments ? "text-emerald-600" : "text-gray-500 hover:text-emerald-600")}>
@@ -316,13 +301,10 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         <div className="bg-gray-50 p-6 border-t border-black/5 space-y-4">
           {user ? (
             <div className="flex gap-3">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
+              <input value={commentText} onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
                 placeholder="Add a comment..."
-                className="flex-1 bg-white border border-black/5 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-              />
+                className="flex-1 bg-white border border-black/5 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
               <button onClick={handleComment} disabled={isCommenting || !commentText.trim()}
                 className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50">
                 {isCommenting ? "..." : "Post"}
@@ -331,25 +313,18 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           ) : (
             <div className="text-center p-4 bg-gray-100 rounded-xl text-sm text-gray-500">Please login to comment.</div>
           )}
-
           <div className="space-y-3">
             {localComments.map((comment) => (
               <div key={comment.id} className="flex gap-3">
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold",
-                  comment.isAI ? "bg-emerald-100 text-emerald-600" : "bg-gray-200 text-gray-600"
-                )}>
+                <div className={cn("w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold",
+                  comment.isAI ? "bg-emerald-100 text-emerald-600" : "bg-gray-200 text-gray-600")}>
                   {comment.isAI ? <Sparkles className="w-4 h-4" /> : comment.author[0]}
                 </div>
-                <div className={cn(
-                  "p-3 rounded-2xl shadow-sm border flex-1",
-                  comment.isAI ? "bg-emerald-50 border-emerald-100" : "bg-white border-black/5"
-                )}>
+                <div className={cn("p-3 rounded-2xl shadow-sm border flex-1",
+                  comment.isAI ? "bg-emerald-50 border-emerald-100" : "bg-white border-black/5")}>
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-xs font-bold text-gray-900">{comment.author}</p>
-                    {comment.isAI && (
-                      <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">AI</span>
-                    )}
+                    {comment.isAI && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">AI</span>}
                   </div>
                   <p className="text-sm text-gray-600">{comment.text}</p>
                 </div>
