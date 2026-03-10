@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
 import { PostCard } from "./PostCard";
 import { Post, UserProfile, PostCategory } from "../types";
@@ -7,7 +7,7 @@ import { Send, Sparkles } from "lucide-react";
 import { SEO } from "./SEO";
 import {
   collection, addDoc, onSnapshot, query,
-  orderBy, where, serverTimestamp
+  orderBy, serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
@@ -30,31 +30,34 @@ export function Feed({ user, refreshProfile }: FeedProps) {
   const [isPosting, setIsPosting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Realtime listener — no polling needed with Firestore!
   useEffect(() => {
     setIsLoading(true);
     const postsRef = collection(db, "posts");
 
-    const q = activeFilter === 'all'
-      ? query(postsRef, orderBy("createdAt", "desc"))
-      : query(postsRef, where("type", "==", activeFilter), orderBy("createdAt", "desc"));
+    // Always fetch all posts, filter client-side
+    // This avoids needing composite Firestore indexes
+    const q = query(postsRef, orderBy("createdAt", "desc"));
 
-    // onSnapshot gives realtime updates automatically
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
+      const allData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        // Firestore timestamp to number
         createdAt: doc.data().createdAt?.toMillis?.() || doc.data().createdAt || Date.now(),
       })) as Post[];
-      setPosts(data);
+
+      // Client-side filtering by category
+      const filtered = activeFilter === 'all'
+        ? allData
+        : allData.filter(p => p.type === activeFilter);
+
+      setPosts(filtered);
       setIsLoading(false);
     }, (error) => {
       console.error("Firestore error:", error);
       setIsLoading(false);
     });
 
-    return () => unsubscribe(); // cleanup on unmount
+    return () => unsubscribe();
   }, [activeFilter]);
 
   const handlePost = async () => {
@@ -107,7 +110,9 @@ export function Feed({ user, refreshProfile }: FeedProps) {
                   {CATEGORIES.map((type) => (
                     <button key={type} onClick={() => setPostType(type)}
                       className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition-all ${
-                        postType === type ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        postType === type
+                          ? "bg-emerald-600 text-white"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                       }`}>
                       {CATEGORY_EMOJI[type]} {type}
                     </button>
@@ -124,25 +129,34 @@ export function Feed({ user, refreshProfile }: FeedProps) {
         </div>
       )}
 
+      {/* Category Filter */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         <button onClick={() => setActiveFilter('all')}
           className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-            activeFilter === 'all' ? "bg-emerald-600 text-white" : "bg-white text-gray-500 border border-gray-200 hover:border-emerald-300"
+            activeFilter === 'all'
+              ? "bg-emerald-600 text-white"
+              : "bg-white text-gray-500 border border-gray-200 hover:border-emerald-300"
           }`}>
           ✨ All
         </button>
         {CATEGORIES.map((cat) => (
           <button key={cat} onClick={() => setActiveFilter(cat)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-              activeFilter === cat ? "bg-emerald-600 text-white" : "bg-white text-gray-500 border border-gray-200 hover:border-emerald-300"
+              activeFilter === cat
+                ? "bg-emerald-600 text-white"
+                : "bg-white text-gray-500 border border-gray-200 hover:border-emerald-300"
             }`}>
             {CATEGORY_EMOJI[cat]} {cat.charAt(0).toUpperCase() + cat.slice(1)}
           </button>
         ))}
       </div>
 
+      {/* Posts */}
       {isLoading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Loading posts...</div>
+        <div className="flex flex-col items-center py-16 gap-3">
+          <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400">Loading posts...</p>
+        </div>
       ) : posts.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm">
           No {activeFilter !== 'all' ? activeFilter : ''} posts yet. Be the first to share!
@@ -151,9 +165,13 @@ export function Feed({ user, refreshProfile }: FeedProps) {
         <div className="space-y-6">
           <AnimatePresence mode="popLayout">
             {posts.map((post) => (
-              <PostCard key={post.id} post={post} user={user}
+              <PostCard
+                key={post.id}
+                post={post}
+                user={user}
                 refreshProfile={refreshProfile}
-                onUpdate={() => {}} />
+                onUpdate={() => {}}
+              />
             ))}
           </AnimatePresence>
         </div>
