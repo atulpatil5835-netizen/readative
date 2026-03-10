@@ -1,9 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { SmartQuestion, SmartAnswer, UserProfile } from "../types";
-import { geminiService } from "../services/gemini";
-import { ThumbsUp, ThumbsDown, Sparkles, User, Bot, Trophy, Star, Send } from "lucide-react";
+import { UserProfile } from "../types";
+import { ThumbsUp, ThumbsDown, Trophy, Star, Send, Sparkles, User } from "lucide-react";
 import { SEO } from "./SEO";
+import {
+  collection, addDoc, onSnapshot, query,
+  orderBy, serverTimestamp, doc, updateDoc, arrayUnion
+} from "firebase/firestore";
+import { db } from "../firebase/firebase";
+
+interface Answer {
+  id: string;
+  author: string;
+  authorId: string;
+  content: string;
+  likes: string[];    // array of userIds
+  dislikes: string[]; // array of userIds
+  createdAt: number;
+}
+
+interface Question {
+  id: string;
+  author: string;
+  authorId: string;
+  content: string;
+  answers: Answer[];
+  createdAt: number;
+}
 
 interface SmartTalkProps {
   user: UserProfile | null;
@@ -11,134 +34,126 @@ interface SmartTalkProps {
 }
 
 export function SmartTalk({ user, toggleFollow }: SmartTalkProps) {
-  const [questions, setQuestions] = useState<SmartQuestion[]>([
-    {
-      id: "1",
-      author: "CuriousMind",
-      content: "What is the most effective way to overcome writer's block?",
-      createdAt: Date.now() - 100000,
-      answers: [
-        {
-          id: "a1",
-          author: "Readative AI",
-          content: "The most effective way is to just write anything — even nonsense. Lower your standards for the first draft. Writer's block is often perfectionism in disguise.",
-          type: "ai",
-          likes: 15,
-          dislikes: 1,
-          createdAt: Date.now() - 90000,
-        },
-        {
-          id: "a2",
-          author: "Writer123",
-          content: "I usually go for a walk. Fresh air helps clear the mind and gives new perspective.",
-          type: "user",
-          likes: 8,
-          dislikes: 2,
-          createdAt: Date.now() - 80000,
-        },
-      ],
-    },
-  ]);
-
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [newQuestion, setNewQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
-  const [loadingAnswers, setLoadingAnswers] = useState<Record<string, boolean>>({});
+  const [isAnswering, setIsAnswering] = useState<Record<string, boolean>>({});
+
+  // Realtime Firestore listener
+  useEffect(() => {
+    const q = query(collection(db, "smarttalk"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toMillis?.() || doc.data().createdAt || Date.now(),
+      })) as Question[];
+      setQuestions(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Firestore SmartTalk error:", error);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleAsk = async () => {
     if (!user) { alert("Please login to ask questions."); return; }
     if (!newQuestion.trim()) return;
     setIsAsking(true);
-
-    const questionId = Date.now().toString();
-    const question: SmartQuestion = {
-      id: questionId,
-      author: user.name,
-      content: newQuestion.trim(),
-      createdAt: Date.now(),
-      answers: [],
-    };
-
-    setQuestions(prev => [question, ...prev]);
-    setNewQuestion("");
-    setLoadingAnswers(prev => ({ ...prev, [questionId]: true }));
-
     try {
-      const aiContent = await geminiService.generateSmartAnswer(question.content);
-      const aiAnswer: SmartAnswer = {
-        id: `ai-${Date.now()}`,
-        author: "Readative AI",
-        content: aiContent,
-        type: "ai",
-        likes: 0,
-        dislikes: 0,
-        createdAt: Date.now(),
-      };
-      setQuestions(prev =>
-        prev.map(q => q.id === questionId ? { ...q, answers: [aiAnswer] } : q)
-      );
+      await addDoc(collection(db, "smarttalk"), {
+        author: user.name,
+        authorId: user.id,
+        content: newQuestion.trim(),
+        answers: [],
+        createdAt: serverTimestamp(),
+      });
+      setNewQuestion("");
     } catch (e) {
-      console.error("AI answer error:", e);
+      console.error("Failed to post question:", e);
     } finally {
       setIsAsking(false);
-      setLoadingAnswers(prev => ({ ...prev, [questionId]: false }));
     }
   };
 
-  const handleUserAnswer = (questionId: string) => {
+  const handleAnswer = async (questionId: string) => {
     if (!user) { alert("Please login to answer."); return; }
     const text = answerInputs[questionId]?.trim();
     if (!text) return;
 
-    const answer: SmartAnswer = {
-      id: `user-${Date.now()}`,
-      author: user.name,
-      content: text,
-      type: "user",
-      likes: 0,
-      dislikes: 0,
-      createdAt: Date.now(),
-    };
-
-    setQuestions(prev =>
-      prev.map(q => q.id === questionId ? { ...q, answers: [...q.answers, answer] } : q)
-    );
-    setAnswerInputs(prev => ({ ...prev, [questionId]: "" }));
-  };
-
-  const handleVote = (questionId: string, answerId: string, type: 'like' | 'dislike') => {
-    if (!user) { alert("Please login to vote."); return; }
-    setQuestions(prev => prev.map(q => {
-      if (q.id !== questionId) return q;
-      return {
-        ...q,
-        answers: q.answers.map(a => {
-          if (a.id !== answerId) return a;
-          return {
-            ...a,
-            likes: type === 'like' ? a.likes + 1 : a.likes,
-            dislikes: type === 'dislike' ? a.dislikes + 1 : a.dislikes,
-          };
-        }),
+    setIsAnswering(prev => ({ ...prev, [questionId]: true }));
+    try {
+      const answer: Answer = {
+        id: Math.random().toString(36).substr(2, 9),
+        author: user.name,
+        authorId: user.id,
+        content: text,
+        likes: [],
+        dislikes: [],
+        createdAt: Date.now(),
       };
-    }));
+      await updateDoc(doc(db, "smarttalk", questionId), {
+        answers: arrayUnion(answer),
+      });
+      setAnswerInputs(prev => ({ ...prev, [questionId]: "" }));
+    } catch (e) {
+      console.error("Failed to post answer:", e);
+    } finally {
+      setIsAnswering(prev => ({ ...prev, [questionId]: false }));
+    }
   };
 
-  const getBorderClass = (answer: SmartAnswer, isTop: boolean) => {
-    if (isTop) return "border-yellow-400 border-4 shadow-[0_0_15px_rgba(250,204,21,0.4)]";
-    const score = answer.likes - answer.dislikes;
-    if (score <= 0) return "border border-gray-200";
-    if (score < 5) return "border-2 border-emerald-300";
-    if (score < 10) return "border-2 border-emerald-500";
-    return "border-4 border-emerald-600";
+  const handleVote = async (question: Question, answerId: string, type: 'like' | 'dislike') => {
+    if (!user) { alert("Please login to vote."); return; }
+
+    const updatedAnswers = question.answers.map(a => {
+      if (a.id !== answerId) return a;
+      const likes = a.likes || [];
+      const dislikes = a.dislikes || [];
+      const alreadyLiked = likes.includes(user.id);
+      const alreadyDisliked = dislikes.includes(user.id);
+
+      if (type === 'like') {
+        return {
+          ...a,
+          likes: alreadyLiked ? likes.filter(id => id !== user.id) : [...likes, user.id],
+          dislikes: dislikes.filter(id => id !== user.id), // remove dislike if switching
+        };
+      } else {
+        return {
+          ...a,
+          dislikes: alreadyDisliked ? dislikes.filter(id => id !== user.id) : [...dislikes, user.id],
+          likes: likes.filter(id => id !== user.id), // remove like if switching
+        };
+      }
+    });
+
+    try {
+      await updateDoc(doc(db, "smarttalk", question.id), { answers: updatedAnswers });
+    } catch (e) {
+      console.error("Failed to vote:", e);
+    }
+  };
+
+  const getAnswerBorderClass = (answer: Answer, isTop: boolean, isWorst: boolean) => {
+    if (isTop) return "border-4 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]";
+    const score = (answer.likes?.length || 0) - (answer.dislikes?.length || 0);
+    if (isWorst && score < -1) return "border-2 border-red-300 bg-red-50";
+    if (score >= 10) return "border-2 border-emerald-600";
+    if (score >= 5) return "border-2 border-emerald-400";
+    if (score >= 1) return "border border-emerald-200";
+    return "border border-gray-200";
   };
 
   return (
     <div className="space-y-6 pb-20">
       <SEO
         title="SmartTalk - Q&A"
-        description="Ask smart questions and get AI-powered answers on Readative."
-        keywords={["Q&A", "questions", "answers", "AI help"]}
+        description="Ask questions and get community answers on Readative."
+        keywords={["Q&A", "questions", "answers", "community"]}
       />
 
       {/* Ask Box */}
@@ -147,7 +162,7 @@ export function SmartTalk({ user, toggleFollow }: SmartTalkProps) {
           <Sparkles className="w-8 h-8 text-yellow-300" />
           SmartTalk
         </h2>
-        <p className="text-indigo-100 mb-6 text-sm">Ask anything — AI answers instantly, community follows.</p>
+        <p className="text-indigo-100 mb-6 text-sm">Ask anything — community answers, votes decide the best.</p>
         <div className="flex gap-2">
           <input
             value={newQuestion}
@@ -156,155 +171,167 @@ export function SmartTalk({ user, toggleFollow }: SmartTalkProps) {
             placeholder="Ask a question..."
             className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 transition-all text-sm"
           />
-          <button
-            onClick={handleAsk}
-            disabled={isAsking || !newQuestion.trim()}
-            className="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50 text-sm"
-          >
-            {isAsking ? "Asking..." : "Ask"}
+          <button onClick={handleAsk} disabled={isAsking || !newQuestion.trim()}
+            className="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50 text-sm">
+            {isAsking ? "Posting..." : "Ask"}
           </button>
         </div>
       </div>
 
-      {/* Questions */}
-      <div className="space-y-6">
-        {questions.map(q => {
-          const sortedAnswers = [...q.answers].sort((a, b) => (b.likes - b.dislikes) - (a.likes - a.dislikes));
-          const topAnswerId = sortedAnswers.length > 0 && (sortedAnswers[0].likes - sortedAnswers[0].dislikes) > 0
-            ? sortedAnswers[0].id : null;
-          const isLoadingAI = loadingAnswers[q.id];
+      {/* Questions List */}
+      {isLoading ? (
+        <div className="flex flex-col items-center py-16 gap-3">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400">Loading questions...</p>
+        </div>
+      ) : questions.length === 0 ? (
+        <div className="text-center py-16 text-gray-400 text-sm">
+          No questions yet. Be the first to ask!
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {questions.map(q => {
+            const sortedAnswers = [...(q.answers || [])].sort((a, b) =>
+              ((b.likes?.length || 0) - (b.dislikes?.length || 0)) -
+              ((a.likes?.length || 0) - (a.dislikes?.length || 0))
+            );
 
-          return (
-            <motion.div
-              key={q.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-3xl p-6 shadow-sm border border-black/5"
-            >
-              {/* Question */}
-              <div className="flex items-start gap-4 mb-5">
-                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <User className="w-5 h-5 text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 leading-snug">{q.content}</h3>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Asked by <span className="font-semibold">{q.author}</span> · {new Date(q.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
+            const topAnswer = sortedAnswers[0];
+            const topAnswerId = topAnswer && (topAnswer.likes?.length || 0) - (topAnswer.dislikes?.length || 0) > 0
+              ? topAnswer.id : null;
+            const worstAnswerId = sortedAnswers.length > 1
+              ? sortedAnswers[sortedAnswers.length - 1].id : null;
 
-              {/* AI loading state */}
-              {isLoadingAI && (
-                <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl mb-4 border border-emerald-100">
-                  <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
-                    <Sparkles className="w-4 h-4 animate-pulse" />
+            return (
+              <motion.div key={q.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
+
+                {/* Question Header */}
+                <div className="flex items-start gap-4 mb-5">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <User className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <div className="flex gap-1 items-center">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0.15s]" />
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0.3s]" />
-                    <span className="text-xs text-emerald-600 font-medium ml-2">AI is thinking...</span>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 leading-snug">{q.content}</h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Asked by <span className="font-semibold">{q.author}</span> · {new Date(q.createdAt).toLocaleDateString()}
+                    </p>
                   </div>
                 </div>
-              )}
 
-              {/* Answers */}
-              <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
-                <AnimatePresence>
-                  {sortedAnswers.map(a => {
-                    const isTop = a.id === topAnswerId;
-                    return (
-                      <motion.div
-                        key={a.id}
-                        layout
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`rounded-2xl p-4 transition-all duration-300 ${
-                          a.type === 'ai' ? 'bg-emerald-50' : 'bg-gray-50'
-                        } ${getBorderClass(a, isTop)}`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {a.type === 'ai' ? (
-                              <div className="flex items-center gap-1.5 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                                <Bot className="w-3 h-3" />
-                                AI Answer
-                              </div>
-                            ) : (
-                              <>
-                                <span className="text-xs font-bold text-gray-600">{a.author}</span>
-                                {user && a.author !== user.name && (
-                                  <button
-                                    onClick={() => toggleFollow(a.author)}
+                {/* Answers */}
+                <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
+                  <AnimatePresence>
+                    {sortedAnswers.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic py-2">No answers yet. Be the first!</p>
+                    ) : (
+                      sortedAnswers.map((a, idx) => {
+                        const isTop = a.id === topAnswerId;
+                        const isWorst = a.id === worstAnswerId;
+                        const likeCount = a.likes?.length || 0;
+                        const dislikeCount = a.dislikes?.length || 0;
+                        const score = likeCount - dislikeCount;
+                        const userLiked = user ? (a.likes || []).includes(user.id) : false;
+                        const userDisliked = user ? (a.dislikes || []).includes(user.id) : false;
+
+                        return (
+                          <motion.div key={a.id} layout
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`rounded-2xl p-4 transition-all duration-300 bg-gray-50 ${getAnswerBorderClass(a, isTop, isWorst)}`}>
+
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-gray-700">{a.author}</span>
+
+                                {/* Follow button */}
+                                {user && a.authorId !== user.id && (
+                                  <button onClick={() => toggleFollow(a.author)}
                                     className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
-                                      user.following.includes(a.author)
+                                      user.following?.includes(a.author)
                                         ? "bg-indigo-100 text-indigo-700"
                                         : "border border-gray-200 text-gray-400 hover:text-indigo-600"
-                                    }`}
-                                  >
-                                    <Star className={`w-3 h-3 ${user.following.includes(a.author) ? "fill-current" : ""}`} />
-                                    {user.following.includes(a.author) ? "Following" : "Follow"}
+                                    }`}>
+                                    <Star className={`w-3 h-3 ${user.following?.includes(a.author) ? "fill-current" : ""}`} />
+                                    {user.following?.includes(a.author) ? "Following" : "Follow"}
                                   </button>
                                 )}
-                              </>
-                            )}
-                            {isTop && (
-                              <span className="flex items-center gap-1 text-yellow-600 text-[10px] font-bold">
-                                <Trophy className="w-3 h-3" /> Top Answer
+
+                                {/* Top answer badge */}
+                                {isTop && (
+                                  <span className="flex items-center gap-1 text-yellow-600 text-[10px] font-bold bg-yellow-50 px-2 py-0.5 rounded-full">
+                                    <Trophy className="w-3 h-3" /> Top Answer
+                                  </span>
+                                )}
+
+                                {/* Score badge */}
+                                {score !== 0 && (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    score > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
+                                  }`}>
+                                    {score > 0 ? `+${score}` : score}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-400 flex-shrink-0">
+                                {new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-gray-400">
-                            {new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
+                            </div>
 
-                        <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">{a.content}</p>
+                            <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap mb-3">{a.content}</p>
 
-                        <div className="flex items-center gap-4 mt-3">
-                          <button onClick={() => handleVote(q.id, a.id, 'like')}
-                            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-emerald-600 transition-colors">
-                            <ThumbsUp className="w-4 h-4" /> {a.likes}
-                          </button>
-                          <button onClick={() => handleVote(q.id, a.id, 'dislike')}
-                            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-500 transition-colors">
-                            <ThumbsDown className="w-4 h-4" /> {a.dislikes}
-                          </button>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-
-                {q.answers.length === 0 && !isLoadingAI && (
-                  <p className="text-sm text-gray-400 italic py-2">No answers yet. Be the first!</p>
-                )}
-              </div>
-
-              {/* User Answer Input */}
-              {user && (
-                <div className="flex gap-2 mt-2">
-                  <input
-                    value={answerInputs[q.id] || ""}
-                    onChange={(e) => setAnswerInputs(prev => ({ ...prev, [q.id]: e.target.value }))}
-                    onKeyDown={(e) => e.key === 'Enter' && handleUserAnswer(q.id)}
-                    placeholder="Write your answer..."
-                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
-                  />
-                  <button
-                    onClick={() => handleUserAnswer(q.id)}
-                    disabled={!answerInputs[q.id]?.trim()}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-all"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+                            {/* Vote buttons */}
+                            <div className="flex items-center gap-4">
+                              <button onClick={() => handleVote(q, a.id, 'like')}
+                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                  userLiked ? "text-emerald-600" : "text-gray-400 hover:text-emerald-600"
+                                }`}>
+                                <ThumbsUp className={`w-4 h-4 ${userLiked ? "fill-current" : ""}`} />
+                                {likeCount}
+                              </button>
+                              <button onClick={() => handleVote(q, a.id, 'dislike')}
+                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                  userDisliked ? "text-red-500" : "text-gray-400 hover:text-red-500"
+                                }`}>
+                                <ThumbsDown className={`w-4 h-4 ${userDisliked ? "fill-current" : ""}`} />
+                                {dislikeCount}
+                              </button>
+                            </div>
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </AnimatePresence>
                 </div>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
+
+                {/* Answer Input */}
+                {user ? (
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      value={answerInputs[q.id] || ""}
+                      onChange={(e) => setAnswerInputs(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAnswer(q.id)}
+                      placeholder="Write your answer..."
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+                    />
+                    <button onClick={() => handleAnswer(q.id)}
+                      disabled={!answerInputs[q.id]?.trim() || isAnswering[q.id]}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-all">
+                      {isAnswering[q.id]
+                        ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        : <Send className="w-4 h-4" />}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-center text-sm text-gray-400 bg-gray-50 rounded-xl py-3">
+                    Please login to answer
+                  </p>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
