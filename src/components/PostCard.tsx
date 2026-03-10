@@ -35,6 +35,10 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const [localLikes, setLocalLikes] = useState<string[]>(post.likes || []);
+  const [localStars, setLocalStars] = useState<number>(post.stars || 0);
+  const [localRatingCount, setLocalRatingCount] = useState<number>(post.ratingCount || 0);
+  const [userRating, setUserRating] = useState<number>(0);
+  const [hoverRating, setHoverRating] = useState<number>(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -124,15 +128,35 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
 
   const handleRate = async (stars: number) => {
     if (!user) { alert("Please login to rate posts."); return; }
+    if (userRating === stars) return;
+
+    const prevRating = userRating;
+    const prevStars = localStars;
+    const prevCount = localRatingCount;
+
+    setUserRating(stars);
+    const newCount = userRating === 0 ? localRatingCount + 1 : localRatingCount;
+    const newAvg = userRating === 0
+      ? (localStars * localRatingCount + stars) / newCount
+      : (localStars * localRatingCount - userRating + stars) / newCount;
+    setLocalStars(newAvg);
+    setLocalRatingCount(newCount);
+
     try {
-      await fetch(`/api/posts/${post.id}/rate`, {
+      const res = await fetch(`/api/posts/${post.id}/rate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stars }),
       });
-      onUpdate();
+      if (!res.ok) throw new Error("Failed to rate");
+      const data = await res.json();
+      setLocalStars(data.stars);
+      setLocalRatingCount(data.ratingCount);
     } catch (error) {
       console.error("Failed to rate post:", error);
+      setUserRating(prevRating);
+      setLocalStars(prevStars);
+      setLocalRatingCount(prevCount);
     }
   };
 
@@ -292,13 +316,29 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
             </button>
             {/* Stars */}
             <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => handleRate(s)}
-                  className={cn("transition-colors", s <= Math.round(post.stars) ? "text-yellow-400" : "text-gray-200 hover:text-yellow-200")}>
-                  <Star className="w-4 h-4 fill-current" />
-                </button>
-              ))}
-              <span className="text-xs font-bold text-gray-400 ml-1">{(post.stars || 0).toFixed(1)}</span>
+              {[1, 2, 3, 4, 5].map((s) => {
+                const displayRating = hoverRating || userRating;
+                const filledByUser = displayRating > 0 && s <= displayRating;
+                const filledByCommunity = displayRating === 0 && localRatingCount > 0 && s <= Math.round(localStars);
+                return (
+                  <button key={s}
+                    onClick={() => handleRate(s)}
+                    onMouseEnter={() => setHoverRating(s)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    title={`Rate ${s} star${s > 1 ? "s" : ""}`}>
+                    <Star className={cn(
+                      "w-4 h-4 transition-colors",
+                      filledByUser ? "text-yellow-400 fill-yellow-400" :
+                      filledByCommunity ? "text-yellow-300 fill-yellow-300" :
+                      hoverRating >= s ? "text-yellow-200 fill-yellow-200" :
+                      "text-gray-200 fill-transparent"
+                    )} />
+                  </button>
+                );
+              })}
+              <span className="text-xs font-bold text-gray-400 ml-1">
+                {localRatingCount > 0 ? `${localStars.toFixed(1)} (${localRatingCount})` : "Rate"}
+              </span>
             </div>
             {/* Comments */}
             <button onClick={() => setShowComments(!showComments)}
