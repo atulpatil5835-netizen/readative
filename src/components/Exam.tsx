@@ -1,200 +1,494 @@
-import { useState } from "react";
-import { motion } from "motion/react";
-import { geminiService } from "../services/gemini";
-import { UserProfile, ExamQuestion } from "../types";
-import { Brain, CheckCircle2, XCircle, ArrowRight, Trophy } from "lucide-react";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { UserProfile } from "../types";
 import { SEO } from "./SEO";
+import { BookOpen, Trophy, RefreshCw, CheckCircle, XCircle, Sparkles, Lock } from "lucide-react";
+import { db } from "../firebase/firebase";
+import {
+  collection, query, where, getDocs,
+  doc, getDoc, setDoc, orderBy, limit
+} from "firebase/firestore";
+
+interface MCQOption { label: string; text: string; }
+interface MCQQuestion {
+  id: string;
+  question: string;
+  options: MCQOption[];
+  correct: string; // "A" | "B" | "C" | "D"
+  postId: string;
+  postContent: string;
+  postAuthor: string;
+}
 
 interface ExamProps {
   user: UserProfile | null;
   refreshProfile: () => void;
 }
 
+type ExamState = "idle" | "generating" | "active" | "finished";
+
 export function Exam({ user, refreshProfile }: ExamProps) {
-  const [exam, setExam] = useState<ExamQuestion[] | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [examState, setExamState] = useState<ExamState>("idle");
+  const [questions, setQuestions] = useState<MCQQuestion[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
-  const [isFinished, setIsFinished] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [likedPosts, setLikedPosts] = useState<any[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pastScores, setPastScores] = useState<{ score: number; total: number; date: number }[]>([]);
+
+  // Load liked posts and past scores on mount
+  useEffect(() => {
+    if (!user) return;
+    loadLikedPosts();
+    loadPastScores();
+  }, [user]);
+
+  const loadLikedPosts = async () => {
+    if (!user) return;
+    setIsLoadingPosts(true);
+    try {
+      // Fetch all posts where user's id is in likes array
+      const postsRef = collection(db, "posts");
+      const snapshot = await getDocs(query(postsRef, orderBy("createdAt", "desc")));
+      const allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const liked = allPosts.filter(p =>
+        (p.likes || []).includes(user.id) &&
+        (p.type === 'knowledge' || p.type === 'questions' || p.content?.length > 80)
+      );
+      setLikedPosts(liked);
+    } catch (e) {
+      console.error("Failed to load liked posts:", e);
+    } finally {
+      setIsLoadingPosts(false);
+    }
+  };
+
+  const loadPastScores = async () => {
+    if (!user) return;
+    try {
+      const ref = doc(db, "examScores", user.id);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        setPastScores(snap.data().scores || []);
+      }
+    } catch (e) {
+      console.error("Failed to load past scores:", e);
+    }
+  };
+
+  const generateMCQFromPost = async (post: any): Promise<MCQQuestion | null> => {
+    try {
+      const prompt = `You are a quiz master. Based on the following post content, generate ONE multiple choice question (MCQ) that tests understanding of the content.
+
+Post by ${post.author} (category: ${post.type}):
+"${post.content}"
+
+Return ONLY a JSON object in this exact format (no markdown, no extra text):
+{
+  "question": "What does...",
+  "options": [
+    {"label": "A", "text": "First option"},
+    {"label": "B", "text": "Second option"},
+    {"label": "C", "text": "Third option"},
+    {"label": "D", "text": "Fourth option"}
+  ],
+  "correct": "A"
+}`;
+
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "exam", prompt }),
+      });
+
+      const data = await response.json();
+      const text = (data.text || "").replace(/```json|```/g, "").trim();
+
+      const parsed = JSON.parse(text);
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        question: parsed.question,
+        options: parsed.options,
+        correct: parsed.correct,
+        postId: post.id,
+        postContent: post.content.substring(0, 120) + "...",
+        postAuthor: post.author,
+      };
+    } catch (e) {
+      console.error("Failed to generate MCQ for post:", post.id, e);
+      return null;
+    }
+  };
 
   const startExam = async () => {
-    if (!user || user.readPosts.length === 0) return;
-    setIsLoading(true);
+    if (!user) return;
+    if (likedPosts.length < 3) {
+      setError(`You need to like at least 3 knowledge/questions posts to generate an exam. You have ${likedPosts.length} so far.`);
+      return;
+    }
+
+    setError(null);
+    setExamState("generating");
+    setScore(0);
+    setCurrentIdx(0);
+    setAnswers({});
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+
     try {
-      // Get topics from read posts (mocking for now, in real app we'd fetch post details)
-      const topics = ["Motivation", "Short Stories", "Life Lessons"];
-      const questions = await geminiService.generateExam(topics);
-      if (!questions.length) {
-        throw new Error("No valid exam questions were generated.");
+      // Pick up to 5 random liked posts
+      const shuffled = [...likedPosts].sort(() => Math.random() - 0.5).slice(0, 5);
+      const mcqs: MCQQuestion[] = [];
+
+      for (const post of shuffled) {
+        const mcq = await generateMCQFromPost(post);
+        if (mcq) mcqs.push(mcq);
       }
-      setExam(questions);
-      setCurrentIndex(0);
-      setScore(0);
-      setIsFinished(false);
-    } catch (error) {
-      console.error("Exam generation failed:", error);
-    } finally {
-      setIsLoading(false);
+
+      if (mcqs.length === 0) {
+        setError("Could not generate questions. Please try again.");
+        setExamState("idle");
+        return;
+      }
+
+      setQuestions(mcqs);
+      setExamState("active");
+    } catch (e) {
+      console.error("Exam generation failed:", e);
+      setError("Something went wrong. Please try again.");
+      setExamState("idle");
     }
   };
 
-  const handleAnswer = (index: number) => {
-    if (selectedOption !== null) return;
-    setSelectedOption(index);
-    if (index === exam![currentIndex].correctIndex) {
-      setScore(prev => prev + 1);
-    }
+  const handleAnswer = (label: string) => {
+    if (isAnswered) return;
+    setSelectedAnswer(label);
+    setIsAnswered(true);
+    const correct = questions[currentIdx].correct;
+    const newAnswers = { ...answers, [currentIdx]: label };
+    setAnswers(newAnswers);
+    if (label === correct) setScore(prev => prev + 1);
   };
 
-  const nextQuestion = () => {
-    if (currentIndex < exam!.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      setSelectedOption(null);
+  const handleNext = async () => {
+    if (currentIdx + 1 >= questions.length) {
+      // Exam finished
+      setExamState("finished");
+      await saveScore();
     } else {
-      finishExam();
+      setCurrentIdx(prev => prev + 1);
+      setSelectedAnswer(null);
+      setIsAnswered(false);
     }
   };
 
-  const finishExam = async () => {
-    setIsFinished(true);
-    const finalScore = Math.round((score / exam!.length) * 100);
-    if (user) {
-      try {
-        await fetch(`/api/profile/${user.id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...user, examScore: user.examScore + finalScore })
-        });
-      } catch (error) {
-        console.error("Failed to update exam score:", error);
-      }
-      refreshProfile();
+  const saveScore = async () => {
+    if (!user) return;
+    try {
+      const ref = doc(db, "examScores", user.id);
+      const snap = await getDoc(ref);
+      const existing = snap.exists() ? snap.data().scores || [] : [];
+      const newEntry = { score, total: questions.length, date: Date.now() };
+      await setDoc(ref, { scores: [newEntry, ...existing].slice(0, 10) }); // keep last 10
+      setPastScores([newEntry, ...existing].slice(0, 10));
+    } catch (e) {
+      console.error("Failed to save score:", e);
     }
-    // High score celebration can be wired here if a confetti library is installed.
   };
 
-  if (!user || user.readPosts.length === 0) {
+  const resetExam = () => {
+    setExamState("idle");
+    setQuestions([]);
+    setCurrentIdx(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setScore(0);
+    setAnswers({});
+    setError(null);
+    loadLikedPosts(); // refresh liked posts
+  };
+
+  const getOptionClass = (label: string) => {
+    if (!isAnswered) {
+      return "border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer";
+    }
+    const correct = questions[currentIdx].correct;
+    if (label === correct) return "border-2 border-emerald-500 bg-emerald-50 text-emerald-800";
+    if (label === selectedAnswer && label !== correct) return "border-2 border-red-400 bg-red-50 text-red-700";
+    return "border-2 border-gray-200 opacity-50";
+  };
+
+  const percentage = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+
+  // ── NOT LOGGED IN ────────────────────────────────────────────────────
+  if (!user) {
     return (
-      <div className="text-center py-20 bg-white rounded-3xl border border-black/5 p-8">
-        <SEO 
-          title="Exams & Quizzes" 
-          description="Test your knowledge and reading comprehension with AI-generated exams on any topic."
-          keywords={["exams", "quiz", "test", "learning", "study"]}
-        />
-        <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Brain className="w-10 h-10 text-emerald-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Not Enough Reading Data</h2>
-        <p className="text-gray-500 mb-8 max-w-sm mx-auto">Read at least one post to unlock personalized exams based on your reading history.</p>
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <Lock className="w-12 h-12 text-gray-300" />
+        <p className="text-gray-500 font-medium">Please login to take the exam</p>
       </div>
     );
   }
 
-  if (isLoading) {
+  // ── GENERATING ───────────────────────────────────────────────────────
+  if (examState === "generating") {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <div className="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-4" />
-        <p className="text-emerald-600 font-medium animate-pulse">Generating your personalized exam...</p>
-      </div>
-    );
-  }
-
-  if (isFinished) {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="text-center py-12 bg-white rounded-3xl border border-black/5 p-8"
-      >
-        <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Trophy className="w-12 h-12 text-yellow-600" />
+      <div className="flex flex-col items-center justify-center py-24 gap-6">
+        <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <p className="text-lg font-bold text-gray-800">Generating your exam...</p>
+          <p className="text-sm text-gray-400 mt-1">Creating questions from your liked posts</p>
         </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Exam Completed!</h2>
-        <p className="text-gray-500 mb-8">You scored {Math.round((score / exam!.length) * 100)}%</p>
-        <div className="flex flex-col gap-3">
-          <button 
-            onClick={startExam}
-            className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all"
-          >
-            Take Another Exam
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (!exam) {
-    return (
-      <div className="text-center py-20 bg-white rounded-3xl border border-black/5 p-8">
-        <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Brain className="w-10 h-10 text-emerald-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready for a Challenge?</h2>
-        <p className="text-gray-500 mb-8">We've prepared questions based on the posts you've read recently.</p>
-        <button 
-          onClick={startExam}
-          className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 mx-auto"
-        >
-          Start Exam
-          <ArrowRight className="w-5 h-5" />
-        </button>
-      </div>
-    );
-  }
-
-  const currentQ = exam[currentIndex];
-
-  return (
-    <div className="bg-white rounded-3xl border border-black/5 p-8">
-      <div className="flex justify-between items-center mb-8">
-        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full uppercase tracking-wider">
-          Question {currentIndex + 1} of {exam.length}
-        </span>
         <div className="flex gap-1">
-          {exam.map((_, i) => (
-            <div key={i} className={`h-1.5 w-8 rounded-full ${i <= currentIndex ? 'bg-emerald-600' : 'bg-gray-100'}`} />
+          {[0,1,2].map(i => (
+            <div key={i} className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+              style={{ animationDelay: `${i * 0.15}s` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── ACTIVE EXAM ──────────────────────────────────────────────────────
+  if (examState === "active") {
+    const q = questions[currentIdx];
+    const progress = ((currentIdx) / questions.length) * 100;
+
+    return (
+      <div className="space-y-6 pb-20">
+        <SEO title="Exam" description="Test your reading knowledge on Readative." keywords={["exam", "quiz", "MCQ"]} />
+
+        {/* Progress */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-sm font-bold text-gray-600">Question {currentIdx + 1} of {questions.length}</span>
+            <span className="text-sm font-bold text-emerald-600">Score: {score}/{currentIdx}</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2">
+            <div className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        {/* Source Post */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+          <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">
+            Based on post by {q.postAuthor}
+          </p>
+          <p className="text-sm text-indigo-800 leading-relaxed italic">"{q.postContent}"</p>
+        </div>
+
+        {/* Question */}
+        <motion.div key={q.id} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}
+          className="bg-white rounded-2xl p-6 shadow-sm border border-black/5">
+          <h3 className="text-lg font-bold text-gray-900 mb-6 leading-snug">{q.question}</h3>
+
+          <div className="space-y-3">
+            {q.options.map((opt) => (
+              <button key={opt.label} onClick={() => handleAnswer(opt.label)}
+                className={`w-full text-left p-4 rounded-xl transition-all flex items-center gap-3 ${getOptionClass(opt.label)}`}>
+                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                  isAnswered && opt.label === q.correct ? "bg-emerald-500 text-white" :
+                  isAnswered && opt.label === selectedAnswer && opt.label !== q.correct ? "bg-red-400 text-white" :
+                  "bg-gray-100 text-gray-600"
+                }`}>{opt.label}</span>
+                <span className="text-sm font-medium">{opt.text}</span>
+                {isAnswered && opt.label === q.correct && <CheckCircle className="w-5 h-5 text-emerald-500 ml-auto" />}
+                {isAnswered && opt.label === selectedAnswer && opt.label !== q.correct && <XCircle className="w-5 h-5 text-red-400 ml-auto" />}
+              </button>
+            ))}
+          </div>
+
+          {isAnswered && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className="mt-4">
+              <div className={`p-3 rounded-xl text-sm font-medium mb-4 ${
+                selectedAnswer === q.correct ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
+              }`}>
+                {selectedAnswer === q.correct ? "✅ Correct!" : `❌ Wrong! Correct answer is ${q.correct}`}
+              </div>
+              <button onClick={handleNext}
+                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                {currentIdx + 1 >= questions.length ? "See Results" : "Next Question →"}
+              </button>
+            </motion.div>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── FINISHED ─────────────────────────────────────────────────────────
+  if (examState === "finished") {
+    return (
+      <div className="space-y-6 pb-20">
+        <SEO title="Exam Results" description="Your exam results on Readative." keywords={["exam", "results"]} />
+
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 text-center">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${
+            percentage >= 80 ? "bg-emerald-100" : percentage >= 60 ? "bg-yellow-100" : "bg-red-100"
+          }`}>
+            <Trophy className={`w-12 h-12 ${
+              percentage >= 80 ? "text-emerald-600" : percentage >= 60 ? "text-yellow-500" : "text-red-400"
+            }`} />
+          </div>
+
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            {score} / {questions.length}
+          </h2>
+          <p className="text-5xl font-black mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            {percentage}%
+          </p>
+          <p className="text-gray-500 mb-8">
+            {percentage >= 80 ? "🎉 Excellent! You're a great reader!" :
+             percentage >= 60 ? "👍 Good job! Keep reading more!" :
+             "📚 Keep learning! Like more posts to improve."}
+          </p>
+
+          {/* Answer Review */}
+          <div className="text-left space-y-3 mb-8">
+            <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wider">Review</h3>
+            {questions.map((q, idx) => (
+              <div key={q.id} className={`p-3 rounded-xl text-sm flex items-start gap-3 ${
+                answers[idx] === q.correct ? "bg-emerald-50" : "bg-red-50"
+              }`}>
+                {answers[idx] === q.correct
+                  ? <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  : <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />}
+                <div>
+                  <p className="font-medium text-gray-800">{q.question}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Your answer: <strong>{answers[idx]}</strong> · Correct: <strong className="text-emerald-600">{q.correct}</strong>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={resetExam}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+            <RefreshCw className="w-4 h-4" /> Take Another Exam
+          </button>
+        </motion.div>
+
+        {/* Past Scores */}
+        {pastScores.length > 1 && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
+            <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Past Scores</h3>
+            <div className="space-y-2">
+              {pastScores.slice(0, 5).map((s, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">{new Date(s.date).toLocaleDateString()}</span>
+                  <span className={`font-bold px-3 py-0.5 rounded-full text-xs ${
+                    Math.round((s.score/s.total)*100) >= 80 ? "bg-emerald-100 text-emerald-700" :
+                    Math.round((s.score/s.total)*100) >= 60 ? "bg-yellow-100 text-yellow-700" :
+                    "bg-red-100 text-red-600"
+                  }`}>{s.score}/{s.total} ({Math.round((s.score/s.total)*100)}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── IDLE (start screen) ──────────────────────────────────────────────
+  return (
+    <div className="space-y-6 pb-20">
+      <SEO title="Exam" description="Test your reading knowledge on Readative." keywords={["exam", "quiz"]} />
+
+      {/* Header */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg">
+        <h2 className="text-3xl font-bold mb-1 flex items-center gap-3">
+          <BookOpen className="w-8 h-8 text-yellow-300" />
+          Reading Exam
+        </h2>
+        <p className="text-indigo-100 text-sm">Questions are generated from posts you've liked. Like more posts to unlock more questions!</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 text-center">
+          <p className="text-2xl font-black text-indigo-600">{likedPosts.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Liked Posts</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 text-center">
+          <p className="text-2xl font-black text-emerald-600">{pastScores.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Exams Taken</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 text-center">
+          <p className="text-2xl font-black text-yellow-500">
+            {pastScores.length > 0
+              ? `${Math.round((pastScores[0].score / pastScores[0].total) * 100)}%`
+              : "—"}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Last Score</p>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      {/* How it works */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
+        <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-indigo-500" /> How it works
+        </h3>
+        <div className="space-y-3">
+          {[
+            { step: "1", text: "Like posts on the Home feed (especially Knowledge & Questions)", color: "bg-indigo-100 text-indigo-700" },
+            { step: "2", text: "Come here and start an exam — AI generates MCQs from your liked posts", color: "bg-purple-100 text-purple-700" },
+            { step: "3", text: "Answer questions, see your score, and track progress over time", color: "bg-emerald-100 text-emerald-700" },
+          ].map(item => (
+            <div key={item.step} className="flex items-start gap-3">
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${item.color}`}>
+                {item.step}
+              </span>
+              <p className="text-sm text-gray-600 pt-1">{item.text}</p>
+            </div>
           ))}
         </div>
       </div>
 
-      <h2 className="text-xl font-bold text-gray-900 mb-8 leading-relaxed">
-        {currentQ.question}
-      </h2>
+      {/* Start Button */}
+      <button onClick={startExam}
+        disabled={isLoadingPosts || likedPosts.length < 3}
+        className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-3 shadow-lg">
+        {isLoadingPosts
+          ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Loading...</>
+          : likedPosts.length < 3
+          ? <><Lock className="w-5 h-5" /> Like {3 - likedPosts.length} more posts to unlock</>
+          : <><Sparkles className="w-5 h-5" /> Start Exam ({likedPosts.length} posts available)</>
+        }
+      </button>
 
-      <div className="space-y-3 mb-8">
-        {currentQ.options.map((option, i) => (
-          <button
-            key={i}
-            onClick={() => handleAnswer(i)}
-            disabled={selectedOption !== null}
-            className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between ${
-              selectedOption === null 
-                ? 'border-gray-100 hover:border-emerald-200 hover:bg-emerald-50' 
-                : i === currentQ.correctIndex 
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                  : selectedOption === i 
-                    ? 'border-red-500 bg-red-50 text-red-700'
-                    : 'border-gray-100 opacity-50'
-            }`}
-          >
-            <span className="font-medium">{option}</span>
-            {selectedOption !== null && i === currentQ.correctIndex && <CheckCircle2 className="w-5 h-5" />}
-            {selectedOption === i && i !== currentQ.correctIndex && <XCircle className="w-5 h-5" />}
-          </button>
-        ))}
-      </div>
-
-      {selectedOption !== null && (
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={nextQuestion}
-          className="w-full bg-emerald-900 text-white py-4 rounded-2xl font-bold hover:bg-black transition-all flex items-center justify-center gap-2"
-        >
-          {currentIndex === exam.length - 1 ? "Finish Exam" : "Next Question"}
-          <ArrowRight className="w-5 h-5" />
-        </motion.button>
+      {/* Past Scores */}
+      {pastScores.length > 0 && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
+          <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Past Scores</h3>
+          <div className="space-y-2">
+            {pastScores.slice(0, 5).map((s, i) => (
+              <div key={i} className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">{new Date(s.date).toLocaleDateString()}</span>
+                <span className={`font-bold px-3 py-0.5 rounded-full text-xs ${
+                  Math.round((s.score/s.total)*100) >= 80 ? "bg-emerald-100 text-emerald-700" :
+                  Math.round((s.score/s.total)*100) >= 60 ? "bg-yellow-100 text-yellow-700" :
+                  "bg-red-100 text-red-600"
+                }`}>{s.score}/{s.total} ({Math.round((s.score/s.total)*100)}%)</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

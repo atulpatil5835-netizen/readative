@@ -36,22 +36,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "answer":
         finalPrompt = prompt || ""
         break
+
       case "hashtags":
         finalPrompt = `Generate 5-6 relevant hashtags (with # prefix, space-separated) for this content. Return only hashtags:\n${content}`
         break
+
       case "exam":
-        finalPrompt = `Generate 5 MCQ questions based on:\n${topic}\nFormat: Q: ...\nA) ...\nB) ...\nC) ...\nD) ...\nAnswer: ...`
+        // Supports both old topic format and new direct prompt format from Exam.tsx
+        finalPrompt = prompt || `Generate 5 MCQ questions based on:\n${topic}\nFormat: Q: ...\nA) ...\nB) ...\nC) ...\nD) ...\nAnswer: ...`
         break
+
       case "translate":
         finalPrompt = `Translate to ${language}. Return only translation:\n${content}`
         break
+
       case "autoReply": {
         const [author, category] = (prompt || "").split("|||")
         finalPrompt = `Write ONE short smart comment (2-3 sentences) on this ${category || "post"} by ${author}:\n"${content}"`
         break
       }
+
       case "tts":
         return res.json({ audio: null })
+
       default:
         finalPrompt = prompt || content || ""
     }
