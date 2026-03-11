@@ -11,23 +11,42 @@ import { Auth } from "./components/Auth";
 import { UserProfile } from "./types";
 import { MessageSquarePlus } from "lucide-react";
 
+type Tab = "home" | "smarttalk" | "exam" | "profile";
+
+// Read tab from URL hash on load
+function getTabFromHash(): Tab {
+  const hash = window.location.hash.replace("#", "") as Tab;
+  const valid: Tab[] = ["home", "smarttalk", "exam", "profile"];
+  return valid.includes(hash) ? hash : "home";
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"home" | "smarttalk" | "exam" | "profile">("home");
+  const [activeTab, setActiveTab] = useState<Tab>(getTabFromHash);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Listen to Firebase auth state and wait for persistence setup first.
+  // Sync tab to URL hash so refresh restores the same tab
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    window.location.hash = tab;
+  };
+
+  // Also listen to browser back/forward
+  useEffect(() => {
+    const onHashChange = () => setActiveTab(getTabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
     let unsubscribe: (() => void) | undefined;
 
     authPersistenceReady.finally(() => {
       if (!isMounted) return;
-
       unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
         if (!isMounted) return;
-
         if (firebaseUser) {
           const profile: UserProfile = {
             id: firebaseUser.uid,
@@ -45,7 +64,6 @@ export default function App() {
         } else {
           setUser(null);
         }
-
         setAuthLoading(false);
       });
     });
@@ -56,17 +74,17 @@ export default function App() {
     };
   }, []);
 
-  const refreshProfile = () => {
-    // Profile data is currently local/session-based.
-  };
+  const refreshProfile = () => {};
 
   const toggleFollow = (authorName: string) => {
     if (!user) return;
     const isFollowing = user.following.includes(authorName);
-    const newFollowing = isFollowing
-      ? user.following.filter((n) => n !== authorName)
-      : [...user.following, authorName];
-    setUser({ ...user, following: newFollowing });
+    setUser({
+      ...user,
+      following: isFollowing
+        ? user.following.filter((n) => n !== authorName)
+        : [...user.following, authorName],
+    });
   };
 
   const handleLogin = (loggedInUser: UserProfile) => {
@@ -78,7 +96,7 @@ export default function App() {
     await auth.signOut();
     setUser(null);
     setIsGuest(false);
-    setActiveTab("home");
+    handleTabChange("home");
   };
 
   const handleGuest = () => {
@@ -86,7 +104,6 @@ export default function App() {
     setAuthLoading(false);
   };
 
-  // Show loading spinner while Firebase checks auth state
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
@@ -105,7 +122,7 @@ export default function App() {
   return (
     <HelmetProvider>
       <div className="min-h-screen bg-[#F5F5F0] text-[#1A1A1A] font-sans">
-        <Header activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
+        <Header activeTab={activeTab} setActiveTab={handleTabChange} user={user} onLogout={handleLogout} />
 
         <main className="max-w-2xl mx-auto pt-20 pb-24 px-4">
           {activeTab === "home"      && <Feed user={user} refreshProfile={refreshProfile} />}
@@ -115,16 +132,16 @@ export default function App() {
         </main>
 
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 px-6 py-3 flex justify-between items-center md:hidden z-50">
-          <button onClick={() => setActiveTab("home")} className={`p-2 ${activeTab === "home" ? "text-emerald-600" : "text-gray-400"}`}>
+          <button onClick={() => handleTabChange("home")} className={`p-2 ${activeTab === "home" ? "text-emerald-600" : "text-gray-400"}`}>
             <HomeIcon />
           </button>
-          <button onClick={() => setActiveTab("smarttalk")} className={`p-2 ${activeTab === "smarttalk" ? "text-emerald-600" : "text-gray-400"}`}>
+          <button onClick={() => handleTabChange("smarttalk")} className={`p-2 ${activeTab === "smarttalk" ? "text-emerald-600" : "text-gray-400"}`}>
             <MessageSquarePlus className="w-6 h-6" />
           </button>
-          <button onClick={() => setActiveTab("exam")} className={`p-2 ${activeTab === "exam" ? "text-emerald-600" : "text-gray-400"}`}>
+          <button onClick={() => handleTabChange("exam")} className={`p-2 ${activeTab === "exam" ? "text-emerald-600" : "text-gray-400"}`}>
             <ExamIcon />
           </button>
-          <button onClick={() => setActiveTab("profile")} className={`p-2 ${activeTab === "profile" ? "text-emerald-600" : "text-gray-400"}`}>
+          <button onClick={() => handleTabChange("profile")} className={`p-2 ${activeTab === "profile" ? "text-emerald-600" : "text-gray-400"}`}>
             <UserIcon />
           </button>
         </nav>
