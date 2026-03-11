@@ -5,8 +5,8 @@ import { SEO } from "./SEO";
 import { BookOpen, Trophy, RefreshCw, CheckCircle, XCircle, Sparkles, Lock } from "lucide-react";
 import { db } from "../firebase/firebase";
 import {
-  collection, query, where, getDocs,
-  doc, getDoc, setDoc, orderBy, limit
+  collection, query, getDocs,
+  doc, getDoc, setDoc, orderBy
 } from "firebase/firestore";
 
 interface MCQOption { label: string; text: string; }
@@ -14,7 +14,7 @@ interface MCQQuestion {
   id: string;
   question: string;
   options: MCQOption[];
-  correct: string; // "A" | "B" | "C" | "D"
+  correct: string;
   postId: string;
   postContent: string;
   postAuthor: string;
@@ -40,7 +40,6 @@ export function Exam({ user, refreshProfile }: ExamProps) {
   const [error, setError] = useState<string | null>(null);
   const [pastScores, setPastScores] = useState<{ score: number; total: number; date: number }[]>([]);
 
-  // Load liked posts and past scores on mount
   useEffect(() => {
     if (!user) return;
     loadLikedPosts();
@@ -51,13 +50,10 @@ export function Exam({ user, refreshProfile }: ExamProps) {
     if (!user) return;
     setIsLoadingPosts(true);
     try {
-      // Fetch all posts where user's id is in likes array
-      const postsRef = collection(db, "posts");
-      const snapshot = await getDocs(query(postsRef, orderBy("createdAt", "desc")));
+      const snapshot = await getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc")));
       const allPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       const liked = allPosts.filter(p =>
-        (p.likes || []).includes(user.id) &&
-        (p.type === 'knowledge' || p.type === 'questions' || p.content?.length > 80)
+        (p.likes || []).includes(user.id) && p.content?.length > 50
       );
       setLikedPosts(liked);
     } catch (e) {
@@ -70,34 +66,43 @@ export function Exam({ user, refreshProfile }: ExamProps) {
   const loadPastScores = async () => {
     if (!user) return;
     try {
-      const ref = doc(db, "examScores", user.id);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        setPastScores(snap.data().scores || []);
-      }
+      const snap = await getDoc(doc(db, "examScores", user.id));
+      if (snap.exists()) setPastScores(snap.data().scores || []);
     } catch (e) {
       console.error("Failed to load past scores:", e);
     }
   };
 
+  // Extract JSON from Gemini response — handles markdown fences and extra text
+  const extractJSON = (text: string): any => {
+    // Try direct parse first
+    try { return JSON.parse(text.trim()); } catch {}
+
+    // Remove markdown code fences
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      try { return JSON.parse(fenceMatch[1].trim()); } catch {}
+    }
+
+    // Find first { ... } block
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1 && end > start) {
+      try { return JSON.parse(text.substring(start, end + 1)); } catch {}
+    }
+
+    return null;
+  };
+
   const generateMCQFromPost = async (post: any): Promise<MCQQuestion | null> => {
     try {
-      const prompt = `You are a quiz master. Based on the following post content, generate ONE multiple choice question (MCQ) that tests understanding of the content.
+      const prompt = `You are a quiz master. Based on the following post, generate ONE multiple choice question.
 
-Post by ${post.author} (category: ${post.type}):
-"${post.content}"
+Post by ${post.author} (${post.type}):
+"${post.content.substring(0, 300)}"
 
-Return ONLY a JSON object in this exact format (no markdown, no extra text):
-{
-  "question": "What does...",
-  "options": [
-    {"label": "A", "text": "First option"},
-    {"label": "B", "text": "Second option"},
-    {"label": "C", "text": "Third option"},
-    {"label": "D", "text": "Fourth option"}
-  ],
-  "correct": "A"
-}`;
+Return ONLY a raw JSON object with NO markdown, NO code fences, NO extra text:
+{"question":"...","options":[{"label":"A","text":"..."},{"label":"B","text":"..."},{"label":"C","text":"..."},{"label":"D","text":"..."}],"correct":"A"}`;
 
       const response = await fetch("/api/ai", {
         method: "POST",
@@ -106,20 +111,22 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
       });
 
       const data = await response.json();
-      const text = (data.text || "").replace(/```json|```/g, "").trim();
+      if (!data.text) return null;
 
-      const parsed = JSON.parse(text);
+      const parsed = extractJSON(data.text);
+      if (!parsed?.question || !parsed?.options || !parsed?.correct) return null;
+
       return {
         id: Math.random().toString(36).substr(2, 9),
         question: parsed.question,
         options: parsed.options,
-        correct: parsed.correct,
+        correct: parsed.correct.toUpperCase(),
         postId: post.id,
-        postContent: post.content.substring(0, 120) + "...",
+        postContent: post.content.substring(0, 120) + (post.content.length > 120 ? "..." : ""),
         postAuthor: post.author,
       };
     } catch (e) {
-      console.error("Failed to generate MCQ for post:", post.id, e);
+      console.error("Failed to generate MCQ:", e);
       return null;
     }
   };
@@ -127,10 +134,9 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
   const startExam = async () => {
     if (!user) return;
     if (likedPosts.length < 3) {
-      setError(`You need to like at least 3 knowledge/questions posts to generate an exam. You have ${likedPosts.length} so far.`);
+      setError(`Like at least 3 posts to generate an exam. You have ${likedPosts.length} so far.`);
       return;
     }
-
     setError(null);
     setExamState("generating");
     setScore(0);
@@ -140,21 +146,17 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
     setIsAnswered(false);
 
     try {
-      // Pick up to 5 random liked posts
       const shuffled = [...likedPosts].sort(() => Math.random() - 0.5).slice(0, 5);
       const mcqs: MCQQuestion[] = [];
-
       for (const post of shuffled) {
         const mcq = await generateMCQFromPost(post);
         if (mcq) mcqs.push(mcq);
       }
-
       if (mcqs.length === 0) {
         setError("Could not generate questions. Please try again.");
         setExamState("idle");
         return;
       }
-
       setQuestions(mcqs);
       setExamState("active");
     } catch (e) {
@@ -168,15 +170,12 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
     if (isAnswered) return;
     setSelectedAnswer(label);
     setIsAnswered(true);
-    const correct = questions[currentIdx].correct;
-    const newAnswers = { ...answers, [currentIdx]: label };
-    setAnswers(newAnswers);
-    if (label === correct) setScore(prev => prev + 1);
+    setAnswers(prev => ({ ...prev, [currentIdx]: label }));
+    if (label === questions[currentIdx].correct) setScore(prev => prev + 1);
   };
 
   const handleNext = async () => {
     if (currentIdx + 1 >= questions.length) {
-      // Exam finished
       setExamState("finished");
       await saveScore();
     } else {
@@ -193,7 +192,7 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
       const snap = await getDoc(ref);
       const existing = snap.exists() ? snap.data().scores || [] : [];
       const newEntry = { score, total: questions.length, date: Date.now() };
-      await setDoc(ref, { scores: [newEntry, ...existing].slice(0, 10) }); // keep last 10
+      await setDoc(ref, { scores: [newEntry, ...existing].slice(0, 10) });
       setPastScores([newEntry, ...existing].slice(0, 10));
     } catch (e) {
       console.error("Failed to save score:", e);
@@ -209,13 +208,11 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
     setScore(0);
     setAnswers({});
     setError(null);
-    loadLikedPosts(); // refresh liked posts
+    loadLikedPosts();
   };
 
   const getOptionClass = (label: string) => {
-    if (!isAnswered) {
-      return "border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer";
-    }
+    if (!isAnswered) return "border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer";
     const correct = questions[currentIdx].correct;
     if (label === correct) return "border-2 border-emerald-500 bg-emerald-50 text-emerald-800";
     if (label === selectedAnswer && label !== correct) return "border-2 border-red-400 bg-red-50 text-red-700";
@@ -256,11 +253,11 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
   // ── ACTIVE EXAM ──────────────────────────────────────────────────────
   if (examState === "active") {
     const q = questions[currentIdx];
-    const progress = ((currentIdx) / questions.length) * 100;
+    const progress = (currentIdx / questions.length) * 100;
 
     return (
       <div className="space-y-6 pb-20">
-        <SEO title="Exam" description="Test your reading knowledge on Readative." keywords={["exam", "quiz", "MCQ"]} />
+        <SEO title="Exam" description="Test your reading knowledge." keywords={["exam", "quiz"]} />
 
         {/* Progress */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
@@ -269,16 +266,13 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
             <span className="text-sm font-bold text-emerald-600">Score: {score}/{currentIdx}</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2">
-            <div className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }} />
+            <div className="bg-indigo-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
         </div>
 
         {/* Source Post */}
         <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-          <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">
-            Based on post by {q.postAuthor}
-          </p>
+          <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Based on post by {q.postAuthor}</p>
           <p className="text-sm text-indigo-800 leading-relaxed italic">"{q.postContent}"</p>
         </div>
 
@@ -286,7 +280,6 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
         <motion.div key={q.id} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}
           className="bg-white rounded-2xl p-6 shadow-sm border border-black/5">
           <h3 className="text-lg font-bold text-gray-900 mb-6 leading-snug">{q.question}</h3>
-
           <div className="space-y-3">
             {q.options.map((opt) => (
               <button key={opt.label} onClick={() => handleAnswer(opt.label)}
@@ -304,8 +297,7 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
           </div>
 
           {isAnswered && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="mt-4">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
               <div className={`p-3 rounded-xl text-sm font-medium mb-4 ${
                 selectedAnswer === q.correct ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
               }`}>
@@ -326,8 +318,7 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
   if (examState === "finished") {
     return (
       <div className="space-y-6 pb-20">
-        <SEO title="Exam Results" description="Your exam results on Readative." keywords={["exam", "results"]} />
-
+        <SEO title="Exam Results" description="Your exam results." keywords={["exam", "results"]} />
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
           className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 text-center">
           <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${
@@ -337,20 +328,15 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
               percentage >= 80 ? "text-emerald-600" : percentage >= 60 ? "text-yellow-500" : "text-red-400"
             }`} />
           </div>
-
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            {score} / {questions.length}
-          </h2>
-          <p className="text-5xl font-black mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            {percentage}%
-          </p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">{score} / {questions.length}</h2>
+          <p className="text-5xl font-black mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">{percentage}%</p>
           <p className="text-gray-500 mb-8">
             {percentage >= 80 ? "🎉 Excellent! You're a great reader!" :
              percentage >= 60 ? "👍 Good job! Keep reading more!" :
              "📚 Keep learning! Like more posts to improve."}
           </p>
 
-          {/* Answer Review */}
+          {/* Review */}
           <div className="text-left space-y-3 mb-8">
             <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wider">Review</h3>
             {questions.map((q, idx) => (
@@ -363,7 +349,7 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
                 <div>
                   <p className="font-medium text-gray-800">{q.question}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Your answer: <strong>{answers[idx]}</strong> · Correct: <strong className="text-emerald-600">{q.correct}</strong>
+                    Your answer: <strong>{answers[idx] || "—"}</strong> · Correct: <strong className="text-emerald-600">{q.correct}</strong>
                   </p>
                 </div>
               </div>
@@ -376,7 +362,6 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
           </button>
         </motion.div>
 
-        {/* Past Scores */}
         {pastScores.length > 1 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
             <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Past Scores</h3>
@@ -398,18 +383,17 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
     );
   }
 
-  // ── IDLE (start screen) ──────────────────────────────────────────────
+  // ── IDLE ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 pb-20">
-      <SEO title="Exam" description="Test your reading knowledge on Readative." keywords={["exam", "quiz"]} />
+      <SEO title="Exam" description="Test your reading knowledge." keywords={["exam", "quiz"]} />
 
-      {/* Header */}
       <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg">
         <h2 className="text-3xl font-bold mb-1 flex items-center gap-3">
           <BookOpen className="w-8 h-8 text-yellow-300" />
           Reading Exam
         </h2>
-        <p className="text-indigo-100 text-sm">Questions are generated from posts you've liked. Like more posts to unlock more questions!</p>
+        <p className="text-indigo-100 text-sm">Like posts on the home feed to generate exam questions!</p>
       </div>
 
       {/* Stats */}
@@ -424,19 +408,14 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 text-center">
           <p className="text-2xl font-black text-yellow-500">
-            {pastScores.length > 0
-              ? `${Math.round((pastScores[0].score / pastScores[0].total) * 100)}%`
-              : "—"}
+            {pastScores.length > 0 ? `${Math.round((pastScores[0].score / pastScores[0].total) * 100)}%` : "—"}
           </p>
           <p className="text-xs text-gray-400 mt-1">Last Score</p>
         </div>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-600">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-600">{error}</div>
       )}
 
       {/* How it works */}
@@ -446,9 +425,9 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
         </h3>
         <div className="space-y-3">
           {[
-            { step: "1", text: "Like posts on the Home feed (especially Knowledge & Questions)", color: "bg-indigo-100 text-indigo-700" },
-            { step: "2", text: "Come here and start an exam — AI generates MCQs from your liked posts", color: "bg-purple-100 text-purple-700" },
-            { step: "3", text: "Answer questions, see your score, and track progress over time", color: "bg-emerald-100 text-emerald-700" },
+            { step: "1", text: "Like posts on the Home feed", color: "bg-indigo-100 text-indigo-700" },
+            { step: "2", text: "Start exam — AI generates MCQs from your liked posts", color: "bg-purple-100 text-purple-700" },
+            { step: "3", text: "Answer questions and track your score over time", color: "bg-emerald-100 text-emerald-700" },
           ].map(item => (
             <div key={item.step} className="flex items-start gap-3">
               <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${item.color}`}>
@@ -460,9 +439,7 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
         </div>
       </div>
 
-      {/* Start Button */}
-      <button onClick={startExam}
-        disabled={isLoadingPosts || likedPosts.length < 3}
+      <button onClick={startExam} disabled={isLoadingPosts || likedPosts.length < 3}
         className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-3 shadow-lg">
         {isLoadingPosts
           ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Loading...</>
@@ -472,7 +449,6 @@ Return ONLY a JSON object in this exact format (no markdown, no extra text):
         }
       </button>
 
-      {/* Past Scores */}
       {pastScores.length > 0 && (
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5">
           <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wider">Past Scores</h3>
