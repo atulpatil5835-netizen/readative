@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, authPersistenceReady } from "./firebase/firebase";
+import { db } from "./firebase/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { Header } from "./components/Header";
 import { Feed } from "./components/Feed";
 import { SmartTalk } from "./components/SmartTalk";
@@ -13,7 +15,6 @@ import { MessageSquarePlus } from "lucide-react";
 
 type Tab = "home" | "smarttalk" | "exam" | "profile";
 
-// Read tab from URL hash on load
 function getTabFromHash(): Tab {
   const hash = window.location.hash.replace("#", "") as Tab;
   const valid: Tab[] = ["home", "smarttalk", "exam", "profile"];
@@ -26,13 +27,11 @@ export default function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Sync tab to URL hash so refresh restores the same tab
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     window.location.hash = tab;
   };
 
-  // Also listen to browser back/forward
   useEffect(() => {
     const onHashChange = () => setActiveTab(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -45,9 +44,20 @@ export default function App() {
 
     authPersistenceReady.finally(() => {
       if (!isMounted) return;
-      unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         if (!isMounted) return;
         if (firebaseUser) {
+          // Load saved language preference from Firestore
+          let preferredLanguage = "English";
+          try {
+            const snap = await getDoc(doc(db, "userProfiles", firebaseUser.uid));
+            if (snap.exists() && snap.data().preferredLanguage) {
+              preferredLanguage = snap.data().preferredLanguage;
+            }
+          } catch (e) {
+            console.error("Could not load language pref:", e);
+          }
+
           const profile: UserProfile = {
             id: firebaseUser.uid,
             name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Reader",
@@ -58,6 +68,7 @@ export default function App() {
             examScore: 0,
             readPosts: [],
             following: [],
+            preferredLanguage,
           };
           setUser(profile);
           setIsGuest(false);
@@ -73,6 +84,11 @@ export default function App() {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+
+  // Called by Profile when language is changed — updates user instantly so PostCard sees it
+  const handleLanguageChange = (lang: string) => {
+    setUser(prev => prev ? { ...prev, preferredLanguage: lang } : prev);
+  };
 
   const refreshProfile = () => {};
 
@@ -128,7 +144,7 @@ export default function App() {
           {activeTab === "home"      && <Feed user={user} refreshProfile={refreshProfile} />}
           {activeTab === "smarttalk" && <SmartTalk user={user} toggleFollow={toggleFollow} />}
           {activeTab === "exam"      && <Exam user={user} refreshProfile={refreshProfile} />}
-          {activeTab === "profile"   && <Profile user={user} />}
+          {activeTab === "profile"   && <Profile user={user} onLanguageChange={handleLanguageChange} />}
         </main>
 
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 px-6 py-3 flex justify-between items-center md:hidden z-50">

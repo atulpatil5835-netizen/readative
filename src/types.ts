@@ -7,12 +7,11 @@ export interface Post {
   content: string;
   type: PostCategory;
   hashtags: string[];
-  likes: string[];        // array of user IDs
-  stars: number;
-  ratingCount: number;
+  likes: string[];
   comments: Comment[];
   createdAt: number;
   highlights?: Highlight[];
+  aiCommentPosted?: boolean;
 }
 
 export interface Highlight {
@@ -36,13 +35,13 @@ export interface UserProfile {
   id: string;
   name: string;
   photo: string;
+  email?: string;
+  avatar?: string;
   readingScore: number;
   examScore: number;
   readPosts: string[];
   following: string[];
   preferredLanguage?: string;
-  email?: string;
-  avatar?: string;
 }
 
 export interface ExamQuestion {
@@ -54,16 +53,18 @@ export interface ExamQuestion {
 export interface SmartAnswer {
   id: string;
   author: string;
+  authorId?: string;
   content: string;
   type: 'user' | 'ai';
-  likes: number;
-  dislikes: number;
+  likes: string[];
+  dislikes: string[];
   createdAt: number;
 }
 
 export interface SmartQuestion {
   id: string;
   author: string;
+  authorId?: string;
   content: string;
   createdAt: number;
   answers: SmartAnswer[];
