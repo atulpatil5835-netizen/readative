@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { motion } from "motion/react";
 import { Post, UserProfile, Highlight } from "../types";
 import { geminiService } from "../services/gemini";
-import { Heart, MessageCircle, Share2, Play, Pause, Highlighter, Underline, Languages, Loader2, Sparkles } from "lucide-react";
+import { Heart, MessageCircle, Share2, Play, Pause, Highlighter, Underline, Languages, Loader2, Sparkles, X } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
@@ -20,22 +20,34 @@ interface PostCardProps {
 }
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  story: '📖', joke: '😄', motivation: '🔥',
-  poetry: '🌸', shayari: '🌙', knowledge: '💡', questions: '❓',
+  story: "📖", joke: "😄", motivation: "🔥",
+  poetry: "🌸", shayari: "🌙", knowledge: "💡", questions: "❓",
 };
 
 export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps) {
   const [isReading, setIsReading] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
-  const [penMode, setPenMode] = useState<'none' | 'highlight' | 'underline'>('none');
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  // Pen mode
+  const [penMode, setPenMode] = useState<"none" | "highlight" | "underline">("none");
+  // Highlights stored per-session (localStorage key = post.id)
+  const storageKey = `highlights_${post.id}`;
+  const [highlights, setHighlights] = useState<Highlight[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Translation
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
+  // Likes / Comments (optimistic)
   const [localLikes, setLocalLikes] = useState<string[]>(post.likes || []);
   const [localComments, setLocalComments] = useState(post.comments || []);
 
@@ -46,25 +58,28 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     setLocalComments(post.comments || []);
   }
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  // Always use original content for word splitting (for TTS sync)
-  const displayContent = showTranslation && translatedContent ? translatedContent : post.content;
-  const words = displayContent.split(/\s+/);
   const isLiked = user ? localLikes.includes(user.id) : false;
+  const displayContent = showTranslation && translatedContent ? translatedContent : post.content;
+
+  // Save highlights to localStorage whenever they change
+  const saveHighlights = (newHighlights: Highlight[]) => {
+    setHighlights(newHighlights);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(newHighlights));
+    } catch { /* ignore */ }
+  };
 
   // ── Like ──────────────────────────────────────────────────────────────
   const handleLike = async () => {
     if (!user) return;
-    const postRef = doc(db, "posts", post.id);
     const newLikes = isLiked
       ? localLikes.filter(id => id !== user.id)
       : [...localLikes, user.id];
     setLocalLikes(newLikes);
     try {
-      await updateDoc(postRef, {
-        likes: isLiked ? arrayRemove(user.id) : arrayUnion(user.id)
+      await updateDoc(doc(db, "posts", post.id), {
+        likes: isLiked ? arrayRemove(user.id) : arrayUnion(user.id),
       });
     } catch (e) {
       console.error("Like failed:", e);
@@ -76,7 +91,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
   const handleComment = async () => {
     if (!user || !commentText.trim()) return;
     setIsCommenting(true);
-    const optimisticComment = {
+    const optimistic = {
       id: `temp-${Date.now()}`,
       author: user.name,
       authorId: user.id,
@@ -84,11 +99,11 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
       createdAt: Date.now(),
       isAI: false,
     };
-    setLocalComments(prev => [...prev, optimisticComment]);
+    setLocalComments(prev => [...prev, optimistic]);
     const savedText = commentText;
     setCommentText("");
     try {
-      const realComment = {
+      const real = {
         id: Math.random().toString(36).substr(2, 9),
         author: user.name,
         authorId: user.id,
@@ -96,11 +111,10 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         createdAt: Date.now(),
         isAI: false,
       };
-      await updateDoc(doc(db, "posts", post.id), { comments: arrayUnion(realComment) });
-      setLocalComments(prev => prev.map(c => c.id === optimisticComment.id ? realComment : c));
+      await updateDoc(doc(db, "posts", post.id), { comments: arrayUnion(real) });
+      setLocalComments(prev => prev.map(c => c.id === optimistic.id ? real : c));
     } catch (e) {
-      console.error("Comment failed:", e);
-      setLocalComments(prev => prev.filter(c => c.id !== optimisticComment.id));
+      setLocalComments(prev => prev.filter(c => c.id !== optimistic.id));
     } finally {
       setIsCommenting(false);
     }
@@ -108,151 +122,124 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
 
   // ── Translate ─────────────────────────────────────────────────────────
   const handleTranslate = async () => {
-    // Toggle off
+    setTranslateError(null);
+
     if (showTranslation) {
       setShowTranslation(false);
       return;
     }
-    // Show cached translation
     if (translatedContent) {
       setShowTranslation(true);
       return;
     }
-    // Check language selected
+
     const lang = user?.preferredLanguage;
     if (!lang || lang === "English") {
-      alert("Please go to Profile and select a translation language first.");
+      setTranslateError("Go to Profile and select a language first.");
       return;
     }
+
     setIsTranslating(true);
     try {
-      const translated = await geminiService.translateText(post.content, lang);
-      if (translated) {
-        setTranslatedContent(translated);
+      const result = await geminiService.translateText(post.content, lang);
+      if (result && result !== post.content) {
+        setTranslatedContent(result);
         setShowTranslation(true);
-        // Clear highlights when translating (different content)
-        setHighlights([]);
       } else {
-        alert("Translation failed. Please try again.");
+        setTranslateError("Translation failed. Try again.");
       }
     } catch (e) {
-      console.error("Translation failed", e);
-      alert("Translation failed. Please try again.");
+      setTranslateError("Translation failed. Try again.");
     } finally {
       setIsTranslating(false);
     }
   };
 
-  // ── TTS ───────────────────────────────────────────────────────────────
-  const handleTTS = async () => {
-    if (isReading) { audioRef.current?.pause(); setIsReading(false); return; }
-    if (!audioUrl) {
-      const url = await geminiService.generateTTS(post.content);
-      if (url) {
-        setAudioUrl(url);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onplay = () => setIsReading(true);
-        audio.onpause = () => setIsReading(false);
-        audio.onended = () => { setIsReading(false); setCurrentWordIndex(-1); };
-        audio.onloadedmetadata = () => {
-          const durationPerWord = audio.duration / words.length;
-          audio.ontimeupdate = () => setCurrentWordIndex(Math.floor(audio.currentTime / durationPerWord));
-        };
-        audio.play();
-      }
-    } else {
-      audioRef.current?.play();
-    }
-  };
-
-  // ── Highlight / Underline ─────────────────────────────────────────────
+  // ── Text Selection for Highlight / Underline ──────────────────────────
   const handleTextSelection = () => {
-    if (penMode === 'none') return;
+    if (penMode === "none") return;
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
 
-    // Make sure selection is inside content div
     const contentEl = contentRef.current;
     if (!contentEl) return;
+
     const range = selection.getRangeAt(0);
     if (!contentEl.contains(range.commonAncestorContainer)) return;
 
-    // Calculate character offsets within the plain text content
-    const preSelectionRange = range.cloneRange();
-    preSelectionRange.selectNodeContents(contentEl);
-    preSelectionRange.setEnd(range.startContainer, range.startOffset);
-    const start = preSelectionRange.toString().length;
-    const selectedText = range.toString();
-    if (!selectedText.trim()) return;
-    const end = start + selectedText.length;
+    // Get the plain text content of the div (same string as displayContent)
+    const fullText = contentEl.innerText;
 
-    setHighlights(prev => [...prev, {
+    // Build a range from the start of contentEl to selection start
+    const preRange = document.createRange();
+    preRange.setStart(contentEl, 0);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    const start = preRange.toString().length;
+    const selected = range.toString();
+    if (!selected.trim()) return;
+    const end = start + selected.length;
+
+    // Validate offsets are within actual text
+    if (end > fullText.length || start < 0) return;
+
+    const newHighlight: Highlight = {
       id: Math.random().toString(36).substr(2, 9),
       start,
       end,
-      type: penMode === 'highlight' ? 'highlight' : 'underline',
-      color: penMode === 'highlight' ? '#FDE047' : '#10B981',
-    }]);
+      type: penMode === "highlight" ? "highlight" : "underline",
+      color: penMode === "highlight" ? "#FDE047" : "#10B981",
+    };
+
+    saveHighlights([...highlights, newHighlight]);
     selection.removeAllRanges();
   };
 
   // ── Render content with highlights ───────────────────────────────────
+  // Uses displayContent directly (no word-splitting that shifts offsets)
   const renderContent = () => {
-    // If no highlights — render with word-level TTS highlighting
     if (highlights.length === 0) {
-      return words.map((word, i) => (
-        <span key={i} className={cn(
-          "transition-colors duration-200",
-          currentWordIndex === i ? "bg-emerald-200 text-emerald-900 rounded px-0.5" : ""
-        )}>
-          {word}{" "}
-        </span>
-      ));
+      return <span>{displayContent}</span>;
     }
 
-    // Render with text highlights/underlines
-    const result: React.ReactNode[] = [];
-    let lastIndex = 0;
+    const nodes: React.ReactNode[] = [];
+    let cursor = 0;
     const sorted = [...highlights].sort((a, b) => a.start - b.start);
 
-    sorted.forEach((h, idx) => {
-      // Text before this highlight
-      if (h.start > lastIndex) {
-        result.push(
-          <span key={`pre-${idx}`}>{displayContent.substring(lastIndex, h.start)}</span>
+    for (const h of sorted) {
+      const hStart = Math.min(h.start, displayContent.length);
+      const hEnd = Math.min(h.end, displayContent.length);
+      if (hStart > cursor) {
+        nodes.push(<span key={`t-${cursor}`}>{displayContent.slice(cursor, hStart)}</span>);
+      }
+      if (hEnd > hStart) {
+        nodes.push(
+          <span key={h.id} style={{
+            backgroundColor: h.type === "highlight" ? h.color : "transparent",
+            textDecoration: h.type === "underline" ? `underline 2px ${h.color}` : "none",
+            textUnderlineOffset: "3px",
+            borderRadius: "2px",
+          }}>
+            {displayContent.slice(hStart, hEnd)}
+          </span>
         );
       }
-      // The highlighted/underlined span
-      result.push(
-        <span key={h.id} style={{
-          backgroundColor: h.type === 'highlight' ? h.color : 'transparent',
-          textDecoration: h.type === 'underline' ? `underline 2px ${h.color}` : 'none',
-          textUnderlineOffset: '3px',
-          borderRadius: h.type === 'highlight' ? '3px' : undefined,
-          padding: h.type === 'highlight' ? '0 2px' : undefined,
-        }}>
-          {displayContent.substring(h.start, h.end)}
-        </span>
-      );
-      lastIndex = h.end;
-    });
-
-    // Remaining text
-    if (lastIndex < displayContent.length) {
-      result.push(<span key="tail">{displayContent.substring(lastIndex)}</span>);
+      cursor = hEnd;
     }
 
-    return result;
+    if (cursor < displayContent.length) {
+      nodes.push(<span key="tail">{displayContent.slice(cursor)}</span>);
+    }
+
+    return <>{nodes}</>;
   };
 
   const handleShare = () => {
-    const text = `Check out this post on Readative!\n\n"${post.content.substring(0, 100)}..."`;
+    const text = `"${post.content.substring(0, 100)}..." — Readative`;
     if (navigator.share) {
-      navigator.share({ title: 'Readative Post', text, url: window.location.href }).catch(console.error);
+      navigator.share({ title: "Readative Post", text, url: window.location.href }).catch(console.error);
     } else {
-      navigator.clipboard.writeText(`${text}\n\n${window.location.href}`);
-      alert("Link copied to clipboard!");
+      navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+      alert("Copied to clipboard!");
     }
   };
 
@@ -260,6 +247,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
     <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
       <div className="p-6">
+
         {/* Header */}
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
@@ -277,47 +265,57 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
             </div>
           </div>
 
-          {/* Tools */}
-          <div className="flex gap-1">
-            {/* Highlight tool */}
-            <button
-              onClick={() => setPenMode(penMode === 'highlight' ? 'none' : 'highlight')}
-              title={penMode === 'highlight' ? "Stop highlighting" : "Highlight text"}
+          {/* Toolbar */}
+          <div className="flex gap-1 items-center">
+            {/* Highlight */}
+            <button onClick={() => setPenMode(penMode === "highlight" ? "none" : "highlight")}
+              title="Highlight text"
               className={cn("p-2 rounded-lg transition-colors",
-                penMode === 'highlight' ? "bg-yellow-100 text-yellow-600" : "hover:bg-gray-100 text-gray-400")}>
+                penMode === "highlight" ? "bg-yellow-100 text-yellow-600" : "hover:bg-gray-100 text-gray-400")}>
               <Highlighter className="w-4 h-4" />
             </button>
 
-            {/* Underline tool */}
-            <button
-              onClick={() => setPenMode(penMode === 'underline' ? 'none' : 'underline')}
-              title={penMode === 'underline' ? "Stop underlining" : "Underline text"}
+            {/* Underline */}
+            <button onClick={() => setPenMode(penMode === "underline" ? "none" : "underline")}
+              title="Underline text"
               className={cn("p-2 rounded-lg transition-colors",
-                penMode === 'underline' ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400")}>
+                penMode === "underline" ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400")}>
               <Underline className="w-4 h-4" />
             </button>
 
             {/* Clear highlights */}
             {highlights.length > 0 && (
-              <button onClick={() => setHighlights([])} title="Clear all highlights"
-                className="p-2 rounded-lg hover:bg-red-50 text-red-400 transition-colors text-xs font-bold">
-                ✕
+              <button onClick={() => saveHighlights([])}
+                title="Clear highlights"
+                className="p-2 rounded-lg hover:bg-red-50 text-red-400 transition-colors">
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
 
             {/* Translate */}
             <button onClick={handleTranslate} disabled={isTranslating}
-              title={showTranslation ? "Show original" : `Translate to ${user?.preferredLanguage || "..."}`}
+              title={showTranslation ? "Show original" : `Translate to ${user?.preferredLanguage || "selected language"}`}
               className={cn("p-2 rounded-lg transition-colors",
-                showTranslation ? "bg-indigo-100 text-indigo-600" :
-                !user?.preferredLanguage || user.preferredLanguage === "English"
-                  ? "text-gray-200 cursor-not-allowed"
-                  : "hover:bg-gray-100 text-gray-400")}>
+                showTranslation ? "bg-indigo-100 text-indigo-600" : "hover:bg-gray-100 text-gray-400")}>
               {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
             </button>
 
-            {/* TTS */}
-            <button onClick={handleTTS} title="Read aloud"
+            {/* TTS — play button only, no word highlighting to avoid offset issues */}
+            <button onClick={() => {
+              if ("speechSynthesis" in window) {
+                if (isReading) {
+                  window.speechSynthesis.cancel();
+                  setIsReading(false);
+                } else {
+                  const utterance = new SpeechSynthesisUtterance(post.content);
+                  utterance.onend = () => setIsReading(false);
+                  utterance.onerror = () => setIsReading(false);
+                  window.speechSynthesis.speak(utterance);
+                  setIsReading(true);
+                }
+              }
+            }}
+              title="Read aloud"
               className="p-2 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors">
               {isReading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </button>
@@ -325,11 +323,19 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         </div>
 
         {/* Pen mode hint */}
-        {penMode !== 'none' && (
+        {penMode !== "none" && (
           <div className={`text-xs px-3 py-1.5 rounded-lg mb-3 font-medium ${
-            penMode === 'highlight' ? 'bg-yellow-50 text-yellow-700' : 'bg-emerald-50 text-emerald-700'
+            penMode === "highlight" ? "bg-yellow-50 text-yellow-700" : "bg-emerald-50 text-emerald-700"
           }`}>
-            {penMode === 'highlight' ? '✏️ Select text to highlight' : '✏️ Select text to underline'} · Click icon again to stop
+            {penMode === "highlight" ? "✏️ Select text to highlight" : "✏️ Select text to underline"} · click icon again to stop
+          </div>
+        )}
+
+        {/* Translation error */}
+        {translateError && (
+          <div className="text-xs px-3 py-1.5 rounded-lg mb-3 bg-red-50 text-red-600 flex items-center justify-between">
+            {translateError}
+            <button onClick={() => setTranslateError(null)}><X className="w-3 h-3" /></button>
           </div>
         )}
 
@@ -337,33 +343,36 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
         {showTranslation && (
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold">
-              🌐 Translated to {user?.preferredLanguage}
+              🌐 {user?.preferredLanguage}
             </span>
-            <button onClick={() => setShowTranslation(false)} className="text-xs text-gray-400 hover:text-gray-600">
-              Show original
+            <button onClick={() => setShowTranslation(false)} className="text-xs text-gray-400 hover:text-gray-600 underline">
+              original
             </button>
           </div>
         )}
 
-        {/* Content */}
+        {/* Content — single div, no word splitting */}
         <div
           ref={contentRef}
           onMouseUp={handleTextSelection}
           className={cn(
-            "text-lg leading-relaxed text-gray-800 mb-4 whitespace-pre-wrap",
-            penMode !== 'none' ? "select-text cursor-text" : "selection:bg-emerald-100"
-          )}>
+            "text-base leading-relaxed text-gray-800 mb-4 whitespace-pre-wrap",
+            penMode !== "none" ? "cursor-text select-text" : "select-text"
+          )}
+        >
           {renderContent()}
         </div>
 
         {/* Hashtags */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {post.hashtags?.map((tag) => (
-            <span key={tag} className="text-sm font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-              #{tag}
-            </span>
-          ))}
-        </div>
+        {post.hashtags?.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {post.hashtags.map((tag) => (
+              <span key={tag} className="text-sm font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-between pt-4 border-t border-black/5">
@@ -393,7 +402,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
           {user ? (
             <div className="flex gap-3">
               <input value={commentText} onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleComment()}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleComment()}
                 placeholder="Add a comment..."
                 className="flex-1 bg-white border border-black/5 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
               <button onClick={handleComment} disabled={isCommenting || !commentText.trim()}
@@ -402,7 +411,7 @@ export function PostCard({ post, user, refreshProfile, onUpdate }: PostCardProps
               </button>
             </div>
           ) : (
-            <div className="text-center p-4 bg-gray-100 rounded-xl text-sm text-gray-500">Please login to comment.</div>
+            <p className="text-center text-sm text-gray-400 py-2">Login to comment.</p>
           )}
           <div className="space-y-3">
             {localComments.map((comment) => (
