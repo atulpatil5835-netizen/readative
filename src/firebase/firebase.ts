@@ -3,7 +3,7 @@ import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth"
 import { getFirestore } from "firebase/firestore"
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDwGvB_DtHAlHlFc0T80o8BwzyRLZf7JMs",
+  apiKey: "AIzaSyDgVfYlVr1N4GdW-CgamNBsXNMn1P4SqXo",
   authDomain: "readative-803b0.firebaseapp.com",
   projectId: "readative-803b0",
   storageBucket: "readative-803b0.firebasestorage.app",
