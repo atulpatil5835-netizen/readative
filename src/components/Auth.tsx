@@ -21,17 +21,14 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !displayName.trim()) return;
+
     setIsLoading(true);
     setError("");
 
-    // Generate a 6-digit OTP (in production, send via backend/email service)
     const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(mockOtp);
 
-    // Simulate sending delay
-    await new Promise((r) => setTimeout(r, 800));
-
-    // In dev, log OTP to console — replace with real email service
+    await new Promise((resolve) => setTimeout(resolve, 800));
     console.log(`[DEV] OTP for ${email}: ${mockOtp}`);
 
     setIsLoading(false);
@@ -41,10 +38,10 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (otp === generatedOtp) {
-      onVerified(email, displayName);
-    } else {
-      setError("Incorrect OTP. Please try again.");
+      onVerified(email.trim(), displayName.trim());
+      return;
     }
+    setError("Incorrect OTP. Please try again.");
   };
 
   const inputClass =
@@ -58,7 +55,6 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative"
       >
-        {/* Close */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
@@ -67,7 +63,6 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
         </button>
 
         <AnimatePresence mode="wait">
-          {/* ── STEP 1: Email + Name ── */}
           {view === "email" && (
             <motion.form
               key="email"
@@ -83,7 +78,7 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
                 </div>
                 <h2 className="text-xl font-bold text-gray-800">Verify to Post</h2>
                 <p className="text-gray-500 text-sm mt-1">
-                  No account needed — just verify your email once.
+                  No account needed. Just verify your email once.
                 </p>
               </div>
 
@@ -92,7 +87,9 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
                   Display Name
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">@</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">
+                    @
+                  </span>
                   <input
                     type="text"
                     value={displayName}
@@ -140,7 +137,6 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
             </motion.form>
           )}
 
-          {/* ── STEP 2: OTP Verify ── */}
           {view === "otp" && (
             <motion.form
               key="otp"
@@ -159,9 +155,8 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
                   We sent a 6-digit code to{" "}
                   <span className="font-semibold text-gray-700">{email}</span>
                 </p>
-                {/* Dev helper — remove in production */}
                 <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 mt-2">
-                  <strong>Dev mode:</strong> Check browser console for OTP
+                  <strong>Dev mode:</strong> Check the browser console for OTP
                 </p>
               </div>
 
@@ -174,7 +169,9 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
                   <input
                     type="text"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(e) =>
+                      setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
                     className={`${inputClass} tracking-widest font-mono text-xl text-center`}
                     placeholder="000000"
                     maxLength={6}
@@ -184,7 +181,9 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
               </div>
 
               {error && (
-                <p className="text-red-500 text-sm font-medium text-center">{error}</p>
+                <p className="text-red-500 text-sm font-medium text-center">
+                  {error}
+                </p>
               )}
 
               <button
@@ -205,7 +204,7 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
                 }}
                 className="w-full text-center text-gray-400 text-sm hover:text-gray-600"
               >
-                ← Change email
+                {"<-"} Change email
               </button>
             </motion.form>
           )}
@@ -215,18 +214,35 @@ export function PostAuth({ onVerified, onClose }: PostAuthProps) {
   );
 }
 
-// ─────────────────────────────────────────────
-// Username prompt modal — used for Like & Comment
-// ─────────────────────────────────────────────
-
 interface UsernamePromptProps {
-  action: "like" | "comment";
+  action?: "like" | "comment";
+  title?: string;
+  description?: string;
+  submitLabel?: string;
+  placeholder?: string;
+  initialValue?: string;
   onConfirm: (username: string) => void;
   onClose: () => void;
 }
 
-export function UsernamePrompt({ action, onConfirm, onClose }: UsernamePromptProps) {
-  const [username, setUsername] = useState("");
+export function UsernamePrompt({
+  action,
+  title,
+  description,
+  submitLabel,
+  placeholder = "your_name",
+  initialValue = "",
+  onConfirm,
+  onClose,
+}: UsernamePromptProps) {
+  const [username, setUsername] = useState(initialValue);
+
+  const resolvedTitle =
+    title || (action === "like" ? "Like this post?" : "Leave a comment?");
+  const resolvedDescription = description || "Just tell us who you are";
+  const resolvedSubmitLabel =
+    submitLabel || (action === "like" ? "Like" : "Continue");
+  const emoji = action === "like" ? "❤️" : "💬";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,21 +267,21 @@ export function UsernamePrompt({ action, onConfirm, onClose }: UsernamePromptPro
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="text-center">
-            <div className="text-2xl mb-2">{action === "like" ? "❤️" : "💬"}</div>
-            <h2 className="text-lg font-bold text-gray-800">
-              {action === "like" ? "Like this post?" : "Leave a comment?"}
-            </h2>
-            <p className="text-gray-500 text-sm mt-1">Just tell us who you are</p>
+            <div className="text-2xl mb-2">{emoji}</div>
+            <h2 className="text-lg font-bold text-gray-800">{resolvedTitle}</h2>
+            <p className="text-gray-500 text-sm mt-1">{resolvedDescription}</p>
           </div>
 
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">@</span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">
+              @
+            </span>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-gray-800"
-              placeholder="your_name"
+              placeholder={placeholder}
               autoFocus
               required
             />
@@ -277,7 +293,7 @@ export function UsernamePrompt({ action, onConfirm, onClose }: UsernamePromptPro
             className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <CheckCircle className="w-4 h-4" />
-            {action === "like" ? "Like" : "Continue"}
+            {resolvedSubmitLabel}
           </button>
         </form>
       </motion.div>

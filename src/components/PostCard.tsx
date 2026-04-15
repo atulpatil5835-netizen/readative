@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Post } from "../types";
+import { Post, Comment } from "../types";
 import { Heart, MessageCircle, Share2, Sparkles } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, updateDoc, arrayRemove, arrayUnion } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { UsernameAction } from "./Feed";
+import { getGuestId, getGuestName, saveGuestName } from "../utils/guestIdentity";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -18,126 +19,135 @@ interface PostCardProps {
 }
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  story: "📖", joke: "😄", motivation: "🔥",
-  poetry: "🌸", shayari: "🌙", knowledge: "💡", questions: "❓",
+  story: "📖",
+  joke: "😄",
+  motivation: "🔥",
+  poetry: "🌸",
+  shayari: "🌙",
+  knowledge: "💡",
+  questions: "❓",
 };
-
-// Stable guest ID stored in localStorage so likes persist across page reloads
-function getGuestId(): string {
-  let id = localStorage.getItem("guestId");
-  if (!id) {
-    id = "guest_" + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem("guestId", id);
-  }
-  return id;
-}
 
 export function PostCard({ post, onGuestAction }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [localLikes, setLocalLikes] = useState<string[]>(post.likes || []);
-  const [localComments, setLocalComments] = useState(post.comments || []);
+  const [localComments, setLocalComments] = useState<Comment[]>(post.comments || []);
+  const [pendingCommenter, setPendingCommenter] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
 
   const guestId = getGuestId();
   const isLiked = localLikes.includes(guestId);
 
-  const prevPostRef = useRef(post);
-  if (post !== prevPostRef.current) {
-    prevPostRef.current = post;
+  useEffect(() => {
     setLocalLikes(post.likes || []);
     setLocalComments(post.comments || []);
-  }
+  }, [post.id, post.likes, post.comments]);
 
-  // Listen for the guest-action event dispatched by Feed after username is confirmed
   useEffect(() => {
-    const handler = (e: Event) => {
-      const { type, postId, username } = (e as CustomEvent).detail;
-      if (postId !== post.id) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        type: "like" | "comment";
+        postId: string;
+        username: string;
+      }>).detail;
 
-      if (type === "like") {
-        executeLike(username);
-      } else if (type === "comment") {
-        // Focus comment box and set pending commenter name
-        setShowComments(true);
-        setPendingCommenter(username);
+      if (!detail || detail.postId !== post.id) return;
+
+      const savedName = saveGuestName(detail.username);
+      setGuestName(savedName);
+
+      if (detail.type === "like") {
+        void executeLike(true);
+        return;
       }
+
+      setShowComments(true);
+      setPendingCommenter(savedName);
     };
 
     window.addEventListener("guest-action", handler);
     return () => window.removeEventListener("guest-action", handler);
   }, [post.id, localLikes]);
 
-  const [pendingCommenter, setPendingCommenter] = useState<string | null>(null);
+  const executeLike = async (shouldLike: boolean) => {
+    const nextLikes = shouldLike
+      ? [...localLikes, guestId]
+      : localLikes.filter((id) => id !== guestId);
 
-  // ── Like ──────────────────────────────────────────────────────────────
-  const handleLike = () => {
-    // If already liked, allow un-like directly
-    if (isLiked) {
-      executeLike(null);
-      return;
-    }
-    // Otherwise ask for username
-    onGuestAction({ type: "like", postId: post.id });
-  };
+    setLocalLikes(nextLikes);
 
-  const executeLike = async (username: string | null) => {
-    const newLikes = isLiked
-      ? localLikes.filter((id) => id !== guestId)
-      : [...localLikes, guestId];
-    setLocalLikes(newLikes);
     try {
       await updateDoc(doc(db, "posts", post.id), {
-        likes: isLiked ? arrayRemove(guestId) : arrayUnion(guestId),
+        likes: shouldLike ? arrayUnion(guestId) : arrayRemove(guestId),
       });
-    } catch (e) {
-      console.error("Like failed:", e);
+    } catch (error) {
+      console.error("Like failed:", error);
       setLocalLikes(post.likes || []);
     }
   };
 
-  // ── Comment ───────────────────────────────────────────────────────────
-  const handleCommentClick = () => {
-    if (showComments) {
-      setShowComments(false);
+  const handleLike = () => {
+    if (isLiked) {
+      void executeLike(false);
       return;
     }
-    setShowComments(true);
+
+    if (guestName) {
+      void executeLike(true);
+      return;
+    }
+
+    onGuestAction({ type: "like", postId: post.id });
   };
 
-  const handleComment = async (authorName?: string) => {
-    const name = authorName || pendingCommenter;
-    if (!name || !commentText.trim()) return;
-    setIsCommenting(true);
-    setPendingCommenter(null);
+  const handleComment = async (authorName: string) => {
+    const normalizedName = saveGuestName(authorName);
+    if (!normalizedName || !commentText.trim()) return;
 
-    const optimistic = {
+    setGuestName(normalizedName);
+    setPendingCommenter(null);
+    setIsCommenting(true);
+
+    const savedText = commentText.trim();
+    const optimistic: Comment = {
       id: `temp-${Date.now()}`,
-      author: name,
+      author: normalizedName,
       authorId: guestId,
-      text: commentText,
+      text: savedText,
       createdAt: Date.now(),
       isAI: false,
     };
+
     setLocalComments((prev) => [...prev, optimistic]);
-    const savedText = commentText;
     setCommentText("");
 
     try {
-      const real = {
-        id: Math.random().toString(36).substr(2, 9),
-        author: name,
+      const realComment: Comment = {
+        id: Math.random().toString(36).slice(2, 11),
+        author: normalizedName,
         authorId: guestId,
         text: savedText,
         createdAt: Date.now(),
         isAI: false,
       };
-      await updateDoc(doc(db, "posts", post.id), { comments: arrayUnion(real) });
+
+      await updateDoc(doc(db, "posts", post.id), {
+        comments: arrayUnion(realComment),
+      });
+
       setLocalComments((prev) =>
-        prev.map((c) => (c.id === optimistic.id ? real : c))
+        prev.map((comment) =>
+          comment.id === optimistic.id ? realComment : comment
+        )
       );
-    } catch (e) {
-      setLocalComments((prev) => prev.filter((c) => c.id !== optimistic.id));
+    } catch (error) {
+      console.error("Comment failed:", error);
+      setLocalComments((prev) =>
+        prev.filter((comment) => comment.id !== optimistic.id)
+      );
+      setCommentText(savedText);
     } finally {
       setIsCommenting(false);
     }
@@ -145,22 +155,35 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
 
   const handleCommentSubmit = () => {
     if (!commentText.trim()) return;
-    if (pendingCommenter) {
-      handleComment(pendingCommenter);
-    } else {
-      // Ask for username first
-      onGuestAction({ type: "comment", postId: post.id });
+
+    const commenterName = pendingCommenter || guestName;
+    if (commenterName) {
+      void handleComment(commenterName);
+      return;
     }
+
+    onGuestAction({ type: "comment", postId: post.id });
   };
 
   const handleShare = () => {
-    const text = `Check out this post on Readative!\n\n"${post.content.substring(0, 100)}..."`;
+    const text = `Check out this post on Readative!\n\n"${post.content.substring(
+      0,
+      100
+    )}..."`;
+
     if (navigator.share) {
-      navigator.share({ title: "Readative Post", text, url: window.location.href }).catch(console.error);
-    } else {
-      navigator.clipboard.writeText(`${text}\n\n${window.location.href}`);
-      alert("Link copied to clipboard!");
+      navigator
+        .share({
+          title: "Readative Post",
+          text,
+          url: window.location.href,
+        })
+        .catch(console.error);
+      return;
     }
+
+    navigator.clipboard.writeText(`${text}\n\n${window.location.href}`);
+    alert("Link copied to clipboard!");
   };
 
   return (
@@ -171,7 +194,6 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
       className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden"
     >
       <div className="p-6">
-        {/* Header */}
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-lg">
@@ -191,12 +213,10 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
           </div>
         </div>
 
-        {/* Content */}
         <div className="text-base leading-relaxed text-gray-800 mb-4 whitespace-pre-wrap">
           {post.content}
         </div>
 
-        {/* Hashtags */}
         {post.hashtags?.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
             {post.hashtags.map((tag) => (
@@ -210,7 +230,6 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex items-center justify-between pt-4 border-t border-black/5">
           <div className="flex items-center gap-4">
             <button
@@ -223,17 +242,21 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
               <Heart className={cn("w-5 h-5", isLiked ? "fill-current" : "")} />
               <span className="text-sm font-medium">{localLikes.length}</span>
             </button>
+
             <button
-              onClick={handleCommentClick}
+              onClick={() => setShowComments((current) => !current)}
               className={cn(
                 "flex items-center gap-1.5 transition-colors",
-                showComments ? "text-emerald-600" : "text-gray-500 hover:text-emerald-600"
+                showComments
+                  ? "text-emerald-600"
+                  : "text-gray-500 hover:text-emerald-600"
               )}
             >
               <MessageCircle className="w-5 h-5" />
               <span className="text-sm font-medium">{localComments.length}</span>
             </button>
           </div>
+
           <button
             onClick={handleShare}
             className="text-gray-400 hover:text-emerald-600 transition-colors"
@@ -243,14 +266,21 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
         </div>
       </div>
 
-      {/* Comments */}
       {showComments && (
         <div className="bg-gray-50 p-6 border-t border-black/5 space-y-4">
+          {guestName && (
+            <p className="text-xs text-gray-400">
+              Commenting as <span className="font-semibold text-gray-600">@{guestName}</span>
+            </p>
+          )}
+
           <div className="flex gap-3">
             <input
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleCommentSubmit()}
+              onKeyDown={(e) =>
+                e.key === "Enter" && !e.shiftKey && handleCommentSubmit()
+              }
               placeholder={
                 pendingCommenter
                   ? `Commenting as @${pendingCommenter}...`
@@ -278,8 +308,13 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
                       : "bg-gray-200 text-gray-600"
                   )}
                 >
-                  {comment.isAI ? <Sparkles className="w-4 h-4" /> : comment.author[0]}
+                  {comment.isAI ? (
+                    <Sparkles className="w-4 h-4" />
+                  ) : (
+                    comment.author[0]
+                  )}
                 </div>
+
                 <div
                   className={cn(
                     "p-3 rounded-2xl shadow-sm border flex-1",
@@ -289,7 +324,9 @@ export function PostCard({ post, onGuestAction }: PostCardProps) {
                   )}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-xs font-bold text-gray-900">{comment.author}</p>
+                    <p className="text-xs font-bold text-gray-900">
+                      {comment.author}
+                    </p>
                     {comment.isAI && (
                       <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">
                         AI
