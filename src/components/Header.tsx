@@ -1,19 +1,12 @@
-import { LogOut } from "lucide-react"
-import { Logo } from "./Logo"
-import { UserProfile } from "../types"
+import { Logo } from "./Logo";
 
 interface HeaderProps {
-  activeTab: "home" | "smarttalk" | "exam" | "profile"
-  setActiveTab: (tab: "home" | "smarttalk" | "exam" | "profile") => void
-  user: UserProfile | null
-  onLogout: () => void
+  activeTab: "home" | "smarttalk" | "exam" | "profile";
+  setActiveTab: (tab: "home" | "smarttalk" | "exam" | "profile") => void;
 }
 
-export function Header({ activeTab, setActiveTab, user, onLogout }: HeaderProps) {
-  const displayName = user?.name || user?.email?.split("@")[0] || "Guest"
-  const photoURL = user?.photo ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=10b981&color=fff`
-  const tabs = ["home", "smarttalk", "exam", "profile"] as const
+export function Header({ activeTab, setActiveTab }: HeaderProps) {
+  const tabs = ["home", "smarttalk", "exam", "profile"] as const;
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-black/5 z-50">
@@ -46,28 +39,7 @@ export function Header({ activeTab, setActiveTab, user, onLogout }: HeaderProps)
             </button>
           ))}
         </nav>
-
-        {/* Right Side */}
-        <div className="flex items-center gap-4">
-          <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
-            <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
-          </div>
-          {user ? (
-            <div className="hidden md:flex items-center gap-3">
-              <span className="text-xs font-semibold text-gray-600">{displayName}</span>
-              <button
-                onClick={onLogout}
-                className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-red-600 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
-            </div>
-          ) : (
-            <span className="text-xs font-bold text-gray-400">Guest</span>
-          )}
-        </div>
       </div>
     </header>
-  )
+  );
 }

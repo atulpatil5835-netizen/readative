@@ -37,7 +37,6 @@ const CATEGORY_EMOJI: Record<PostCategory, string> = {
   poetry: "🌸", shayari: "🌙", knowledge: "💡", questions: "❓",
 };
 
-// Simple stable ID from email (no crypto needed, just for display attribution)
 function emailToId(email: string) {
   return email.toLowerCase().replace(/[^a-z0-9]/g, "_");
 }
@@ -104,7 +103,6 @@ export function Feed() {
 
   // ── Handlers ───────────────────────────────────────────────────────────
 
-  /** Called when PostAuth modal completes */
   const handlePostAuthVerified = (email: string, displayName: string) => {
     const session: PosterSession = {
       email,
@@ -116,7 +114,6 @@ export function Feed() {
     setShowPostAuth(false);
   };
 
-  /** Called when user clicks "Post" button */
   const handlePostClick = () => {
     if (!posterSession) {
       setShowPostAuth(true);
@@ -158,8 +155,6 @@ export function Feed() {
   /** Called when UsernamePrompt confirms */
   const handleUsernameConfirm = (username: string) => {
     if (!usernameAction) return;
-    // Pass the chosen username back to the PostCard via a custom event
-    // so PostCard can proceed with the like/comment using that username.
     window.dispatchEvent(
       new CustomEvent("guest-action", {
         detail: { ...usernameAction, username },
@@ -181,7 +176,6 @@ export function Feed() {
       {/* ── Compose Box ─────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5">
         <div className="flex gap-3">
-          {/* Avatar placeholder */}
           <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
             {posterSession ? (
               <span className="text-emerald-700 font-bold text-sm">
@@ -301,9 +295,6 @@ export function Feed() {
               <PostCard
                 key={post.id}
                 post={post}
-                user={null}
-                refreshProfile={() => {}}
-                onUpdate={() => {}}
                 onGuestAction={handleGuestAction}
               />
             ))}
@@ -317,7 +308,6 @@ export function Feed() {
           <PostAuth
             onVerified={(email, displayName) => {
               handlePostAuthVerified(email, displayName);
-              // After verifying, auto-submit if there's content
               if (newPost.trim()) {
                 const session: PosterSession = {
                   email,
