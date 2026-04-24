@@ -28,6 +28,7 @@ import {
   getGuestName,
   saveGuestName,
 } from "../utils/guestIdentity";
+import { moderateContent } from "../utils/contentModeration";
 
 interface Answer {
   id: string;
@@ -62,11 +63,14 @@ export function SmartTalk() {
   const [isLoading, setIsLoading] = useState(true);
   const [newQuestion, setNewQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const [isModeratingQuestion, setIsModeratingQuestion] = useState(false);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
   const [isAnswering, setIsAnswering] = useState<Record<string, boolean>>({});
   const [aiAnswering, setAiAnswering] = useState<Record<string, boolean>>({});
+  const [moderatingAnswerId, setModeratingAnswerId] = useState<string | null>(null);
   const [namePrompt, setNamePrompt] = useState<NamePromptState>(null);
   const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
+  const [moderationMessage, setModerationMessage] = useState<string | null>(null);
 
   const guestId = getGuestId();
 
@@ -161,8 +165,22 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
     const questionText = newQuestion.trim();
     if (!normalizedName || !questionText) return;
 
+    setModerationMessage(null);
+    setIsModeratingQuestion(true);
+
+    const moderation = await moderateContent("smarttalk-question", {
+      content: questionText,
+    });
+
+    if (!moderation.allowed) {
+      setModerationMessage(moderation.message);
+      setIsModeratingQuestion(false);
+      return;
+    }
+
     setGuestName(normalizedName);
     setIsAsking(true);
+    setIsModeratingQuestion(false);
 
     try {
       await addDoc(collection(db, "smarttalk"), {
@@ -184,6 +202,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
   const handleAsk = () => {
     if (!newQuestion.trim()) return;
 
+    setModerationMessage(null);
+
     if (guestName) {
       void submitQuestion(guestName);
       return;
@@ -197,8 +217,22 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
     const normalizedName = saveGuestName(authorName);
     if (!normalizedName || !answerText) return;
 
+    setModerationMessage(null);
+    setModeratingAnswerId(questionId);
+
+    const moderation = await moderateContent("smarttalk-answer", {
+      content: answerText,
+    });
+
+    if (!moderation.allowed) {
+      setModeratingAnswerId(null);
+      setModerationMessage(moderation.message);
+      return;
+    }
+
     setGuestName(normalizedName);
     setIsAnswering((current) => ({ ...current, [questionId]: true }));
+    setModeratingAnswerId(null);
 
     try {
       const answer: Answer = {
@@ -226,6 +260,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
 
   const handleAnswer = (questionId: string) => {
     if (!answerInputs[questionId]?.trim()) return;
+
+    setModerationMessage(null);
 
     if (guestName) {
       void submitAnswer(questionId, guestName);
@@ -314,8 +350,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
     <div className="space-y-6 pb-20">
       <SEO
         title="SmartTalk - Q&A Community | Readative"
-        description="Ask questions and get community answers on Readative."
-        keywords={["Q&A", "questions", "answers", "community", "reading"]}
+        description="Ask learning-focused questions and get thoughtful community answers on Readative."
+        keywords={["Q&A", "learning questions", "answers", "community", "knowledge"]}
       />
 
       <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg">
@@ -329,8 +365,15 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
           per visitor.
         </p>
         <p className="text-indigo-100 mb-6 text-sm">
-          Unanswered questions still get a Gemini AI response after 6 hours.
+          Learning questions only. Casual chat, sexual content, and low-value
+          posts are filtered before they go live.
         </p>
+
+        {moderationMessage && (
+          <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white">
+            {moderationMessage}
+          </div>
+        )}
 
         {guestName ? (
           <p className="text-xs text-indigo-100 mb-3">
@@ -356,17 +399,20 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
         <div className="flex gap-2">
           <input
             value={newQuestion}
-            onChange={(e) => setNewQuestion(e.target.value)}
+            onChange={(e) => {
+              setNewQuestion(e.target.value);
+              if (moderationMessage) setModerationMessage(null);
+            }}
             onKeyDown={(e) => e.key === "Enter" && handleAsk()}
-            placeholder="Ask a question..."
+            placeholder="Ask a learning question..."
             className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 transition-all text-sm"
           />
           <button
             onClick={handleAsk}
-            disabled={isAsking || !newQuestion.trim()}
+            disabled={isAsking || isModeratingQuestion || !newQuestion.trim()}
             className="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50 text-sm"
           >
-            {isAsking ? "Posting..." : "Ask"}
+            {isAsking || isModeratingQuestion ? "Posting..." : "Ask"}
           </button>
         </div>
       </div>
@@ -580,17 +626,19 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                     onKeyDown={(e) =>
                       e.key === "Enter" && handleAnswer(question.id)
                     }
-                    placeholder="Write your answer..."
+                    placeholder="Write a useful answer..."
                     className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
                   />
                   <button
                     onClick={() => handleAnswer(question.id)}
                     disabled={
-                      !answerInputs[question.id]?.trim() || isAnswering[question.id]
+                      !answerInputs[question.id]?.trim() ||
+                      isAnswering[question.id] ||
+                      moderatingAnswerId === question.id
                     }
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-all"
                   >
-                    {isAnswering[question.id] ? (
+                    {isAnswering[question.id] || moderatingAnswerId === question.id ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <Send className="w-4 h-4" />

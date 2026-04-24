@@ -32,6 +32,7 @@ interface ProfileProps {
   viewedAuthorId: string | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
   onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
 }
 
 function sortKnowledge(entries: KnowledgeEntry[]) {
@@ -50,6 +51,7 @@ export function Profile({
   viewedAuthorId,
   onIdentityChange,
   onOpenProfile,
+  onOpenEntry,
 }: ProfileProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
@@ -189,6 +191,22 @@ export function Profile({
       sum + (entry.likes?.length || 0) + (entry.comments?.length || 0),
     0
   );
+  const profileUrl =
+    typeof window === "undefined"
+      ? "https://readative.com/#profile"
+      : `${window.location.origin}${window.location.pathname}${
+          profile ? `#profile/${profile.id}` : "#profile"
+        }`;
+  const profileSchema = profile
+    ? {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        name: `@${profile.username}`,
+        description:
+          profile.bio || "A Readative member publishing and curating knowledge.",
+        url: profileUrl,
+      }
+    : undefined;
 
   const handleSignIn = async (email: string, username: string) => {
     try {
@@ -289,6 +307,9 @@ export function Profile({
       <SEO
         title={profile ? `@${profile.username} | Readative` : "Profile | Readative"}
         description="Explore user profiles, liked knowledge, and live notifications on Readative."
+        type="profile"
+        url={profileUrl}
+        schema={profileSchema}
       />
 
       {isLoadingProfile ? (
@@ -383,6 +404,7 @@ export function Profile({
               entries={sharedEntries}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
+              onOpenEntry={onOpenEntry}
             />
           )}
 
@@ -393,6 +415,7 @@ export function Profile({
               entries={likedEntries}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
+              onOpenEntry={onOpenEntry}
             />
           )}
 
@@ -542,12 +565,14 @@ function KnowledgeSection({
   entries,
   onIdentityRequired,
   onOpenProfile,
+  onOpenEntry,
 }: {
   title: string;
   emptyMessage: string;
   entries: KnowledgeEntry[];
   onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
   onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -570,6 +595,7 @@ function KnowledgeSection({
             entry={entry}
             onIdentityRequired={onIdentityRequired}
             onOpenProfile={onOpenProfile}
+            onOpenEntry={onOpenEntry}
           />
         ))
       )}

@@ -6,6 +6,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  writeBatch,
   where,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -55,6 +56,36 @@ async function isUsernameTaken(usernameLower: string, authorId?: string) {
   );
 
   return snapshot.docs.some((item) => item.id !== authorId);
+}
+
+async function syncUsernameAcrossContent(authorId: string, username: string) {
+  const knowledgeSnapshot = await getDocs(
+    query(collection(db, "knowledge"), where("authorId", "==", authorId))
+  );
+
+  if (!knowledgeSnapshot.empty) {
+    const knowledgeBatch = writeBatch(db);
+    knowledgeSnapshot.docs.forEach((item) => {
+      knowledgeBatch.update(item.ref, {
+        author: username,
+      });
+    });
+    await knowledgeBatch.commit();
+  }
+
+  const notificationSnapshot = await getDocs(
+    query(collection(db, "notifications"), where("actorAuthorId", "==", authorId))
+  );
+
+  if (!notificationSnapshot.empty) {
+    const notificationBatch = writeBatch(db);
+    notificationSnapshot.docs.forEach((item) => {
+      notificationBatch.update(item.ref, {
+        actorUsername: username,
+      });
+    });
+    await notificationBatch.commit();
+  }
 }
 
 export async function getUserProfile(authorId: string): Promise<UserProfile | null> {
@@ -140,6 +171,7 @@ export async function changeProfileUsername(
     updatedAt: updated.updatedAt,
     lastUsernameChangedAt: updated.lastUsernameChangedAt,
   });
+  await syncUsernameAcrossContent(profile.id, updated.username);
 
   saveKnowledgeIdentity(updated.email, updated.username);
   return updated;

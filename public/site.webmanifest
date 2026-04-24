@@ -1,0 +1,16 @@
+{
+  "name": "Readative",
+  "short_name": "Readative",
+  "description": "A knowledge-first community for practical insights, explainers, and learning notes.",
+  "start_url": "/#knowledge",
+  "display": "standalone",
+  "background_color": "#f5f5f0",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

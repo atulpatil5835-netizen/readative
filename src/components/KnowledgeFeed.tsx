@@ -1,6 +1,7 @@
 import {
   type ChangeEvent,
   type KeyboardEvent,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -13,8 +14,10 @@ import {
   ImagePlus,
   Search,
   Send,
+  ShieldCheck,
   Sparkles,
   Tag,
+  TrendingUp,
 } from "lucide-react";
 import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -22,7 +25,6 @@ import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { EmailAccessPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
-import { geminiService } from "../services/gemini";
 import {
   clearKnowledgeIdentity,
   type KnowledgeIdentity,
@@ -30,6 +32,7 @@ import {
 import { getGuestName } from "../utils/guestIdentity";
 import { ensureSignedInProfile } from "../utils/userProfiles";
 import { notifyTaggedUsers } from "../utils/notifications";
+import { moderateContent } from "../utils/contentModeration";
 
 type PendingAction =
   | { type: "like" | "comment"; entryId: string }
@@ -47,10 +50,18 @@ interface MentionState {
   start: number;
 }
 
+interface FeedMessage {
+  tone: "success" | "warning";
+  title: string;
+  body: string;
+}
+
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
   onOpenProfile: (authorId: string) => void;
+  focusedEntryId: string | null;
+  onOpenEntry: (entryId: string) => void;
 }
 
 function parseManualHashtags(input: string): string[] {
@@ -118,6 +129,17 @@ function loadImage(source: string): Promise<HTMLImageElement> {
   });
 }
 
+function createExcerpt(text: string, maxLength = 155) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
+}
+
+function estimateReadMinutes(text: string) {
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(wordCount / 180) || 1);
+}
+
 async function optimizeImage(file: File): Promise<string> {
   const rawDataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(rawDataUrl);
@@ -148,15 +170,65 @@ async function optimizeImage(file: File): Promise<string> {
   return dataUrl;
 }
 
+function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
+  const origin =
+    typeof window === "undefined" ? "https://readative.com" : window.location.origin;
+  const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
+  const baseUrl = `${origin}/#knowledge`;
+
+  const collectionSchema = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Readative Knowledge Hub",
+    url: baseUrl,
+    description:
+      "A knowledge-first community where people publish practical insights, examples, visual explainers, and learning notes.",
+    isPartOf: {
+      "@type": "WebSite",
+      name: "Readative",
+      url: origin,
+    },
+    about: ["Knowledge sharing", "Learning", "Community publishing"],
+  };
+
+  if (!entry) {
+    return collectionSchema;
+  }
+
+  return [
+    collectionSchema,
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      headline: entry.title,
+      description: createExcerpt(entry.content),
+      author: {
+        "@type": "Person",
+        name: `@${entry.author}`,
+      },
+      datePublished: new Date(entry.createdAt).toISOString(),
+      keywords: entry.hashtags.join(", "),
+      mainEntityOfPage: `${origin}${pathname}#knowledge/${entry.id}`,
+      image:
+        entry.imageDataUrl && !entry.imageDataUrl.startsWith("data:")
+          ? [entry.imageDataUrl]
+          : undefined,
+    },
+  ];
+}
+
 export function KnowledgeFeed({
   identity,
   onIdentityChange,
   onOpenProfile,
+  focusedEntryId,
+  onOpenEntry,
 }: KnowledgeFeedProps) {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
+  const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
   const [showEmailPrompt, setShowEmailPrompt] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -168,9 +240,11 @@ export function KnowledgeFeed({
   const [hashtagInput, setHashtagInput] = useState("");
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
+  const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const guestName = getGuestName();
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   useEffect(() => {
     const knowledgeQuery = query(
@@ -220,33 +294,42 @@ export function KnowledgeFeed({
     return () => unsubscribe();
   }, []);
 
-  const filteredEntries = entries
-    .filter((entry) => {
-      if (!searchTerm.trim()) return true;
+  const focusedEntry = useMemo(
+    () => entries.find((entry) => entry.id === focusedEntryId) || null,
+    [entries, focusedEntryId]
+  );
 
-      const haystack = [
-        entry.title,
-        entry.content,
-        entry.author,
-        ...entry.hashtags,
-        ...(entry.mentions || []).map((mention) => mention.username),
-      ]
-        .join(" ")
-        .toLowerCase();
+  const filteredEntries = useMemo(() => {
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
 
-      return haystack.includes(searchTerm.trim().toLowerCase());
-    })
-    .sort((left, right) => {
-      if (sortMode === "popular") {
-        const rightScore =
-          (right.likes?.length || 0) * 3 + (right.comments?.length || 0);
-        const leftScore =
-          (left.likes?.length || 0) * 3 + (left.comments?.length || 0);
-        return rightScore - leftScore || right.createdAt - left.createdAt;
-      }
+    return [...entries]
+      .filter((entry) => {
+        if (!normalizedSearch) return true;
 
-      return right.createdAt - left.createdAt;
-    });
+        const haystack = [
+          entry.title,
+          entry.content,
+          entry.author,
+          ...entry.hashtags,
+          ...(entry.mentions || []).map((mention) => mention.username),
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return haystack.includes(normalizedSearch);
+      })
+      .sort((left, right) => {
+        if (sortMode === "popular") {
+          const rightScore =
+            (right.likes?.length || 0) * 3 + (right.comments?.length || 0);
+          const leftScore =
+            (left.likes?.length || 0) * 3 + (left.comments?.length || 0);
+          return rightScore - leftScore || right.createdAt - left.createdAt;
+        }
+
+        return right.createdAt - left.createdAt;
+      });
+  }, [deferredSearchTerm, entries, sortMode]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -258,13 +341,34 @@ export function KnowledgeFeed({
       .slice(0, 6);
   }, [activeMention, profiles]);
 
-  const totalLikes = entries.reduce(
-    (sum, entry) => sum + (entry.likes?.length || 0),
-    0
+  const totalLikes = useMemo(
+    () => entries.reduce((sum, entry) => sum + (entry.likes?.length || 0), 0),
+    [entries]
   );
-  const topHashtags = [
-    ...new Set(entries.flatMap((entry) => entry.hashtags || [])),
-  ].slice(0, 4);
+
+  const topHashtags = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    entries.forEach((entry) => {
+      (entry.hashtags || []).forEach((tag) => {
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      });
+    });
+
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 6)
+      .map(([tag]) => tag);
+  }, [entries]);
+
+  useEffect(() => {
+    if (!focusedEntryId || entries.length === 0) return;
+
+    const target = document.getElementById(`knowledge-${focusedEntryId}`);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [entries.length, focusedEntryId]);
 
   const updateMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -287,15 +391,38 @@ export function KnowledgeFeed({
     const content = draftContent.trim();
     if (!title || !content) return;
 
+    const seedHashtags = mergeHashtags(
+      parseManualHashtags(hashtagInput),
+      extractInlineHashtags(`${title}\n${content}`)
+    );
+
+    setFeedMessage(null);
+    setIsModerating(true);
+
+    const moderation = await moderateContent("knowledge-post", {
+      title,
+      content,
+      hashtags: seedHashtags,
+    });
+
+    if (!moderation.allowed) {
+      setIsModerating(false);
+      setFeedMessage({
+        tone: "warning",
+        title: "Not ready to publish",
+        body: [moderation.message, ...moderation.suggestions].slice(0, 2).join(" "),
+      });
+      return;
+    }
+
+    setIsModerating(false);
     setIsPosting(true);
 
     try {
-      let hashtags = mergeHashtags(
-        parseManualHashtags(hashtagInput),
-        extractInlineHashtags(`${title}\n${content}`)
-      );
+      let hashtags = seedHashtags;
 
       if (hashtags.length === 0) {
+        const { geminiService } = await import("../services/gemini");
         hashtags = await geminiService.generateHashtags(`${title}\n${content}`);
       }
 
@@ -313,6 +440,9 @@ export function KnowledgeFeed({
         mentions,
         imageDataUrl: selectedImage?.dataUrl || null,
         createdAt,
+        excerpt: createExcerpt(content, 180),
+        readingMinutes: estimateReadMinutes(content),
+        qualityScore: moderation.knowledgeScore,
       };
 
       const reference = await addDoc(collection(db, "knowledge"), entryPayload);
@@ -335,9 +465,20 @@ export function KnowledgeFeed({
       setHashtagInput("");
       setSelectedImage(null);
       setActiveMention(null);
+      setSearchTerm("");
+      setFeedMessage({
+        tone: "success",
+        title: "Knowledge published",
+        body: "Your post is live, shareable, and now part of the knowledge feed.",
+      });
+      onOpenEntry(reference.id);
     } catch (error) {
       console.error("Failed to publish knowledge:", error);
-      alert("Could not publish this knowledge entry. Please try again.");
+      setFeedMessage({
+        tone: "warning",
+        title: "Publish failed",
+        body: "Could not publish this knowledge entry. Please try again.",
+      });
     } finally {
       setIsPosting(false);
     }
@@ -392,6 +533,7 @@ export function KnowledgeFeed({
       return;
     }
 
+    setFeedMessage(null);
     setIsPreparingImage(true);
 
     try {
@@ -451,27 +593,56 @@ export function KnowledgeFeed({
     updateMentionState(event.currentTarget.value, event.currentTarget.selectionStart);
   };
 
+  const pageTitle = focusedEntry
+    ? `${focusedEntry.title} | Readative`
+    : "Knowledge Hub | Readative";
+  const pageDescription = focusedEntry
+    ? createExcerpt(focusedEntry.content)
+    : "Readative is a knowledge-first publishing community for practical insights, visual explainers, and thoughtful learning notes.";
+  const pageUrl =
+    typeof window === "undefined"
+      ? "https://readative.com/#knowledge"
+      : `${window.location.origin}${window.location.pathname}${
+          focusedEntry ? `#knowledge/${focusedEntry.id}` : "#knowledge"
+        }`;
+
   return (
     <div className="space-y-6 pb-20">
       <SEO
-        title="Knowledge Hub | Readative"
-        description="Share practical knowledge, visuals, and ideas with the Readative community."
-        keywords={["knowledge", "learning", "insights", "community"]}
+        title={pageTitle}
+        description={pageDescription}
+        keywords={[
+          "knowledge sharing",
+          "learning community",
+          "educational posts",
+          "insights",
+          "readative",
+        ]}
+        type={focusedEntry ? "article" : "website"}
+        url={pageUrl}
+        schema={buildKnowledgeSchemas(focusedEntry)}
+        image={
+          focusedEntry?.imageDataUrl &&
+          !focusedEntry.imageDataUrl.startsWith("data:")
+            ? focusedEntry.imageDataUrl
+            : undefined
+        }
       />
 
-      <section className="overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.3),_transparent_35%),linear-gradient(135deg,#0f172a_0%,#134e4a_45%,#0f766e_100%)] p-7 text-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+      <section className="overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.32),_transparent_35%),linear-gradient(135deg,#0f172a_0%,#134e4a_45%,#0f766e_100%)] p-7 text-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-xl">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-50">
-              <Sparkles className="h-3.5 w-3.5" />
-              Knowledge Hub
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Knowledge-Only Network
             </div>
             <h1 className="max-w-lg text-4xl font-black leading-tight tracking-tight text-white">
-              Turn the home feed into a smarter place to teach what you know.
+              Publish knowledge that deserves to spread.
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-emerald-50/90">
-              Publish insights with a title, text, hashtags, images, and
-              `@username` mentions. Profiles and notifications update live.
+              Readative is now tuned for practical ideas, visual explainers,
+              and useful learning notes. Off-topic, sexual, and low-value posts
+              are filtered before they go live.
             </p>
           </div>
 
@@ -507,11 +678,11 @@ export function KnowledgeFeed({
               Publish Knowledge
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              Share something worth learning
+              Share something people can actually learn from
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              Use a strong title, explain the idea clearly, tag topics with
-              hashtags, and mention people directly with `@username`.
+              Use a strong title, explain the idea clearly, add topic hashtags,
+              and mention people directly with `@username`.
             </p>
           </div>
 
@@ -550,10 +721,41 @@ export function KnowledgeFeed({
           )}
         </div>
 
+        <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-500">
+          <span className="rounded-full bg-slate-100 px-3 py-1">
+            Knowledge only
+          </span>
+          <span className="rounded-full bg-slate-100 px-3 py-1">
+            No sexual content
+          </span>
+          <span className="rounded-full bg-slate-100 px-3 py-1">
+            No promos or follower bait
+          </span>
+          <span className="rounded-full bg-slate-100 px-3 py-1">
+            Teach with examples or takeaways
+          </span>
+        </div>
+
+        {feedMessage && (
+          <div
+            className={`mt-5 rounded-3xl border px-4 py-4 text-sm ${
+              feedMessage.tone === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-amber-200 bg-amber-50 text-amber-700"
+            }`}
+          >
+            <p className="font-bold">{feedMessage.title}</p>
+            <p className="mt-1 leading-6">{feedMessage.body}</p>
+          </div>
+        )}
+
         <div className="mt-6 grid gap-4">
           <input
             value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
+            onChange={(event) => {
+              setDraftTitle(event.target.value);
+              if (feedMessage) setFeedMessage(null);
+            }}
             placeholder="Title your knowledge drop"
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
           />
@@ -564,6 +766,7 @@ export function KnowledgeFeed({
               value={draftContent}
               onChange={(event) => {
                 setDraftContent(event.target.value);
+                if (feedMessage) setFeedMessage(null);
                 updateMentionState(
                   event.target.value,
                   event.target.selectionStart
@@ -608,7 +811,10 @@ export function KnowledgeFeed({
               </div>
               <input
                 value={hashtagInput}
-                onChange={(event) => setHashtagInput(event.target.value)}
+                onChange={(event) => {
+                  setHashtagInput(event.target.value);
+                  if (feedMessage) setFeedMessage(null);
+                }}
                 placeholder="#productivity #history #science"
                 className="w-full bg-transparent text-sm text-slate-700 outline-none"
               />
@@ -638,6 +844,7 @@ export function KnowledgeFeed({
               <img
                 src={selectedImage.dataUrl}
                 alt={selectedImage.fileName}
+                decoding="async"
                 className="h-64 w-full object-cover"
               />
               <div className="flex items-center justify-between bg-white px-4 py-3">
@@ -675,71 +882,104 @@ export function KnowledgeFeed({
               onClick={handlePublish}
               disabled={
                 isPosting ||
+                isModerating ||
                 isPreparingImage ||
                 !draftTitle.trim() ||
                 !draftContent.trim()
               }
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
             >
-              {isPosting || isPreparingImage ? (
+              {isPosting || isModerating || isPreparingImage ? (
                 <Sparkles className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              Publish Knowledge
+              {isModerating ? "Checking quality..." : "Publish Knowledge"}
             </button>
           </div>
         </div>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)] md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search titles, authors, content, mentions, or hashtags"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-          />
+      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search titles, authors, content, mentions, or hashtags"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSortMode("latest")}
+              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
+                sortMode === "latest"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              Latest
+            </button>
+            <button
+              onClick={() => setSortMode("popular")}
+              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
+                sortMode === "popular"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              Most Loved
+            </button>
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => setSortMode("latest")}
-            className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
-              sortMode === "latest"
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-            }`}
-          >
-            Latest
-          </button>
-          <button
-            onClick={() => setSortMode("popular")}
-            className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
-              sortMode === "popular"
-                ? "bg-emerald-600 text-white"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-            }`}
-          >
-            Most Loved
-          </button>
-        </div>
+        {topHashtags.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Trending
+            </span>
+            {topHashtags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setSearchTerm(tag)}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
+
+      {focusedEntry && (
+        <section className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 p-5 text-sm text-emerald-800 shadow-sm">
+          <p className="font-bold">Shared link opened</p>
+          <p className="mt-1 leading-6">
+            You are viewing a direct link to "{focusedEntry.title}". Use share on
+            any card to send people straight to one knowledge post.
+          </p>
+        </section>
+      )}
 
       {isLoading ? (
         <div className="flex flex-col items-center gap-3 py-16">
-          <div className="h-8 w-8 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
           <p className="text-sm text-slate-400">Loading knowledge...</p>
         </div>
       ) : filteredEntries.length === 0 ? (
         <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
           <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-4 text-xl font-black text-slate-900">
-            No knowledge shared yet
+            {searchTerm.trim() ? "No matching knowledge found" : "No knowledge shared yet"}
           </h3>
           <p className="mt-2 text-sm text-slate-500">
-            Publish the first insight or adjust your search to discover more.
+            {searchTerm.trim()
+              ? "Try a different keyword or click a trending hashtag."
+              : "Publish the first insight or adjust your search to discover more."}
           </p>
         </div>
       ) : (
@@ -751,6 +991,8 @@ export function KnowledgeFeed({
                 entry={entry}
                 onIdentityRequired={(action) => setPendingAction(action)}
                 onOpenProfile={onOpenProfile}
+                onOpenEntry={onOpenEntry}
+                highlighted={entry.id === focusedEntryId}
               />
             ))}
           </AnimatePresence>

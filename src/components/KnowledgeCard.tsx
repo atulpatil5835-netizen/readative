@@ -22,6 +22,7 @@ import {
   notifyLikeOnKnowledge,
   removeLikeNotification,
 } from "../utils/notifications";
+import { moderateContent } from "../utils/contentModeration";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -34,6 +35,8 @@ interface KnowledgeCardProps {
     entryId: string;
   }) => void;
   onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
+  highlighted?: boolean;
 }
 
 function renderTextWithMentions(
@@ -65,14 +68,24 @@ function renderTextWithMentions(
   });
 }
 
+function estimateReadMinutes(text: string) {
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(wordCount / 180) || 1);
+}
+
 export function KnowledgeCard({
   entry,
   onIdentityRequired,
   onOpenProfile,
+  onOpenEntry,
+  highlighted = false,
 }: KnowledgeCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
+  const [isModeratingComment, setIsModeratingComment] = useState(false);
+  const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [localLikes, setLocalLikes] = useState<string[]>(entry.likes || []);
   const [localComments, setLocalComments] = useState<KnowledgeComment[]>(
     entry.comments || []
@@ -83,11 +96,18 @@ export function KnowledgeCard({
   const guestId = getGuestId();
   const isLiked = localLikes.includes(guestId);
   const mentions = entry.mentions || [];
+  const readingMinutes = estimateReadMinutes(entry.content);
 
   useEffect(() => {
     setLocalLikes(entry.likes || []);
     setLocalComments(entry.comments || []);
   }, [entry.id, entry.likes, entry.comments]);
+
+  useEffect(() => {
+    if (!shareCopied) return;
+    const timeout = window.setTimeout(() => setShareCopied(false), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [shareCopied]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -162,9 +182,23 @@ export function KnowledgeCard({
     const content = commentText.trim();
     if (!normalizedName || !content) return;
 
+    setCommentMessage(null);
+    setIsModeratingComment(true);
+
+    const moderation = await moderateContent("knowledge-comment", {
+      content,
+    });
+
+    if (!moderation.allowed) {
+      setCommentMessage(moderation.message);
+      setIsModeratingComment(false);
+      return;
+    }
+
     setGuestName(normalizedName);
     setPendingCommenter(null);
     setIsCommenting(true);
+    setIsModeratingComment(false);
 
     const optimisticComment: KnowledgeComment = {
       id: `temp-${Date.now()}`,
@@ -210,6 +244,7 @@ export function KnowledgeCard({
         current.filter((comment) => comment.id !== optimisticComment.id)
       );
       setCommentText(content);
+      setCommentMessage("Could not add your comment right now. Please try again.");
     } finally {
       setIsCommenting(false);
     }
@@ -228,39 +263,49 @@ export function KnowledgeCard({
   };
 
   const handleShare = async () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}#knowledge/${entry.id}`;
     const text = `${entry.title}\n\n${entry.content.slice(0, 160)}${
       entry.content.length > 160 ? "..." : ""
     }`;
+
+    onOpenEntry(entry.id);
 
     if (navigator.share) {
       try {
         await navigator.share({
           title: entry.title,
           text,
-          url: window.location.href,
+          url: shareUrl,
         });
+        setShareCopied(true);
         return;
       } catch (error) {
         console.error("Share cancelled or failed:", error);
       }
     }
 
-    await navigator.clipboard.writeText(`${text}\n\n${window.location.href}`);
-    alert("Knowledge link copied to clipboard!");
+    await navigator.clipboard.writeText(`${text}\n\n${shareUrl}`);
+    setShareCopied(true);
   };
 
   return (
     <motion.article
+      id={`knowledge-${entry.id}`}
       layout
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+      className={cn(
+        "overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]",
+        highlighted && "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]"
+      )}
     >
       {entry.imageDataUrl && (
         <div className="relative h-64 overflow-hidden bg-slate-100">
           <img
             src={entry.imageDataUrl}
             alt={entry.title}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/50 via-transparent to-transparent" />
@@ -289,7 +334,9 @@ export function KnowledgeCard({
               </button>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
-                <span>•</span>
+                <span>&bull;</span>
+                <span>{readingMinutes} min read</span>
+                <span>&bull;</span>
                 <span className="inline-flex items-center gap-1">
                   <BookOpenText className="h-3.5 w-3.5" />
                   Knowledge
@@ -303,9 +350,14 @@ export function KnowledgeCard({
           </div>
         </div>
 
-        <h3 className="text-2xl font-black leading-tight tracking-tight text-slate-950">
-          {entry.title}
-        </h3>
+        <button
+          onClick={() => onOpenEntry(entry.id)}
+          className="text-left transition-colors hover:text-emerald-700"
+        >
+          <h3 className="text-2xl font-black leading-tight tracking-tight text-slate-950">
+            {entry.title}
+          </h3>
+        </button>
         <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-slate-600">
           {renderTextWithMentions(entry.content, mentions, onOpenProfile)}
         </p>
@@ -364,12 +416,20 @@ export function KnowledgeCard({
             </button>
           </div>
 
-          <button
-            onClick={() => void handleShare()}
-            className="text-slate-400 transition-colors hover:text-emerald-600"
-          >
-            <Share2 className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            {shareCopied && (
+              <span className="text-xs font-semibold text-emerald-600">
+                Link ready
+              </span>
+            )}
+            <button
+              onClick={() => void handleShare()}
+              className="text-slate-400 transition-colors hover:text-emerald-600"
+              aria-label="Share knowledge"
+            >
+              <Share2 className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -385,7 +445,10 @@ export function KnowledgeCard({
           <div className="flex gap-3">
             <input
               value={commentText}
-              onChange={(event) => setCommentText(event.target.value)}
+              onChange={(event) => {
+                setCommentText(event.target.value);
+                if (commentMessage) setCommentMessage(null);
+              }}
               onKeyDown={(event) =>
                 event.key === "Enter" && !event.shiftKey && handleCommentSubmit()
               }
@@ -398,12 +461,18 @@ export function KnowledgeCard({
             />
             <button
               onClick={handleCommentSubmit}
-              disabled={isCommenting || !commentText.trim()}
+              disabled={isCommenting || isModeratingComment || !commentText.trim()}
               className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
             >
-              {isCommenting ? "..." : "Post"}
+              {isCommenting || isModeratingComment ? "..." : "Post"}
             </button>
           </div>
+
+          {commentMessage && (
+            <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {commentMessage}
+            </p>
+          )}
 
           <div className="mt-4 space-y-3">
             {localComments.length === 0 ? (

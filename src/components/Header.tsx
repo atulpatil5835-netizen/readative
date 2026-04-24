@@ -25,7 +25,7 @@ export function Header({
               Readative
             </h1>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/60">
-              Read. Write. Learn. Grow
+              Learn In Public
             </p>
           </div>
         </div>

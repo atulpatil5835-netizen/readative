@@ -1,12 +1,10 @@
 import { HelmetProvider } from "react-helmet-async";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { MessageSquareMore } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "./firebase/firebase";
 import { Header } from "./components/Header";
 import { KnowledgeFeed } from "./components/KnowledgeFeed";
-import { SmartTalk } from "./components/SmartTalk";
-import { Profile } from "./components/Profile";
 import {
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
@@ -16,18 +14,40 @@ import { UserNotification } from "./types";
 
 type Tab = "knowledge" | "smarttalk" | "profile";
 
+const SmartTalk = lazy(() =>
+  import("./components/SmartTalk").then((module) => ({
+    default: module.SmartTalk,
+  }))
+);
+
+const Profile = lazy(() =>
+  import("./components/Profile").then((module) => ({
+    default: module.Profile,
+  }))
+);
+
 interface ParsedHash {
   tab: Tab;
   profileAuthorId: string | null;
+  focusedEntryId: string | null;
 }
 
 function parseHash(): ParsedHash {
   const hash = window.location.hash.replace(/^#/, "");
 
+  if (hash.startsWith("knowledge/")) {
+    return {
+      tab: "knowledge",
+      profileAuthorId: null,
+      focusedEntryId: decodeURIComponent(hash.slice("knowledge/".length)),
+    };
+  }
+
   if (hash.startsWith("profile/")) {
     return {
       tab: "profile",
       profileAuthorId: decodeURIComponent(hash.slice("profile/".length)),
+      focusedEntryId: null,
     };
   }
 
@@ -35,6 +55,7 @@ function parseHash(): ParsedHash {
     return {
       tab: "profile",
       profileAuthorId: null,
+      focusedEntryId: null,
     };
   }
 
@@ -42,16 +63,26 @@ function parseHash(): ParsedHash {
     return {
       tab: "smarttalk",
       profileAuthorId: null,
+      focusedEntryId: null,
     };
   }
 
   return {
     tab: "knowledge",
     profileAuthorId: null,
+    focusedEntryId: null,
   };
 }
 
-function buildHash(tab: Tab, profileAuthorId: string | null = null) {
+function buildHash(
+  tab: Tab,
+  profileAuthorId: string | null = null,
+  focusedEntryId: string | null = null
+) {
+  if (tab === "knowledge" && focusedEntryId) {
+    return `knowledge/${encodeURIComponent(focusedEntryId)}`;
+  }
+
   if (tab === "profile" && profileAuthorId) {
     return `profile/${encodeURIComponent(profileAuthorId)}`;
   }
@@ -65,19 +96,31 @@ export default function App() {
   const [profileAuthorId, setProfileAuthorId] = useState<string | null>(
     initialRoute.profileAuthorId
   );
+  const [focusedEntryId, setFocusedEntryId] = useState<string | null>(
+    initialRoute.focusedEntryId
+  );
   const [identity, setIdentity] = useState<KnowledgeIdentity | null>(() =>
     getKnowledgeIdentity()
   );
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
-  const handleTabChange = (tab: Tab, nextProfileAuthorId: string | null = null) => {
+  const handleTabChange = (
+    tab: Tab,
+    nextProfileAuthorId: string | null = null,
+    nextFocusedEntryId: string | null = null
+  ) => {
     setActiveTab(tab);
     setProfileAuthorId(tab === "profile" ? nextProfileAuthorId : null);
-    window.location.hash = buildHash(tab, nextProfileAuthorId);
+    setFocusedEntryId(tab === "knowledge" ? nextFocusedEntryId : null);
+    window.location.hash = buildHash(tab, nextProfileAuthorId, nextFocusedEntryId);
   };
 
   const handleOpenProfile = (authorId: string) => {
     handleTabChange("profile", authorId);
+  };
+
+  const handleOpenEntry = (entryId: string) => {
+    handleTabChange("knowledge", null, entryId);
   };
 
   useEffect(() => {
@@ -85,6 +128,7 @@ export default function App() {
       const route = parseHash();
       setActiveTab(route.tab);
       setProfileAuthorId(route.profileAuthorId);
+      setFocusedEntryId(route.focusedEntryId);
     };
 
     window.addEventListener("hashchange", onHashChange);
@@ -131,7 +175,7 @@ export default function App() {
       <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
         <Header
           activeTab={activeTab}
-          setActiveTab={handleTabChange}
+          setActiveTab={(tab) => handleTabChange(tab)}
           unreadNotificationCount={unreadNotificationCount}
         />
 
@@ -141,16 +185,25 @@ export default function App() {
               identity={identity}
               onIdentityChange={setIdentity}
               onOpenProfile={handleOpenProfile}
+              focusedEntryId={focusedEntryId}
+              onOpenEntry={handleOpenEntry}
             />
           )}
-          {activeTab === "smarttalk" && <SmartTalk />}
+          {activeTab === "smarttalk" && (
+            <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
+              <SmartTalk />
+            </Suspense>
+          )}
           {activeTab === "profile" && (
-            <Profile
-              currentIdentity={identity}
-              viewedAuthorId={profileAuthorId}
-              onIdentityChange={setIdentity}
-              onOpenProfile={handleOpenProfile}
-            />
+            <Suspense fallback={<SectionSkeleton label="Loading profile..." />}>
+              <Profile
+                currentIdentity={identity}
+                viewedAuthorId={profileAuthorId}
+                onIdentityChange={setIdentity}
+                onOpenProfile={handleOpenProfile}
+                onOpenEntry={handleOpenEntry}
+              />
+            </Suspense>
           )}
         </main>
 
@@ -187,6 +240,15 @@ export default function App() {
         </nav>
       </div>
     </HelmetProvider>
+  );
+}
+
+function SectionSkeleton({ label }: { label: string }) {
+  return (
+    <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+      <div className="mx-auto h-10 w-10 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+      <p className="mt-4 text-sm text-slate-400">{label}</p>
+    </div>
   );
 }
 
