@@ -719,14 +719,14 @@ function ComposerModal({
   updateMentionState: (value: string, cursorPosition: number) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[55] flex items-start justify-center bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 16, scale: 0.98 }}
-        className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)]"
+        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:max-h-[calc(100vh-6rem)]"
       >
-        <div className="bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
+        <div className="shrink-0 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
           <button
             onClick={onClose}
             className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
@@ -746,189 +746,193 @@ function ComposerModal({
           </p>
         </div>
 
-        <div className="space-y-5 p-6">
-          {identity ? (
-            <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold">Posting as @{identity.displayName}</p>
-                <p className="text-xs text-emerald-700">{identity.email}</p>
-              </div>
-              <div className="flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em]">
-                <button
-                  onClick={() => onOpenProfile(identity.authorId)}
-                  className="underline underline-offset-2"
-                >
-                  View profile
-                </button>
-                <button
-                  onClick={() => {
-                    clearKnowledgeIdentity();
-                    onIdentityChange(null);
-                  }}
-                  className="inline-flex items-center gap-1 underline underline-offset-2"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Sign out
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-              Sign in with email will be asked only when you publish.
-            </div>
-          )}
-
-          <div className="grid gap-4">
-            <input
-              value={draftTitle}
-              onChange={(event) => setDraftTitle(event.target.value)}
-              placeholder="Post title"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-            />
-
-            <div className="relative">
-              <textarea
-                ref={contentRef}
-                value={draftContent}
-                onChange={(event) => {
-                  setDraftContent(event.target.value);
-                  updateMentionState(
-                    event.target.value,
-                    event.target.selectionStart
-                  );
-                }}
-                onKeyUp={handleContentKeyUp}
-                onClick={(event) =>
-                  updateMentionState(
-                    event.currentTarget.value,
-                    event.currentTarget.selectionStart
-                  )
-                }
-                placeholder="Write the full post here. Share useful knowledge only, and tag users with @username."
-                className="min-h-[220px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-              />
-
-              {activeMention && filteredMentionProfiles.length > 0 && (
-                <div className="absolute left-4 right-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                  {filteredMentionProfiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      onClick={() => handleMentionInsert(profile)}
-                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
-                    >
-                      <span className="font-semibold text-slate-800">
-                        @{profile.username}
-                      </span>
-                      <span className="text-xs text-slate-400">User</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-[1.2fr,1fr]">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-                  <Tag className="h-4 w-4" />
-                  Hashtags
-                </div>
-                <input
-                  value={hashtagInput}
-                  onChange={(event) => setHashtagInput(event.target.value)}
-                  placeholder="#science #history #productivity"
-                  className="w-full bg-transparent text-sm text-slate-700 outline-none"
-                />
-              </div>
-
-              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-5 p-6">
+            {identity ? (
+              <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-                    Image
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {selectedImage?.fileName || "Upload post image"}
-                  </p>
+                  <p className="font-semibold">Posting as @{identity.displayName}</p>
+                  <p className="text-xs text-emerald-700">{identity.email}</p>
                 </div>
-                <ImagePlus className="h-5 w-5 text-emerald-600" />
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelected}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {selectedImage && (
-              <div className="overflow-hidden rounded-[28px] border border-slate-200">
-                <img
-                  src={selectedImage.dataUrl}
-                  alt={selectedImage.fileName}
-                  decoding="async"
-                  className="h-64 w-full object-cover"
-                />
-                <div className="flex items-center justify-between bg-white px-4 py-3">
-                  <p className="text-sm text-slate-500">{selectedImage.fileName}</p>
+                <div className="flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em]">
                   <button
-                    onClick={() => setSelectedImage(null)}
-                    className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
+                    onClick={() => onOpenProfile(identity.authorId)}
+                    className="underline underline-offset-2"
                   >
-                    Remove
+                    View profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearKnowledgeIdentity();
+                      onIdentityChange(null);
+                    }}
+                    className="inline-flex items-center gap-1 underline underline-offset-2"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sign out
                   </button>
                 </div>
               </div>
-            )}
-
-            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                Knowledge only
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                No sexual content
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                <AtSign className="mr-1 inline h-3 w-3" />
-                Mention with @username
-              </span>
-            </div>
-
-            {feedMessage && (
-              <div
-                className={`rounded-3xl border px-4 py-4 text-sm ${
-                  feedMessage.tone === "success"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700"
-                }`}
-              >
-                <p className="font-bold">{feedMessage.title}</p>
-                <p className="mt-1 leading-6">{feedMessage.body}</p>
+            ) : (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                Sign in with email will be asked only when you publish.
               </div>
             )}
 
-            <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
-                Add title, content, hashtags, and image details here.
-              </p>
+            <div className="grid gap-4">
+              <input
+                value={draftTitle}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                placeholder="Post title"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+              />
 
-              <button
-                onClick={handlePublish}
-                disabled={
-                  isPosting ||
-                  isModerating ||
-                  isPreparingImage ||
-                  !draftTitle.trim() ||
-                  !draftContent.trim()
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {isPosting || isModerating || isPreparingImage ? (
-                  <Sparkles className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
+              <div className="relative">
+                <textarea
+                  ref={contentRef}
+                  value={draftContent}
+                  onChange={(event) => {
+                    setDraftContent(event.target.value);
+                    updateMentionState(
+                      event.target.value,
+                      event.target.selectionStart
+                    );
+                  }}
+                  onKeyUp={handleContentKeyUp}
+                  onClick={(event) =>
+                    updateMentionState(
+                      event.currentTarget.value,
+                      event.currentTarget.selectionStart
+                    )
+                  }
+                  placeholder="Write the full post here. Share useful knowledge only, and tag users with @username."
+                  className="min-h-[220px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+                />
+
+                {activeMention && filteredMentionProfiles.length > 0 && (
+                  <div className="absolute left-4 right-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    {filteredMentionProfiles.map((profile) => (
+                      <button
+                        key={profile.id}
+                        onClick={() => handleMentionInsert(profile)}
+                        className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                      >
+                        <span className="font-semibold text-slate-800">
+                          @{profile.username}
+                        </span>
+                        <span className="text-xs text-slate-400">User</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-                {isModerating ? "Checking..." : "Publish post"}
-              </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1.2fr,1fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                    <Tag className="h-4 w-4" />
+                    Hashtags
+                  </div>
+                  <input
+                    value={hashtagInput}
+                    onChange={(event) => setHashtagInput(event.target.value)}
+                    placeholder="#science #history #productivity"
+                    className="w-full bg-transparent text-sm text-slate-700 outline-none"
+                  />
+                </div>
+
+                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                      Image
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {selectedImage?.fileName || "Upload post image"}
+                    </p>
+                  </div>
+                  <ImagePlus className="h-5 w-5 text-emerald-600" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelected}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {selectedImage && (
+                <div className="overflow-hidden rounded-[28px] border border-slate-200">
+                  <img
+                    src={selectedImage.dataUrl}
+                    alt={selectedImage.fileName}
+                    decoding="async"
+                    className="h-64 w-full object-cover"
+                  />
+                  <div className="flex items-center justify-between bg-white px-4 py-3">
+                    <p className="text-sm text-slate-500">{selectedImage.fileName}</p>
+                    <button
+                      onClick={() => setSelectedImage(null)}
+                      className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                <span className="rounded-full bg-slate-100 px-3 py-1">
+                  Knowledge only
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1">
+                  No sexual content
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1">
+                  <AtSign className="mr-1 inline h-3 w-3" />
+                  Mention with @username
+                </span>
+              </div>
+
+              {feedMessage && (
+                <div
+                  className={`rounded-3xl border px-4 py-4 text-sm ${
+                    feedMessage.tone === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <p className="font-bold">{feedMessage.title}</p>
+                  <p className="mt-1 leading-6">{feedMessage.body}</p>
+                </div>
+              )}
             </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500">
+              Scroll inside this window to see image upload and all post details.
+            </p>
+
+            <button
+              onClick={handlePublish}
+              disabled={
+                isPosting ||
+                isModerating ||
+                isPreparingImage ||
+                !draftTitle.trim() ||
+                !draftContent.trim()
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
+            >
+              {isPosting || isModerating || isPreparingImage ? (
+                <Sparkles className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {isModerating ? "Checking..." : "Publish post"}
+            </button>
           </div>
         </div>
       </motion.div>
