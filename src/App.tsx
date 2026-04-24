@@ -1,6 +1,6 @@
 import { HelmetProvider } from "react-helmet-async";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { MessageSquareMore } from "lucide-react";
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { ExternalLink, Mail, MessageSquareMore, X } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "./firebase/firebase";
 import { Header } from "./components/Header";
@@ -103,6 +103,8 @@ export default function App() {
     getKnowledgeIdentity()
   );
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [composerOpenSignal, setComposerOpenSignal] = useState(0);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
 
   const handleTabChange = (
     tab: Tab,
@@ -112,6 +114,7 @@ export default function App() {
     setActiveTab(tab);
     setProfileAuthorId(tab === "profile" ? nextProfileAuthorId : null);
     setFocusedEntryId(tab === "knowledge" ? nextFocusedEntryId : null);
+    setShowInfoPanel(false);
     window.location.hash = buildHash(tab, nextProfileAuthorId, nextFocusedEntryId);
   };
 
@@ -121,6 +124,15 @@ export default function App() {
 
   const handleOpenEntry = (entryId: string) => {
     handleTabChange("knowledge", null, entryId);
+  };
+
+  const handleOpenComposer = () => {
+    if (activeTab !== "knowledge") {
+      handleTabChange("knowledge");
+    }
+
+    setShowInfoPanel(false);
+    setComposerOpenSignal((current) => current + 1);
   };
 
   useEffect(() => {
@@ -177,6 +189,8 @@ export default function App() {
           activeTab={activeTab}
           setActiveTab={(tab) => handleTabChange(tab)}
           unreadNotificationCount={unreadNotificationCount}
+          onOpenComposer={handleOpenComposer}
+          onOpenInfo={() => setShowInfoPanel((current) => !current)}
         />
 
         <main className="mx-auto max-w-2xl px-4 pb-24 pt-20">
@@ -187,6 +201,7 @@ export default function App() {
               onOpenProfile={handleOpenProfile}
               focusedEntryId={focusedEntryId}
               onOpenEntry={handleOpenEntry}
+              composerOpenSignal={composerOpenSignal}
             />
           )}
           {activeTab === "smarttalk" && (
@@ -206,6 +221,8 @@ export default function App() {
             </Suspense>
           )}
         </main>
+
+        {showInfoPanel && <InfoPanel onClose={() => setShowInfoPanel(false)} />}
 
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between border-t border-black/5 bg-white px-6 py-3 md:hidden">
           <button
@@ -243,10 +260,93 @@ export default function App() {
   );
 }
 
+function InfoPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[1px]"
+      onClick={onClose}
+    >
+      <aside
+        onClick={(event) => event.stopPropagation()}
+        className="absolute right-4 top-20 w-[min(92vw,360px)] rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-500">
+              Contact Info
+            </p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              Readative details
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <InfoRow
+            icon={<ExternalLink className="h-4 w-4" />}
+            label="LinkedIn Page"
+            value="Innovation InfoHub"
+            href="https://www.linkedin.com/company/innovation-infohub/"
+          />
+          <InfoRow
+            icon={<Mail className="h-4 w-4" />}
+            label="Support Email"
+            value="reader@readative.com"
+            href="mailto:reader@readative.com"
+          />
+          <InfoRow
+            icon={<ExternalLink className="h-4 w-4" />}
+            label="Creator"
+            value="Atul Hinge"
+            href="https://www.linkedin.com/in/atul-hinge-304aab155/"
+          />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  href,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  href: string;
+}) {
+  return (
+    <a
+      href={href}
+      target={href.startsWith("http") ? "_blank" : undefined}
+      rel={href.startsWith("http") ? "noreferrer" : undefined}
+      className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60"
+    >
+      <div className="mt-0.5 rounded-full bg-white p-2 text-emerald-700 shadow-sm">
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+          {label}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+      </div>
+    </a>
+  );
+}
+
 function SectionSkeleton({ label }: { label: string }) {
   return (
     <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-      <div className="mx-auto h-10 w-10 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+      <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
       <p className="mt-4 text-sm text-slate-400">{label}</p>
     </div>
   );

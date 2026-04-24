@@ -1,23 +1,22 @@
 import {
   type ChangeEvent,
   type KeyboardEvent,
-  useDeferredValue,
+  type RefObject,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   AtSign,
   BookOpenText,
   ImagePlus,
-  Search,
+  LogOut,
   Send,
-  ShieldCheck,
   Sparkles,
   Tag,
-  TrendingUp,
+  X,
 } from "lucide-react";
 import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -37,8 +36,6 @@ import { moderateContent } from "../utils/contentModeration";
 type PendingAction =
   | { type: "like" | "comment"; entryId: string }
   | null;
-
-type SortMode = "latest" | "popular";
 
 interface SelectedImage {
   dataUrl: string;
@@ -62,6 +59,7 @@ interface KnowledgeFeedProps {
   onOpenProfile: (authorId: string) => void;
   focusedEntryId: string | null;
   onOpenEntry: (entryId: string) => void;
+  composerOpenSignal: number;
 }
 
 function parseManualHashtags(input: string): string[] {
@@ -179,16 +177,10 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
   const collectionSchema = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: "Readative Knowledge Hub",
+    name: "Readative Knowledge Feed",
     url: baseUrl,
     description:
-      "A knowledge-first community where people publish practical insights, examples, visual explainers, and learning notes.",
-    isPartOf: {
-      "@type": "WebSite",
-      name: "Readative",
-      url: origin,
-    },
-    about: ["Knowledge sharing", "Learning", "Community publishing"],
+      "A clean homepage showing knowledge posts shared by the Readative community.",
   };
 
   if (!entry) {
@@ -223,6 +215,7 @@ export function KnowledgeFeed({
   onOpenProfile,
   focusedEntryId,
   onOpenEntry,
+  composerOpenSignal,
 }: KnowledgeFeedProps) {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -230,11 +223,10 @@ export function KnowledgeFeed({
   const [isPosting, setIsPosting] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
   const [showEmailPrompt, setShowEmailPrompt] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [publishAfterAccess, setPublishAfterAccess] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>("latest");
-  const [searchTerm, setSearchTerm] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
   const [hashtagInput, setHashtagInput] = useState("");
@@ -244,7 +236,13 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const guestName = getGuestName();
-  const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  useEffect(() => {
+    if (composerOpenSignal > 0) {
+      setShowComposer(true);
+      setFeedMessage(null);
+    }
+  }, [composerOpenSignal]);
 
   useEffect(() => {
     const knowledgeQuery = query(
@@ -294,42 +292,24 @@ export function KnowledgeFeed({
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!focusedEntryId || entries.length === 0) return;
+
+    const target = document.getElementById(`knowledge-${focusedEntryId}`);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [entries.length, focusedEntryId]);
+
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId]
   );
 
-  const filteredEntries = useMemo(() => {
-    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
-
-    return [...entries]
-      .filter((entry) => {
-        if (!normalizedSearch) return true;
-
-        const haystack = [
-          entry.title,
-          entry.content,
-          entry.author,
-          ...entry.hashtags,
-          ...(entry.mentions || []).map((mention) => mention.username),
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return haystack.includes(normalizedSearch);
-      })
-      .sort((left, right) => {
-        if (sortMode === "popular") {
-          const rightScore =
-            (right.likes?.length || 0) * 3 + (right.comments?.length || 0);
-          const leftScore =
-            (left.likes?.length || 0) * 3 + (left.comments?.length || 0);
-          return rightScore - leftScore || right.createdAt - left.createdAt;
-        }
-
-        return right.createdAt - left.createdAt;
-      });
-  }, [deferredSearchTerm, entries, sortMode]);
+  const orderedEntries = useMemo(
+    () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
+    [entries]
+  );
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -340,35 +320,6 @@ export function KnowledgeFeed({
       )
       .slice(0, 6);
   }, [activeMention, profiles]);
-
-  const totalLikes = useMemo(
-    () => entries.reduce((sum, entry) => sum + (entry.likes?.length || 0), 0),
-    [entries]
-  );
-
-  const topHashtags = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    entries.forEach((entry) => {
-      (entry.hashtags || []).forEach((tag) => {
-        counts.set(tag, (counts.get(tag) || 0) + 1);
-      });
-    });
-
-    return [...counts.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-      .slice(0, 6)
-      .map(([tag]) => tag);
-  }, [entries]);
-
-  useEffect(() => {
-    if (!focusedEntryId || entries.length === 0) return;
-
-    const target = document.getElementById(`knowledge-${focusedEntryId}`);
-    if (!target) return;
-
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [entries.length, focusedEntryId]);
 
   const updateMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -384,6 +335,15 @@ export function KnowledgeFeed({
       query: match[1].toLowerCase(),
       start: atIndex,
     });
+  };
+
+  const resetComposer = () => {
+    setDraftTitle("");
+    setDraftContent("");
+    setHashtagInput("");
+    setSelectedImage(null);
+    setActiveMention(null);
+    setFeedMessage(null);
   };
 
   const publishKnowledge = async (currentIdentity: KnowledgeIdentity) => {
@@ -409,7 +369,7 @@ export function KnowledgeFeed({
       setIsModerating(false);
       setFeedMessage({
         tone: "warning",
-        title: "Not ready to publish",
+        title: "Post blocked",
         body: [moderation.message, ...moderation.suggestions].slice(0, 2).join(" "),
       });
       return;
@@ -460,24 +420,15 @@ export function KnowledgeFeed({
         mentions
       );
 
-      setDraftTitle("");
-      setDraftContent("");
-      setHashtagInput("");
-      setSelectedImage(null);
-      setActiveMention(null);
-      setSearchTerm("");
-      setFeedMessage({
-        tone: "success",
-        title: "Knowledge published",
-        body: "Your post is live, shareable, and now part of the knowledge feed.",
-      });
+      resetComposer();
+      setShowComposer(false);
       onOpenEntry(reference.id);
     } catch (error) {
       console.error("Failed to publish knowledge:", error);
       setFeedMessage({
         tone: "warning",
         title: "Publish failed",
-        body: "Could not publish this knowledge entry. Please try again.",
+        body: "Could not publish this post. Please try again.",
       });
     } finally {
       setIsPosting(false);
@@ -595,10 +546,10 @@ export function KnowledgeFeed({
 
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
-    : "Knowledge Hub | Readative";
+    : "Home Feed | Readative";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
-    : "Readative is a knowledge-first publishing community for practical insights, visual explainers, and thoughtful learning notes.";
+    : "Readative homepage showing only knowledge posts from the community.";
   const pageUrl =
     typeof window === "undefined"
       ? "https://readative.com/#knowledge"
@@ -607,17 +558,11 @@ export function KnowledgeFeed({
         }`;
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="pb-20">
       <SEO
         title={pageTitle}
         description={pageDescription}
-        keywords={[
-          "knowledge sharing",
-          "learning community",
-          "educational posts",
-          "insights",
-          "readative",
-        ]}
+        keywords={["homepage", "knowledge posts", "learning feed", "readative"]}
         type={focusedEntry ? "article" : "website"}
         url={pageUrl}
         schema={buildKnowledgeSchemas(focusedEntry)}
@@ -629,363 +574,25 @@ export function KnowledgeFeed({
         }
       />
 
-      <section className="overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.32),_transparent_35%),linear-gradient(135deg,#0f172a_0%,#134e4a_45%,#0f766e_100%)] p-7 text-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-50">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Knowledge-Only Network
-            </div>
-            <h1 className="max-w-lg text-4xl font-black leading-tight tracking-tight text-white">
-              Publish knowledge that deserves to spread.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-emerald-50/90">
-              Readative is now tuned for practical ideas, visual explainers,
-              and useful learning notes. Off-topic, sexual, and low-value posts
-              are filtered before they go live.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 md:min-w-[280px]">
-            <div className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
-              <p className="text-2xl font-black">{entries.length}</p>
-              <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-emerald-50/80">
-                Insights
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
-              <p className="text-2xl font-black">{totalLikes}</p>
-              <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-emerald-50/80">
-                Likes
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
-              <p className="truncate text-sm font-black">
-                {topHashtags[0] ? `#${topHashtags[0]}` : "Fresh"}
-              </p>
-              <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-emerald-50/80">
-                Trending
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-500">
-              Publish Knowledge
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              Share something people can actually learn from
-            </h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              Use a strong title, explain the idea clearly, add topic hashtags,
-              and mention people directly with `@username`.
-            </p>
-          </div>
-
-          {identity ? (
-            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              <p className="font-semibold">Sharing as @{identity.displayName}</p>
-              <p className="text-xs text-emerald-600">{identity.email}</p>
-              <div className="mt-2 flex gap-3 text-xs font-bold uppercase tracking-[0.18em]">
-                <button
-                  onClick={() => onOpenProfile(identity.authorId)}
-                  className="underline underline-offset-2"
-                >
-                  View profile
-                </button>
-                <button
-                  onClick={() => {
-                    clearKnowledgeIdentity();
-                    onIdentityChange(null);
-                  }}
-                  className="underline underline-offset-2"
-                >
-                  Sign out
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                setPublishAfterAccess(false);
-                setShowEmailPrompt(true);
-              }}
-              className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 transition-colors hover:border-emerald-300"
-            >
-              Sign in / Sign up with email
-            </button>
-          )}
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-500">
-          <span className="rounded-full bg-slate-100 px-3 py-1">
-            Knowledge only
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1">
-            No sexual content
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1">
-            No promos or follower bait
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1">
-            Teach with examples or takeaways
-          </span>
-        </div>
-
-        {feedMessage && (
-          <div
-            className={`mt-5 rounded-3xl border px-4 py-4 text-sm ${
-              feedMessage.tone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-amber-200 bg-amber-50 text-amber-700"
-            }`}
-          >
-            <p className="font-bold">{feedMessage.title}</p>
-            <p className="mt-1 leading-6">{feedMessage.body}</p>
-          </div>
-        )}
-
-        <div className="mt-6 grid gap-4">
-          <input
-            value={draftTitle}
-            onChange={(event) => {
-              setDraftTitle(event.target.value);
-              if (feedMessage) setFeedMessage(null);
-            }}
-            placeholder="Title your knowledge drop"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-          />
-
-          <div className="relative">
-            <textarea
-              ref={contentRef}
-              value={draftContent}
-              onChange={(event) => {
-                setDraftContent(event.target.value);
-                if (feedMessage) setFeedMessage(null);
-                updateMentionState(
-                  event.target.value,
-                  event.target.selectionStart
-                );
-              }}
-              onKeyUp={handleContentKeyUp}
-              onClick={(event) =>
-                updateMentionState(
-                  event.currentTarget.value,
-                  event.currentTarget.selectionStart
-                )
-              }
-              placeholder="Explain what people should learn, why it matters, and how they can use it. Mention people with @username."
-              className="min-h-[180px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-            />
-
-            {activeMention && filteredMentionProfiles.length > 0 && (
-              <div className="absolute left-4 right-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                {filteredMentionProfiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    onClick={() => handleMentionInsert(profile)}
-                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
-                  >
-                    <span className="font-semibold text-slate-800">
-                      @{profile.username}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {profile.id === identity?.authorId ? "You" : "User"}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[1.3fr,1fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-                <Tag className="h-4 w-4" />
-                Hashtags
-              </div>
-              <input
-                value={hashtagInput}
-                onChange={(event) => {
-                  setHashtagInput(event.target.value);
-                  if (feedMessage) setFeedMessage(null);
-                }}
-                placeholder="#productivity #history #science"
-                className="w-full bg-transparent text-sm text-slate-700 outline-none"
-              />
-            </div>
-
-            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-                  Image
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {selectedImage?.fileName || "Upload a supporting image"}
-                </p>
-              </div>
-              <ImagePlus className="h-5 w-5 text-emerald-600" />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelected}
-                className="hidden"
-              />
-            </label>
-          </div>
-
-          {selectedImage && (
-            <div className="overflow-hidden rounded-[28px] border border-slate-200">
-              <img
-                src={selectedImage.dataUrl}
-                alt={selectedImage.fileName}
-                decoding="async"
-                className="h-64 w-full object-cover"
-              />
-              <div className="flex items-center justify-between bg-white px-4 py-3">
-                <p className="text-sm text-slate-500">{selectedImage.fileName}</p>
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2 text-xs text-slate-400">
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                Title + text required
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                Image optional
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                {guestName
-                  ? `Guest reactions as @${guestName}`
-                  : "Name prompt for likes/comments"}
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">
-                <AtSign className="mr-1 inline h-3 w-3" />
-                Tag with @username
-              </span>
-            </div>
-
-            <button
-              onClick={handlePublish}
-              disabled={
-                isPosting ||
-                isModerating ||
-                isPreparingImage ||
-                !draftTitle.trim() ||
-                !draftContent.trim()
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {isPosting || isModerating || isPreparingImage ? (
-                <Sparkles className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              {isModerating ? "Checking quality..." : "Publish Knowledge"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search titles, authors, content, mentions, or hashtags"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSortMode("latest")}
-              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
-                sortMode === "latest"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              Latest
-            </button>
-            <button
-              onClick={() => setSortMode("popular")}
-              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
-                sortMode === "popular"
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              Most Loved
-            </button>
-          </div>
-        </div>
-
-        {topHashtags.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Trending
-            </span>
-            {topHashtags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setSearchTerm(tag)}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {focusedEntry && (
-        <section className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 p-5 text-sm text-emerald-800 shadow-sm">
-          <p className="font-bold">Shared link opened</p>
-          <p className="mt-1 leading-6">
-            You are viewing a direct link to "{focusedEntry.title}". Use share on
-            any card to send people straight to one knowledge post.
-          </p>
-        </section>
-      )}
-
       {isLoading ? (
-        <div className="flex flex-col items-center gap-3 py-16">
+        <div className="flex flex-col items-center gap-3 py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
-          <p className="text-sm text-slate-400">Loading knowledge...</p>
+          <p className="text-sm text-slate-400">Loading posts...</p>
         </div>
-      ) : filteredEntries.length === 0 ? (
-        <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
+      ) : orderedEntries.length === 0 ? (
+        <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
           <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-4 text-xl font-black text-slate-900">
-            {searchTerm.trim() ? "No matching knowledge found" : "No knowledge shared yet"}
+            No posts yet
           </h3>
           <p className="mt-2 text-sm text-slate-500">
-            {searchTerm.trim()
-              ? "Try a different keyword or click a trending hashtag."
-              : "Publish the first insight or adjust your search to discover more."}
+            Tap the `+` button at the top to upload the first knowledge post.
           </p>
         </div>
       ) : (
         <div className="space-y-6">
           <AnimatePresence mode="popLayout">
-            {filteredEntries.map((entry) => (
+            {orderedEntries.map((entry) => (
               <KnowledgeCard
                 key={entry.id}
                 entry={entry}
@@ -1000,6 +607,39 @@ export function KnowledgeFeed({
       )}
 
       <AnimatePresence>
+        {showComposer && (
+          <ComposerModal
+            identity={identity}
+            onIdentityChange={onIdentityChange}
+            onOpenProfile={onOpenProfile}
+            onClose={() => {
+              if (isPosting || isModerating || isPreparingImage) return;
+              setShowComposer(false);
+              setFeedMessage(null);
+            }}
+            draftTitle={draftTitle}
+            setDraftTitle={setDraftTitle}
+            draftContent={draftContent}
+            setDraftContent={setDraftContent}
+            hashtagInput={hashtagInput}
+            setHashtagInput={setHashtagInput}
+            selectedImage={selectedImage}
+            setSelectedImage={setSelectedImage}
+            isPosting={isPosting}
+            isModerating={isModerating}
+            isPreparingImage={isPreparingImage}
+            feedMessage={feedMessage}
+            handlePublish={handlePublish}
+            handleImageSelected={handleImageSelected}
+            contentRef={contentRef}
+            activeMention={activeMention}
+            filteredMentionProfiles={filteredMentionProfiles}
+            handleMentionInsert={handleMentionInsert}
+            handleContentKeyUp={handleContentKeyUp}
+            updateMentionState={updateMentionState}
+          />
+        )}
+
         {showEmailPrompt && (
           <EmailAccessPrompt
             initialEmail={identity?.email}
@@ -1023,6 +663,275 @@ export function KnowledgeFeed({
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function ComposerModal({
+  identity,
+  onIdentityChange,
+  onOpenProfile,
+  onClose,
+  draftTitle,
+  setDraftTitle,
+  draftContent,
+  setDraftContent,
+  hashtagInput,
+  setHashtagInput,
+  selectedImage,
+  setSelectedImage,
+  isPosting,
+  isModerating,
+  isPreparingImage,
+  feedMessage,
+  handlePublish,
+  handleImageSelected,
+  contentRef,
+  activeMention,
+  filteredMentionProfiles,
+  handleMentionInsert,
+  handleContentKeyUp,
+  updateMentionState,
+}: {
+  identity: KnowledgeIdentity | null;
+  onIdentityChange: (identity: KnowledgeIdentity | null) => void;
+  onOpenProfile: (authorId: string) => void;
+  onClose: () => void;
+  draftTitle: string;
+  setDraftTitle: (value: string) => void;
+  draftContent: string;
+  setDraftContent: (value: string) => void;
+  hashtagInput: string;
+  setHashtagInput: (value: string) => void;
+  selectedImage: SelectedImage | null;
+  setSelectedImage: (value: SelectedImage | null) => void;
+  isPosting: boolean;
+  isModerating: boolean;
+  isPreparingImage: boolean;
+  feedMessage: FeedMessage | null;
+  handlePublish: () => void;
+  handleImageSelected: (event: ChangeEvent<HTMLInputElement>) => void;
+  contentRef: RefObject<HTMLTextAreaElement | null>;
+  activeMention: MentionState | null;
+  filteredMentionProfiles: UserProfile[];
+  handleMentionInsert: (profile: UserProfile) => void;
+  handleContentKeyUp: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  updateMentionState: (value: string, cursorPosition: number) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[55] flex items-start justify-center bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+        className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)]"
+      >
+        <div className="bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-200">
+            Upload Post
+          </p>
+          <h2 className="mt-2 text-3xl font-black tracking-tight">
+            Create a knowledge post
+          </h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-emerald-50">
+            Add your full post details here. Homepage stays clean and shows only
+            posts, while the `+` button opens everything needed to publish.
+          </p>
+        </div>
+
+        <div className="space-y-5 p-6">
+          {identity ? (
+            <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Posting as @{identity.displayName}</p>
+                <p className="text-xs text-emerald-700">{identity.email}</p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em]">
+                <button
+                  onClick={() => onOpenProfile(identity.authorId)}
+                  className="underline underline-offset-2"
+                >
+                  View profile
+                </button>
+                <button
+                  onClick={() => {
+                    clearKnowledgeIdentity();
+                    onIdentityChange(null);
+                  }}
+                  className="inline-flex items-center gap-1 underline underline-offset-2"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              Sign in with email will be asked only when you publish.
+            </div>
+          )}
+
+          <div className="grid gap-4">
+            <input
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              placeholder="Post title"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+            />
+
+            <div className="relative">
+              <textarea
+                ref={contentRef}
+                value={draftContent}
+                onChange={(event) => {
+                  setDraftContent(event.target.value);
+                  updateMentionState(
+                    event.target.value,
+                    event.target.selectionStart
+                  );
+                }}
+                onKeyUp={handleContentKeyUp}
+                onClick={(event) =>
+                  updateMentionState(
+                    event.currentTarget.value,
+                    event.currentTarget.selectionStart
+                  )
+                }
+                placeholder="Write the full post here. Share useful knowledge only, and tag users with @username."
+                className="min-h-[220px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+              />
+
+              {activeMention && filteredMentionProfiles.length > 0 && (
+                <div className="absolute left-4 right-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  {filteredMentionProfiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      onClick={() => handleMentionInsert(profile)}
+                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                    >
+                      <span className="font-semibold text-slate-800">
+                        @{profile.username}
+                      </span>
+                      <span className="text-xs text-slate-400">User</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[1.2fr,1fr]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                  <Tag className="h-4 w-4" />
+                  Hashtags
+                </div>
+                <input
+                  value={hashtagInput}
+                  onChange={(event) => setHashtagInput(event.target.value)}
+                  placeholder="#science #history #productivity"
+                  className="w-full bg-transparent text-sm text-slate-700 outline-none"
+                />
+              </div>
+
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                    Image
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {selectedImage?.fileName || "Upload post image"}
+                  </p>
+                </div>
+                <ImagePlus className="h-5 w-5 text-emerald-600" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelected}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {selectedImage && (
+              <div className="overflow-hidden rounded-[28px] border border-slate-200">
+                <img
+                  src={selectedImage.dataUrl}
+                  alt={selectedImage.fileName}
+                  decoding="async"
+                  className="h-64 w-full object-cover"
+                />
+                <div className="flex items-center justify-between bg-white px-4 py-3">
+                  <p className="text-sm text-slate-500">{selectedImage.fileName}</p>
+                  <button
+                    onClick={() => setSelectedImage(null)}
+                    className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-3 py-1">
+                Knowledge only
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">
+                No sexual content
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">
+                <AtSign className="mr-1 inline h-3 w-3" />
+                Mention with @username
+              </span>
+            </div>
+
+            {feedMessage && (
+              <div
+                className={`rounded-3xl border px-4 py-4 text-sm ${
+                  feedMessage.tone === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}
+              >
+                <p className="font-bold">{feedMessage.title}</p>
+                <p className="mt-1 leading-6">{feedMessage.body}</p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">
+                Add title, content, hashtags, and image details here.
+              </p>
+
+              <button
+                onClick={handlePublish}
+                disabled={
+                  isPosting ||
+                  isModerating ||
+                  isPreparingImage ||
+                  !draftTitle.trim() ||
+                  !draftContent.trim()
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isPosting || isModerating || isPreparingImage ? (
+                  <Sparkles className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                {isModerating ? "Checking..." : "Publish post"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }

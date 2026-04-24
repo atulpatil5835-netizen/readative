@@ -1,64 +1,98 @@
+import { CirclePlus, Info, Plus } from "lucide-react";
 import { Logo } from "./Logo";
 
 interface HeaderProps {
   activeTab: "knowledge" | "smarttalk" | "profile";
   setActiveTab: (tab: "knowledge" | "smarttalk" | "profile") => void;
   unreadNotificationCount: number;
+  onOpenComposer: () => void;
+  onOpenInfo: () => void;
 }
 
 export function Header({
   activeTab,
   setActiveTab,
   unreadNotificationCount,
+  onOpenComposer,
+  onOpenInfo,
 }: HeaderProps) {
   const tabs = ["knowledge", "smarttalk", "profile"] as const;
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+    <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-10 w-10 items-center justify-center">
+          <button
+            onClick={() => setActiveTab("knowledge")}
+            className="relative flex h-10 w-10 items-center justify-center"
+            aria-label="Open homepage"
+          >
             <Logo className="h-full w-full" />
-          </div>
+          </button>
           <div>
-            <h1 className="leading-none text-xl font-black tracking-tight text-emerald-900">
+            <button
+              onClick={() => setActiveTab("knowledge")}
+              className="leading-none text-left text-xl font-black tracking-tight text-emerald-900"
+            >
               Readative
-            </h1>
+            </button>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/60">
-              Learn In Public
+              Knowledge Feed
             </p>
           </div>
         </div>
 
-        <nav className="hidden items-center gap-8 md:flex">
-          {tabs.map((tab) => {
-            const label =
-              tab === "smarttalk"
-                ? "SmartTalk"
-                : tab === "knowledge"
-                ? "Knowledge"
-                : "Profile";
+        <div className="flex items-center gap-3">
+          <nav className="hidden items-center gap-6 md:flex">
+            {tabs.map((tab) => {
+              const label =
+                tab === "smarttalk"
+                  ? "SmartTalk"
+                  : tab === "knowledge"
+                  ? "Home"
+                  : "Profile";
 
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`relative text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? "text-emerald-600"
-                    : "text-gray-500 hover:text-emerald-600"
-                }`}
-              >
-                {label}
-                {tab === "profile" && unreadNotificationCount > 0 && (
-                  <span className="absolute -right-5 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                    {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`relative text-sm font-medium transition-colors ${
+                    activeTab === tab
+                      ? "text-emerald-600"
+                      : "text-gray-500 hover:text-emerald-600"
+                  }`}
+                >
+                  {label}
+                  {tab === "profile" && unreadNotificationCount > 0 && (
+                    <span className="absolute -right-5 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                      {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          <button
+            onClick={onOpenComposer}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-emerald-600 px-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            aria-label="Create post"
+            title="Create post"
+          >
+            <Plus className="h-4 w-4 md:hidden" />
+            <CirclePlus className="hidden h-4 w-4 md:block" />
+            <span className="hidden md:inline">Post</span>
+          </button>
+
+          <button
+            onClick={onOpenInfo}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+            aria-label="Open info"
+            title="Contact and creator info"
+          >
+            <Info className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </header>
   );
