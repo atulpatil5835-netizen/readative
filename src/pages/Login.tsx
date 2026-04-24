@@ -1,65 +1,54 @@
-import { useState } from "react"
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
-import { auth } from "../firebase/firebase"
+import { useState } from "react";
+import { ensureSignedInProfile } from "../utils/userProfiles";
 
 export default function Login() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
 
   const handleLogin = async () => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password)
-      alert("Login successful")
-    } catch (error) {
-      console.error(error)
-      alert("Invalid email or password")
+    if (!email.trim() || !username.trim()) {
+      alert("Please enter your username and email.");
+      return;
     }
-  }
 
-  const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider()
     try {
-      await signInWithPopup(auth, provider)
+      await ensureSignedInProfile(email, username);
+      alert("Signed in successfully");
     } catch (error) {
-      console.error(error)
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not sign in right now."
+      );
     }
-  }
+  };
 
   return (
-    <div className="max-w-md mx-auto mt-20 space-y-4">
+    <div className="mx-auto mt-20 max-w-md space-y-4">
+      <h2 className="text-2xl font-bold">Sign In</h2>
 
-      <h2 className="text-2xl font-bold">Login</h2>
+      <input
+        type="text"
+        placeholder="Username"
+        className="w-full border p-2"
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
+      />
 
       <input
         type="email"
         placeholder="Email"
-        className="border p-2 w-full"
+        className="w-full border p-2"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        className="border p-2 w-full"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
+        onChange={(event) => setEmail(event.target.value)}
       />
 
       <button
-        onClick={handleLogin}
-        className="bg-emerald-600 text-white px-4 py-2 rounded w-full"
+        onClick={() => void handleLogin()}
+        className="w-full rounded bg-emerald-600 px-4 py-2 text-white"
       >
-        Login
+        Continue With Email
       </button>
-
-      <button
-        onClick={handleGoogleLogin}
-        className="bg-white border px-4 py-2 rounded w-full"
-      >
-        Login with Google
-      </button>
-
     </div>
-  )
+  );
 }

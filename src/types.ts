@@ -1,28 +1,9 @@
-export type PostCategory = 'story' | 'joke' | 'motivation' | 'poetry' | 'shayari' | 'knowledge' | 'questions';
-
-export interface Post {
-  id: string;
-  author: string;
+export interface TaggedUser {
   authorId: string;
-  content: string;
-  type: PostCategory;
-  hashtags: string[];
-  likes: string[];
-  comments: Comment[];
-  createdAt: number;
-  highlights?: Highlight[];
-  aiCommentPosted?: boolean;
+  username: string;
 }
 
-export interface Highlight {
-  id: string;
-  start: number;
-  end: number;
-  type: 'highlight' | 'underline';
-  color: string;
-}
-
-export interface Comment {
+export interface KnowledgeComment {
   id: string;
   author: string;
   authorId?: string;
@@ -31,17 +12,43 @@ export interface Comment {
   isAI?: boolean;
 }
 
+export interface KnowledgeEntry {
+  id: string;
+  author: string;
+  authorId: string;
+  authorEmail: string;
+  title: string;
+  content: string;
+  hashtags: string[];
+  likes: string[];
+  comments: KnowledgeComment[];
+  mentions: TaggedUser[];
+  createdAt: number;
+  imageDataUrl?: string | null;
+}
+
 export interface UserProfile {
   id: string;
-  name: string;
-  photo: string;
-  email?: string;
-  avatar?: string;
-  readingScore: number;
-  examScore: number;
-  readPosts: string[];
-  following: string[];
-  preferredLanguage?: string;
+  email: string;
+  username: string;
+  usernameLower: string;
+  bio: string;
+  createdAt: number;
+  updatedAt: number;
+  lastUsernameChangedAt: number | null;
+}
+
+export interface UserNotification {
+  id: string;
+  targetAuthorId: string;
+  actorAuthorId: string;
+  actorUsername: string;
+  type: "like" | "comment" | "tag";
+  entryId: string;
+  entryTitle: string;
+  preview: string;
+  read: boolean;
+  createdAt: number;
 }
 
 export interface ExamQuestion {
@@ -55,7 +62,7 @@ export interface SmartAnswer {
   author: string;
   authorId?: string;
   content: string;
-  type: 'user' | 'ai';
+  type: "user" | "ai";
   likes: string[];
   dislikes: string[];
   createdAt: number;

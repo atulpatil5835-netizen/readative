@@ -1,214 +1,104 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Mail, Key, CheckCircle, ArrowRight, X } from "lucide-react";
+import { motion } from "motion/react";
+import { AtSign, CheckCircle, Mail, PenSquare, X } from "lucide-react";
 
-interface PostAuthProps {
-  onVerified: (email: string, displayName: string) => void;
+interface EmailAccessPromptProps {
+  initialEmail?: string;
+  initialDisplayName?: string;
+  onConfirm: (email: string, displayName: string) => void;
   onClose: () => void;
 }
 
-type AuthView = "email" | "otp";
+export function EmailAccessPrompt({
+  initialEmail = "",
+  initialDisplayName = "",
+  onConfirm,
+  onClose,
+}: EmailAccessPromptProps) {
+  const [email, setEmail] = useState(initialEmail);
+  const [displayName, setDisplayName] = useState(initialDisplayName);
 
-export function PostAuth({ onVerified, onClose }: PostAuthProps) {
-  const [view, setView] = useState<AuthView>("email");
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [otp, setOtp] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!email.trim() || !displayName.trim()) return;
-
-    setIsLoading(true);
-    setError("");
-
-    const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(mockOtp);
-
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    console.log(`[DEV] OTP for ${email}: ${mockOtp}`);
-
-    setIsLoading(false);
-    setView("otp");
-  };
-
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp === generatedOtp) {
-      onVerified(email.trim(), displayName.trim());
-      return;
-    }
-    setError("Incorrect OTP. Please try again.");
+    onConfirm(email.trim(), displayName.trim());
   };
 
   const inputClass =
-    "w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-gray-800";
+    "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        initial={{ opacity: 0, scale: 0.96, y: 18 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative"
+        exit={{ opacity: 0, scale: 0.96, y: 18 }}
+        className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl"
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-6 text-white">
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-        <AnimatePresence mode="wait">
-          {view === "email" && (
-            <motion.form
-              key="email"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              onSubmit={handleSendOtp}
-              className="space-y-5"
-            >
-              <div className="text-center mb-2">
-                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Mail className="w-6 h-6 text-emerald-600" />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800">Verify to Post</h2>
-                <p className="text-gray-500 text-sm mt-1">
-                  No account needed. Just verify your email once.
-                </p>
-              </div>
+          <div className="mb-4 inline-flex rounded-full bg-white/15 p-3">
+            <PenSquare className="h-6 w-6" />
+          </div>
+          <h2 className="text-2xl font-black tracking-tight">
+            Sign In To Share Knowledge
+          </h2>
+          <p className="mt-2 text-sm text-emerald-50">
+            No password. No OTP. Just your name and email to start publishing.
+          </p>
+        </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Display Name
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">
-                    @
-                  </span>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className={inputClass}
-                    placeholder="your_name"
-                    required
-                  />
-                </div>
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-5 p-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+              Username
+            </label>
+            <div className="relative">
+              <AtSign className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                className={`${inputClass} pl-11`}
+                placeholder="your_username"
+                autoFocus
+                required
+              />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClass}
-                    placeholder="you@example.com"
-                    required
-                  />
-                </div>
-              </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+              Email
+            </label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className={`${inputClass} pl-11`}
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+          </div>
 
-              {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
-              >
-                {isLoading ? (
-                  "Sending OTP..."
-                ) : (
-                  <>
-                    <span>Send OTP</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </motion.form>
-          )}
-
-          {view === "otp" && (
-            <motion.form
-              key="otp"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              onSubmit={handleVerifyOtp}
-              className="space-y-5"
-            >
-              <div className="text-center mb-2">
-                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Key className="w-6 h-6 text-emerald-600" />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800">Enter OTP</h2>
-                <p className="text-gray-500 text-sm mt-1">
-                  We sent a 6-digit code to{" "}
-                  <span className="font-semibold text-gray-700">{email}</span>
-                </p>
-                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 mt-2">
-                  <strong>Dev mode:</strong> Check the browser console for OTP
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  OTP Code
-                </label>
-                <div className="relative">
-                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={otp}
-                    onChange={(e) =>
-                      setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
-                    className={`${inputClass} tracking-widest font-mono text-xl text-center`}
-                    placeholder="000000"
-                    maxLength={6}
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <p className="text-red-500 text-sm font-medium text-center">
-                  {error}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={otp.length < 6}
-                className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Verify & Post
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setView("email");
-                  setOtp("");
-                  setError("");
-                }}
-                className="w-full text-center text-gray-400 text-sm hover:text-gray-600"
-              >
-                {"<-"} Change email
-              </button>
-            </motion.form>
-          )}
-        </AnimatePresence>
+          <button
+            type="submit"
+            disabled={!email.trim() || !displayName.trim()}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <CheckCircle className="h-4 w-4" />
+            Continue
+          </button>
+        </form>
       </motion.div>
     </div>
   );
@@ -238,49 +128,49 @@ export function UsernamePrompt({
   const [username, setUsername] = useState(initialValue);
 
   const resolvedTitle =
-    title || (action === "like" ? "Like this post?" : "Leave a comment?");
-  const resolvedDescription = description || "Just tell us who you are";
+    title || (action === "like" ? "Like this knowledge?" : "Add a comment?");
+  const resolvedDescription = description || "Share your name before joining in";
   const resolvedSubmitLabel =
     submitLabel || (action === "like" ? "Like" : "Continue");
   const emoji = action === "like" ? "❤️" : "💬";
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!username.trim()) return;
     onConfirm(username.trim());
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="w-full max-w-xs bg-white rounded-2xl shadow-2xl p-6 relative"
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl"
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+          className="absolute right-4 top-4 rounded-full p-1 text-slate-400 transition-colors hover:text-slate-600"
         >
-          <X className="w-4 h-4" />
+          <X className="h-4 w-4" />
         </button>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="text-center">
-            <div className="text-2xl mb-2">{emoji}</div>
-            <h2 className="text-lg font-bold text-gray-800">{resolvedTitle}</h2>
-            <p className="text-gray-500 text-sm mt-1">{resolvedDescription}</p>
+            <div className="mb-2 text-2xl">{emoji}</div>
+            <h2 className="text-lg font-bold text-slate-900">{resolvedTitle}</h2>
+            <p className="mt-1 text-sm text-slate-500">{resolvedDescription}</p>
           </div>
 
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-slate-400">
               @
             </span>
             <input
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-gray-800"
+              onChange={(event) => setUsername(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
               placeholder={placeholder}
               autoFocus
               required
@@ -290,9 +180,9 @@ export function UsernamePrompt({
           <button
             type="submit"
             disabled={!username.trim()}
-            className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
           >
-            <CheckCircle className="w-4 h-4" />
+            <CheckCircle className="h-4 w-4" />
             {resolvedSubmitLabel}
           </button>
         </form>
