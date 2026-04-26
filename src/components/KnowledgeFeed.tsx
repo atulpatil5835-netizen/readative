@@ -354,6 +354,7 @@ export function KnowledgeFeed({
     () => notifications.filter((notification) => !notification.read),
     [notifications]
   );
+  const feedNotifications = useMemo(() => notifications.slice(0, 4), [notifications]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -615,22 +616,12 @@ export function KnowledgeFeed({
         }
       />
 
-      {identity && (
-        <HomeActivityPanel
-          identity={identity}
-          notifications={notifications}
-          unreadCount={unreadNotifications.length}
-          onOpenProfile={onOpenProfile}
-          onOpenEntry={onOpenEntry}
-        />
-      )}
-
       {isLoading ? (
         <div className="flex flex-col items-center gap-3 py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
           <p className="text-sm text-slate-400">Loading posts...</p>
         </div>
-      ) : orderedEntries.length === 0 ? (
+      ) : orderedEntries.length === 0 && feedNotifications.length === 0 ? (
         <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
           <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-4 text-xl font-black text-slate-900">
@@ -642,11 +633,27 @@ export function KnowledgeFeed({
         </div>
       ) : (
         <div className="space-y-6">
+          {identity &&
+            feedNotifications.map((notification, index) => (
+              <ActivityFeedCard
+                key={notification.id}
+                identity={identity}
+                notification={notification}
+                unreadCount={unreadNotifications.length}
+                showHeader={index === 0}
+                onOpenProfile={onOpenProfile}
+                onOpenEntry={onOpenEntry}
+                onMarkAllRead={() =>
+                  void markNotificationsAsRead(notifications.map((item) => item.id))
+                }
+              />
+            ))}
           <AnimatePresence mode="popLayout">
             {orderedEntries.map((entry) => (
               <KnowledgeCard
                 key={entry.id}
                 entry={entry}
+                profiles={profiles}
                 onIdentityRequired={(action) => setPendingAction(action)}
                 onOpenProfile={onOpenProfile}
                 onOpenEntry={onOpenEntry}
@@ -717,21 +724,23 @@ export function KnowledgeFeed({
   );
 }
 
-function HomeActivityPanel({
+function ActivityFeedCard({
   identity,
-  notifications,
+  notification,
   unreadCount,
+  showHeader,
   onOpenProfile,
   onOpenEntry,
+  onMarkAllRead,
 }: {
   identity: KnowledgeIdentity;
-  notifications: UserNotification[];
+  notification: UserNotification;
   unreadCount: number;
+  showHeader: boolean;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
+  onMarkAllRead: () => void;
 }) {
-  const recentNotifications = notifications.slice(0, 4);
-
   const openNotification = async (notification: UserNotification) => {
     if (!notification.read) {
       await markNotificationAsRead(notification.id);
@@ -741,97 +750,83 @@ function HomeActivityPanel({
   };
 
   return (
-    <section className="mb-6 overflow-hidden rounded-[30px] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50 shadow-[0_20px_60px_rgba(16,185,129,0.08)]">
-      <div className="flex flex-col gap-4 border-b border-emerald-100 px-6 py-5 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-600">
-            Live Activity
-          </p>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-            @{identity.displayName}, everything happening around you is here.
-          </h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
-            <Bell className="h-4 w-4 text-emerald-600" />
-            {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
+    <article className="overflow-hidden rounded-[30px] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50 shadow-[0_20px_60px_rgba(16,185,129,0.08)]">
+      {showHeader && (
+        <div className="flex flex-col gap-4 border-b border-emerald-100 px-6 py-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-600">
+              Live Activity In Feed
+            </p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              @{identity.displayName}, your alerts now live inside the feed.
+            </h2>
           </div>
-          <button
-            onClick={() => void markNotificationsAsRead(notifications.map((item) => item.id))}
-            disabled={notifications.length === 0 || unreadCount === 0}
-            className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
-          >
-            Mark all read
-          </button>
-        </div>
-      </div>
-
-      {recentNotifications.length === 0 ? (
-        <div className="px-6 py-8 text-sm text-slate-500">
-          Likes, comments, and tags on your knowledge will appear here in realtime.
-        </div>
-      ) : (
-        <div className="divide-y divide-emerald-100/80">
-          {recentNotifications.map((notification) => (
-            <div
-              key={notification.id}
-              className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-white/70"
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`mt-1 rounded-2xl p-2 ${
-                    notification.type === "like"
-                      ? "bg-rose-100 text-rose-600"
-                      : notification.type === "comment"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-cyan-100 text-cyan-700"
-                  }`}
-                >
-                  {notification.type === "like" ? (
-                    <Heart className="h-4 w-4" />
-                  ) : notification.type === "comment" ? (
-                    <MessageCircle className="h-4 w-4" />
-                  ) : (
-                    <AtSign className="h-4 w-4" />
-                  )}
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenProfile(notification.actorAuthorId);
-                      }}
-                      className="text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-                    >
-                      @{notification.actorUsername}
-                    </button>
-                    {!notification.read && (
-                      <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                        New
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    {notification.preview}
-                  </p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    {new Date(notification.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => void openNotification(notification)}
-                className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50"
-              >
-                Open
-              </button>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+              <Bell className="h-4 w-4 text-emerald-600" />
+              {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
             </div>
-          ))}
+            <button
+              onClick={onMarkAllRead}
+              disabled={unreadCount === 0}
+              className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+            >
+              Mark all read
+            </button>
+          </div>
         </div>
       )}
-    </section>
+
+      <div className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-white/70">
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-1 rounded-2xl p-2 ${
+              notification.type === "like"
+                ? "bg-rose-100 text-rose-600"
+                : notification.type === "comment"
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-cyan-100 text-cyan-700"
+            }`}
+          >
+            {notification.type === "like" ? (
+              <Heart className="h-4 w-4" />
+            ) : notification.type === "comment" ? (
+              <MessageCircle className="h-4 w-4" />
+            ) : (
+              <AtSign className="h-4 w-4" />
+            )}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => onOpenProfile(notification.actorAuthorId)}
+                className="text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
+              >
+                @{notification.actorUsername}
+              </button>
+              {!notification.read && (
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
+                  New
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              {notification.preview}
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              {new Date(notification.createdAt).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => void openNotification(notification)}
+          className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50"
+        >
+          Open
+        </button>
+      </div>
+    </article>
   );
 }
 

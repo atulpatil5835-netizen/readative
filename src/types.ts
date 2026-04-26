@@ -8,6 +8,7 @@ export interface KnowledgeComment {
   author: string;
   authorId?: string;
   text: string;
+  mentions?: TaggedUser[];
   createdAt: number;
   isAI?: boolean;
 }

@@ -21,16 +21,21 @@ function buildCommentNotificationId(entryId: string, commentId: string) {
   return `comment_${entryId}_${commentId}`;
 }
 
-function buildTagNotificationId(entryId: string, targetAuthorId: string) {
-  return `tag_${entryId}_${targetAuthorId}`;
-}
-
-function buildActorTagNotificationId(
+function buildPostTagNotificationId(
   entryId: string,
   targetAuthorId: string,
   actorAuthorId: string
 ) {
-  return `tag_${entryId}_${targetAuthorId}_${actorAuthorId}`;
+  return `tag_post_${entryId}_${targetAuthorId}_${actorAuthorId}`;
+}
+
+function buildCommentTagNotificationId(
+  entryId: string,
+  commentId: string,
+  targetAuthorId: string,
+  actorAuthorId: string
+) {
+  return `tag_comment_${entryId}_${commentId}_${targetAuthorId}_${actorAuthorId}`;
 }
 
 function createNotification(
@@ -108,7 +113,7 @@ export async function notifyTaggedUsers(
   const batch = writeBatch(db);
 
   uniqueMentions.forEach((mention) => {
-    const notificationId = buildActorTagNotificationId(
+    const notificationId = buildPostTagNotificationId(
       entry.id,
       mention.authorId,
       actor.authorId
@@ -121,6 +126,46 @@ export async function notifyTaggedUsers(
       entryId: entry.id,
       entryTitle: entry.title,
       preview: `@${actor.username} tagged you in "${entry.title}".`,
+    });
+
+    batch.set(doc(db, "notifications", notificationId), payload);
+  });
+
+  await batch.commit();
+}
+
+export async function notifyTaggedUsersOnComment(
+  entry: Pick<KnowledgeEntry, "id" | "title" | "authorId">,
+  comment: Pick<KnowledgeComment, "id" | "text">,
+  actor: NotificationActor,
+  mentions: TaggedUser[]
+) {
+  const uniqueMentions = mentions.filter(
+    (mention, index, current) =>
+      current.findIndex((item) => item.authorId === mention.authorId) === index &&
+      mention.authorId !== actor.authorId &&
+      mention.authorId !== entry.authorId
+  );
+
+  if (uniqueMentions.length === 0) return;
+
+  const batch = writeBatch(db);
+
+  uniqueMentions.forEach((mention) => {
+    const notificationId = buildCommentTagNotificationId(
+      entry.id,
+      comment.id,
+      mention.authorId,
+      actor.authorId
+    );
+    const payload = createNotification({
+      targetAuthorId: mention.authorId,
+      actorAuthorId: actor.authorId,
+      actorUsername: actor.username,
+      type: "tag",
+      entryId: entry.id,
+      entryTitle: entry.title,
+      preview: `@${actor.username} tagged you in a comment on "${entry.title}": ${comment.text.slice(0, 80)}`,
     });
 
     batch.set(doc(db, "notifications", notificationId), payload);

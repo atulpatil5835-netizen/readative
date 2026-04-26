@@ -52,6 +52,7 @@ export function Profile({
   onOpenEntry,
 }: ProfileProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
@@ -171,6 +172,19 @@ export function Profile({
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [activeAuthorId, isOwnProfile]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "userProfiles"), (snapshot) => {
+      const data = snapshot.docs.map((item) => ({
+        ...(item.data() as UserProfile),
+        id: item.id,
+      }));
+
+      setProfiles(data);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const unreadNotifications = useMemo(
     () => notifications.filter((notification) => !notification.read),
@@ -373,7 +387,7 @@ export function Profile({
           </div>
 
           {section === "shared" && (
-            <KnowledgeSection
+          <KnowledgeSection
               title={
                 isOwnProfile
                   ? "Your shared knowledge"
@@ -381,6 +395,7 @@ export function Profile({
               }
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
+              profiles={profiles}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
@@ -388,7 +403,7 @@ export function Profile({
           )}
 
           {section === "liked" && (
-            <KnowledgeSection
+          <KnowledgeSection
               title={
                 isOwnProfile
                   ? "Posts you liked"
@@ -396,6 +411,7 @@ export function Profile({
               }
               emptyMessage="No liked knowledge yet."
               entries={likedEntries}
+              profiles={profiles}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
@@ -541,6 +557,7 @@ function KnowledgeSection({
   title,
   emptyMessage,
   entries,
+  profiles,
   onIdentityRequired,
   onOpenProfile,
   onOpenEntry,
@@ -548,6 +565,7 @@ function KnowledgeSection({
   title: string;
   emptyMessage: string;
   entries: KnowledgeEntry[];
+  profiles: UserProfile[];
   onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
@@ -571,6 +589,7 @@ function KnowledgeSection({
           <KnowledgeCard
             key={entry.id}
             entry={entry}
+            profiles={profiles}
             onIdentityRequired={onIdentityRequired}
             onOpenProfile={onOpenProfile}
             onOpenEntry={onOpenEntry}

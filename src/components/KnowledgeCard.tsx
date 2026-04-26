@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { KnowledgeComment, KnowledgeEntry } from "../types";
+import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import {
   BookOpenText,
   Heart,
@@ -20,6 +20,7 @@ import {
 import {
   notifyCommentOnKnowledge,
   notifyLikeOnKnowledge,
+  notifyTaggedUsersOnComment,
   removeLikeNotification,
 } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
@@ -31,6 +32,7 @@ function cn(...inputs: ClassValue[]) {
 
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
+  profiles?: UserProfile[];
   onIdentityRequired: (action: {
     type: "like" | "comment";
     entryId: string;
@@ -45,8 +47,38 @@ function estimateReadMinutes(text: string) {
   return Math.max(1, Math.round(wordCount / 180) || 1);
 }
 
+interface CommentMentionState {
+  query: string;
+  start: number;
+}
+
+function extractMentionKeys(text: string): string[] {
+  return [
+    ...new Set(
+      [...text.matchAll(/(?:^|\s)@([a-z0-9_]{1,20})/gi)].map((match) =>
+        match[1].toLowerCase()
+      )
+    ),
+  ];
+}
+
+function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
+  const profileMap = new Map(
+    profiles.map((profile) => [profile.usernameLower, profile] as const)
+  );
+
+  return extractMentionKeys(text)
+    .map((usernameLower) => profileMap.get(usernameLower))
+    .filter((profile): profile is UserProfile => Boolean(profile))
+    .map((profile) => ({
+      authorId: profile.id,
+      username: profile.username,
+    }));
+}
+
 export function KnowledgeCard({
   entry,
+  profiles = [],
   onIdentityRequired,
   onOpenProfile,
   onOpenEntry,
@@ -63,12 +95,24 @@ export function KnowledgeCard({
     entry.comments || []
   );
   const [pendingCommenter, setPendingCommenter] = useState<string | null>(null);
+  const [activeCommentMention, setActiveCommentMention] =
+    useState<CommentMentionState | null>(null);
   const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
+  const commentInputRef = useRef<HTMLInputElement | null>(null);
 
   const guestId = getGuestId();
   const isLiked = localLikes.includes(guestId);
   const mentions = entry.mentions || [];
   const readingMinutes = estimateReadMinutes(entry.content);
+  const filteredCommentMentionProfiles = useMemo(() => {
+    if (!activeCommentMention) return [];
+
+    return profiles
+      .filter((profile) =>
+        profile.usernameLower.startsWith(activeCommentMention.query.toLowerCase())
+      )
+      .slice(0, 6);
+  }, [activeCommentMention, profiles]);
 
   useEffect(() => {
     setLocalLikes(entry.likes || []);
@@ -106,6 +150,42 @@ export function KnowledgeCard({
     window.addEventListener("knowledge-action", handler);
     return () => window.removeEventListener("knowledge-action", handler);
   }, [entry.id, localLikes]);
+
+  const updateCommentMentionState = (value: string, cursorPosition: number) => {
+    const beforeCursor = value.slice(0, cursorPosition);
+    const match = beforeCursor.match(/(?:^|\s)@([a-z0-9_]*)$/i);
+
+    if (!match) {
+      setActiveCommentMention(null);
+      return;
+    }
+
+    const atIndex = beforeCursor.lastIndexOf("@");
+    setActiveCommentMention({
+      query: match[1].toLowerCase(),
+      start: atIndex,
+    });
+  };
+
+  const handleCommentMentionInsert = (profile: UserProfile) => {
+    if (!activeCommentMention || !commentInputRef.current) return;
+
+    const input = commentInputRef.current;
+    const cursor = input.selectionStart || commentText.length;
+    const before = commentText.slice(0, activeCommentMention.start);
+    const after = commentText.slice(cursor);
+    const inserted = `@${profile.username} `;
+    const nextValue = `${before}${inserted}${after}`;
+
+    setCommentText(nextValue);
+    setActiveCommentMention(null);
+
+    requestAnimationFrame(() => {
+      input.focus();
+      const nextCursor = before.length + inserted.length;
+      input.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
 
   const updateLike = async (shouldLike: boolean, actorName?: string | null) => {
     const nextLikes = shouldLike
@@ -153,6 +233,7 @@ export function KnowledgeCard({
     const normalizedName = saveGuestName(authorName);
     const content = commentText.trim();
     if (!normalizedName || !content) return;
+    const commentMentions = resolveMentions(content, profiles);
 
     setCommentMessage(null);
     setIsModeratingComment(true);
@@ -171,12 +252,14 @@ export function KnowledgeCard({
     setPendingCommenter(null);
     setIsCommenting(true);
     setIsModeratingComment(false);
+    setActiveCommentMention(null);
 
     const optimisticComment: KnowledgeComment = {
       id: `temp-${Date.now()}`,
       author: normalizedName,
       authorId: guestId,
       text: content,
+      mentions: commentMentions,
       createdAt: Date.now(),
     };
 
@@ -189,6 +272,7 @@ export function KnowledgeCard({
         author: normalizedName,
         authorId: guestId,
         text: content,
+        mentions: commentMentions,
         createdAt: Date.now(),
       };
 
@@ -203,6 +287,20 @@ export function KnowledgeCard({
           username: normalizedName,
         },
         savedComment
+      );
+
+      await notifyTaggedUsersOnComment(
+        {
+          id: entry.id,
+          title: entry.title,
+          authorId: entry.authorId,
+        },
+        savedComment,
+        {
+          authorId: guestId,
+          username: normalizedName,
+        },
+        commentMentions
       );
 
       setLocalComments((current) =>
@@ -418,30 +516,60 @@ export function KnowledgeCard({
             </p>
           )}
 
-          <div className="flex gap-3">
-            <input
-              value={commentText}
-              onChange={(event) => {
-                setCommentText(event.target.value);
-                if (commentMessage) setCommentMessage(null);
-              }}
-              onKeyDown={(event) =>
-                event.key === "Enter" && !event.shiftKey && handleCommentSubmit()
-              }
-              placeholder={
-                pendingCommenter
-                  ? `Commenting as @${pendingCommenter}...`
-                  : "Add your thought..."
-              }
-              className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
-            />
-            <button
-              onClick={handleCommentSubmit}
-              disabled={isCommenting || isModeratingComment || !commentText.trim()}
-              className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {isCommenting || isModeratingComment ? "..." : "Post"}
-            </button>
+          <div className="relative">
+            <div className="flex gap-3">
+              <input
+                ref={commentInputRef}
+                value={commentText}
+                onChange={(event) => {
+                  setCommentText(event.target.value);
+                  updateCommentMentionState(
+                    event.target.value,
+                    event.target.selectionStart || event.target.value.length
+                  );
+                  if (commentMessage) setCommentMessage(null);
+                }}
+                onClick={(event) =>
+                  updateCommentMentionState(
+                    event.currentTarget.value,
+                    event.currentTarget.selectionStart || event.currentTarget.value.length
+                  )
+                }
+                onKeyDown={(event) =>
+                  event.key === "Enter" && !event.shiftKey && handleCommentSubmit()
+                }
+                placeholder={
+                  pendingCommenter
+                    ? `Commenting as @${pendingCommenter}...`
+                    : "Add your thought and tag with @username..."
+                }
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
+              />
+              <button
+                onClick={handleCommentSubmit}
+                disabled={isCommenting || isModeratingComment || !commentText.trim()}
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isCommenting || isModeratingComment ? "..." : "Post"}
+              </button>
+            </div>
+
+            {activeCommentMention && filteredCommentMentionProfiles.length > 0 && (
+              <div className="absolute left-0 right-16 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                {filteredCommentMentionProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    onClick={() => handleCommentMentionInsert(profile)}
+                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                  >
+                    <span className="font-semibold text-slate-800">
+                      @{profile.username}
+                    </span>
+                    <span className="text-xs text-slate-400">User</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {commentMessage && (
@@ -464,7 +592,7 @@ export function KnowledgeCard({
                   <div className="mb-1 flex items-center gap-2">
                     {comment.authorId ? (
                       <button
-                        onClick={() => onOpenProfile(comment.authorId!)}
+                        onClick={() => onOpenProfile(comment.authorId)}
                         className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                       >
                         @{comment.author}
@@ -479,7 +607,11 @@ export function KnowledgeCard({
                     </span>
                   </div>
                   <p className="text-sm leading-6 text-slate-600">
-                    {renderRichText({ text: comment.text })}
+                    {renderRichText({
+                      text: comment.text,
+                      mentions: comment.mentions || [],
+                      onOpenProfile,
+                    })}
                   </p>
                 </div>
               ))
