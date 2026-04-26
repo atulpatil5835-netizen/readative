@@ -5,32 +5,23 @@ import {
   BookOpenText,
   Clock3,
   Heart,
-  Mail,
+  Sparkles,
   User,
 } from "lucide-react";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  query,
-  where,
-} from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { KnowledgeEntry, UserNotification, UserProfile } from "../types";
 import { SEO } from "./SEO";
-import { GoogleAccessPrompt, UsernamePrompt } from "./Auth";
+import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import {
   changeProfileUsername,
+  ensureGuestProfile,
   getUsernameChangeRemaining,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { markNotificationsAsRead } from "../utils/notifications";
 import { getGuestName } from "../utils/guestIdentity";
-import {
-  formatGoogleAuthError,
-  signInWithGoogleProfile,
-} from "../utils/googleAuth";
 
 type ProfileSection = "shared" | "liked" | "notifications";
 
@@ -65,7 +56,7 @@ export function Profile({
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  const [showAccessPrompt, setShowAccessPrompt] = useState(false);
+  const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [section, setSection] = useState<ProfileSection>("shared");
   const [pendingAction, setPendingAction] = useState<
@@ -79,24 +70,17 @@ export function Profile({
     activeAuthorId === currentIdentity?.authorId;
 
   useEffect(() => {
-    if (isOwnProfile) {
-      setSection("shared");
-    } else if (viewedAuthorId) {
+    if (isOwnProfile || viewedAuthorId) {
       setSection("shared");
     }
   }, [isOwnProfile, viewedAuthorId]);
 
   useEffect(() => {
-    if (!currentIdentity) {
+    if (!activeAuthorId) {
       setProfile(null);
       setSharedEntries([]);
       setLikedEntries([]);
       setNotifications([]);
-      setIsLoadingProfile(false);
-      return;
-    }
-
-    if (!activeAuthorId) {
       setIsLoadingProfile(false);
       return;
     }
@@ -186,7 +170,7 @@ export function Profile({
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [activeAuthorId, currentIdentity, isOwnProfile]);
+  }, [activeAuthorId, isOwnProfile]);
 
   const unreadNotifications = useMemo(
     () => notifications.filter((notification) => !notification.read),
@@ -215,85 +199,80 @@ export function Profile({
       }
     : undefined;
 
-  const handleSignIn = async () => {
-    try {
-      const nextIdentity = await signInWithGoogleProfile();
-      if (nextIdentity) {
-        onIdentityChange(nextIdentity);
-      }
-      setShowAccessPrompt(false);
-    } catch (error) {
-      alert(formatGoogleAuthError(error));
-    }
+  const handleClaimIdentity = async (username: string) => {
+    const nextProfile = await ensureGuestProfile(username);
+    onIdentityChange({
+      displayName: nextProfile.username,
+      authorId: nextProfile.id,
+    });
+    setShowIdentityPrompt(false);
   };
 
   const handleChangeUsername = async (nextUsername: string) => {
     if (!profile || !isOwnProfile) return;
 
-    try {
-      const updatedProfile = await changeProfileUsername(profile, nextUsername);
-      setProfile(updatedProfile);
-      onIdentityChange({
-        email: updatedProfile.email,
-        displayName: updatedProfile.username,
-        authorId: updatedProfile.id,
-      });
-      setShowUsernamePrompt(false);
-    } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not change username right now."
-      );
-    }
+    const updatedProfile = await changeProfileUsername(profile, nextUsername);
+    setProfile(updatedProfile);
+    onIdentityChange({
+      displayName: updatedProfile.username,
+      authorId: updatedProfile.id,
+    });
+    setShowUsernamePrompt(false);
   };
 
-  const handleNameConfirm = (username: string) => {
+  const handleNameConfirm = async (username: string) => {
     if (!pendingAction) return;
+
+    const nextProfile = await ensureGuestProfile(username);
+    onIdentityChange({
+      displayName: nextProfile.username,
+      authorId: nextProfile.id,
+    });
 
     window.dispatchEvent(
       new CustomEvent("knowledge-action", {
         detail: {
           ...pendingAction,
-          username,
+          username: nextProfile.username,
         },
       })
     );
     setPendingAction(null);
   };
 
-  if (!currentIdentity) {
+  if (!currentIdentity && !viewedAuthorId) {
     return (
       <div className="space-y-6 pb-20">
         <SEO
           title="Profile | Readative"
-          description="Sign in with Google to see your profile and notifications."
+          description="Claim a username once to unlock your Readative profile, posts, likes, and notifications."
         />
 
         <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-center text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white/15">
-            <User className="h-10 w-10 text-white" />
+            <Sparkles className="h-10 w-10 text-white" />
           </div>
           <h2 className="text-2xl font-black tracking-tight">
-            Sign in to unlock profiles
+            Claim your username once
           </h2>
           <p className="mt-2 text-sm text-emerald-100">
-            Your Google-backed profile stores your shared knowledge, liked posts, and
-            live notifications.
+            Readative remembers your username on this device for posts, likes,
+            comments, mentions, and realtime notifications.
           </p>
           <button
-            onClick={() => setShowAccessPrompt(true)}
+            onClick={() => setShowIdentityPrompt(true)}
             className="mt-6 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
           >
-            Continue with Google
+            Save my username
           </button>
         </div>
 
         <AnimatePresence>
-          {showAccessPrompt && (
-            <GoogleAccessPrompt
-              onContinue={() => handleSignIn()}
-              onClose={() => setShowAccessPrompt(false)}
+          {showIdentityPrompt && (
+            <IdentityPrompt
+              initialValue={guestName || ""}
+              onConfirm={handleClaimIdentity}
+              onClose={() => setShowIdentityPrompt(false)}
             />
           )}
         </AnimatePresence>
@@ -313,7 +292,7 @@ export function Profile({
 
       {isLoadingProfile ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
         </div>
       ) : !profile ? (
         <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
@@ -339,14 +318,11 @@ export function Profile({
                 <h2 className="mt-2 text-3xl font-black tracking-tight">
                   @{profile.username}
                 </h2>
-                {isOwnProfile && (
-                  <div className="mt-2 flex items-center gap-2 text-sm text-emerald-100">
-                    <Mail className="h-4 w-4" />
-                    {profile.email}
-                  </div>
-                )}
                 <p className="mt-3 max-w-xl text-sm leading-6 text-emerald-100">
                   {profile.bio || "Building a strong knowledge trail on Readative."}
+                </p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
+                  Joined {new Date(profile.createdAt).toLocaleDateString()}
                 </p>
               </div>
 
@@ -398,7 +374,11 @@ export function Profile({
 
           {section === "shared" && (
             <KnowledgeSection
-              title={isOwnProfile ? "Your shared knowledge" : `@${profile.username}'s shared knowledge`}
+              title={
+                isOwnProfile
+                  ? "Your shared knowledge"
+                  : `@${profile.username}'s shared knowledge`
+              }
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
               onIdentityRequired={(action) => setPendingAction(action)}
@@ -409,7 +389,11 @@ export function Profile({
 
           {section === "liked" && (
             <KnowledgeSection
-              title={isOwnProfile ? "Posts you liked" : `Knowledge liked by @${profile.username}`}
+              title={
+                isOwnProfile
+                  ? "Posts you liked"
+                  : `Knowledge liked by @${profile.username}`
+              }
               emptyMessage="No liked knowledge yet."
               entries={likedEntries}
               onIdentityRequired={(action) => setPendingAction(action)}
@@ -481,10 +465,11 @@ export function Profile({
       )}
 
       <AnimatePresence>
-        {showAccessPrompt && (
-          <GoogleAccessPrompt
-            onContinue={() => handleSignIn()}
-            onClose={() => setShowAccessPrompt(false)}
+        {showIdentityPrompt && (
+          <IdentityPrompt
+            initialValue={currentIdentity?.displayName || guestName || ""}
+            onConfirm={handleClaimIdentity}
+            onClose={() => setShowIdentityPrompt(false)}
           />
         )}
 
@@ -494,9 +479,7 @@ export function Profile({
             description="You can change your username only once every 5 days."
             submitLabel="Save username"
             initialValue={profile.username}
-            onConfirm={(username) => {
-              void handleChangeUsername(username);
-            }}
+            onConfirm={handleChangeUsername}
             onClose={() => setShowUsernamePrompt(false)}
           />
         )}
@@ -504,7 +487,7 @@ export function Profile({
         {pendingAction && (
           <UsernamePrompt
             action={pendingAction.type}
-            initialValue={guestName || ""}
+            initialValue={currentIdentity?.displayName || guestName || ""}
             onConfirm={handleNameConfirm}
             onClose={() => setPendingAction(null)}
           />

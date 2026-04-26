@@ -10,31 +10,40 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
   AtSign,
+  Bell,
   BookOpenText,
+  Heart,
   ImagePlus,
-  LogOut,
+  MessageCircle,
   Send,
   Sparkles,
   Tag,
   X,
 } from "lucide-react";
-import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
+import { KnowledgeEntry, TaggedUser, UserNotification, UserProfile } from "../types";
 import { SEO } from "./SEO";
-import { GoogleAccessPrompt, UsernamePrompt } from "./Auth";
+import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import {
   type KnowledgeIdentity,
 } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
-import { notifyTaggedUsers } from "../utils/notifications";
-import { moderateContent } from "../utils/contentModeration";
 import {
-  formatGoogleAuthError,
-  signInWithGoogleProfile,
-  signOutGoogleProfile,
-} from "../utils/googleAuth";
+  markNotificationAsRead,
+  markNotificationsAsRead,
+  notifyTaggedUsers,
+} from "../utils/notifications";
+import { moderateContent } from "../utils/contentModeration";
+import { ensureGuestProfile } from "../utils/userProfiles";
 
 type PendingAction =
   | { type: "like" | "comment"; entryId: string }
@@ -227,7 +236,7 @@ export function KnowledgeFeed({
   const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
-  const [showGooglePrompt, setShowGooglePrompt] = useState(false);
+  const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [publishAfterAccess, setPublishAfterAccess] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -236,6 +245,7 @@ export function KnowledgeFeed({
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
   const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const guestName = getGuestName();
@@ -304,6 +314,33 @@ export function KnowledgeFeed({
     target.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [entries.length, focusedEntryId]);
 
+  useEffect(() => {
+    if (!identity?.authorId) {
+      setNotifications([]);
+      return;
+    }
+
+    const notificationsQuery = query(
+      collection(db, "notifications"),
+      where("targetAuthorId", "==", identity.authorId)
+    );
+
+    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      const data = snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...(item.data() as UserNotification),
+          createdAt:
+            (item.data() as UserNotification).createdAt || Date.now(),
+        }))
+        .sort((left, right) => right.createdAt - left.createdAt);
+
+      setNotifications(data);
+    });
+
+    return () => unsubscribe();
+  }, [identity?.authorId]);
+
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId]
@@ -312,6 +349,10 @@ export function KnowledgeFeed({
   const orderedEntries = useMemo(
     () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
     [entries]
+  );
+  const unreadNotifications = useMemo(
+    () => notifications.filter((notification) => !notification.read),
+    [notifications]
   );
 
   const filteredMentionProfiles = useMemo(() => {
@@ -394,7 +435,7 @@ export function KnowledgeFeed({
       const entryPayload = {
         author: currentIdentity.displayName,
         authorId: currentIdentity.authorId,
-        authorEmail: currentIdentity.email,
+        authorEmail: "",
         title,
         content,
         hashtags,
@@ -443,31 +484,30 @@ export function KnowledgeFeed({
 
     if (!identity) {
       setPublishAfterAccess(true);
-      setShowGooglePrompt(true);
+      setShowIdentityPrompt(true);
       return;
     }
 
     void publishKnowledge(identity);
   };
 
-  const handleGoogleAccess = async () => {
-    try {
-      const nextIdentity = await signInWithGoogleProfile();
-      if (!nextIdentity) return;
+  const handleIdentityConfirm = async (username: string) => {
+    const profile = await ensureGuestProfile(username);
+    const nextIdentity: KnowledgeIdentity = {
+      displayName: profile.username,
+      authorId: profile.id,
+    };
 
-      onIdentityChange(nextIdentity);
-      setShowGooglePrompt(false);
+    onIdentityChange(nextIdentity);
+    setShowIdentityPrompt(false);
 
-      if (publishAfterAccess && draftTitle.trim() && draftContent.trim()) {
-        setPublishAfterAccess(false);
-        void publishKnowledge(nextIdentity);
-        return;
-      }
-
+    if (publishAfterAccess && draftTitle.trim() && draftContent.trim()) {
       setPublishAfterAccess(false);
-    } catch (error) {
-      alert(formatGoogleAuthError(error));
+      void publishKnowledge(nextIdentity);
+      return;
     }
+
+    setPublishAfterAccess(false);
   };
 
   const handleImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -501,14 +541,20 @@ export function KnowledgeFeed({
     }
   };
 
-  const handleNameConfirm = (username: string) => {
+  const handleNameConfirm = async (username: string) => {
     if (!pendingAction) return;
+
+    const profile = await ensureGuestProfile(username);
+    onIdentityChange({
+      displayName: profile.username,
+      authorId: profile.id,
+    });
 
     window.dispatchEvent(
       new CustomEvent("knowledge-action", {
         detail: {
           ...pendingAction,
-          username,
+          username: profile.username,
         },
       })
     );
@@ -569,6 +615,16 @@ export function KnowledgeFeed({
         }
       />
 
+      {identity && (
+        <HomeActivityPanel
+          identity={identity}
+          notifications={notifications}
+          unreadCount={unreadNotifications.length}
+          onOpenProfile={onOpenProfile}
+          onOpenEntry={onOpenEntry}
+        />
+      )}
+
       {isLoading ? (
         <div className="flex flex-col items-center gap-3 py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
@@ -606,10 +662,6 @@ export function KnowledgeFeed({
           <ComposerModal
             identity={identity}
             onOpenProfile={onOpenProfile}
-            onGoogleSignOut={() => {
-              void signOutGoogleProfile();
-              onIdentityChange(null);
-            }}
             onClose={() => {
               if (isPosting || isModerating || isPreparingImage) return;
               setShowComposer(false);
@@ -638,12 +690,16 @@ export function KnowledgeFeed({
           />
         )}
 
-        {showGooglePrompt && (
-          <GoogleAccessPrompt
-            onContinue={() => handleGoogleAccess()}
+        {showIdentityPrompt && (
+          <IdentityPrompt
+            title="Choose your posting username"
+            description="Set your username once and Readative will remember it on this browser for posts, likes, comments, mentions, and notifications."
+            submitLabel="Continue"
+            initialValue={identity?.displayName || guestName || ""}
+            onConfirm={handleIdentityConfirm}
             onClose={() => {
               setPublishAfterAccess(false);
-              setShowGooglePrompt(false);
+              setShowIdentityPrompt(false);
             }}
           />
         )}
@@ -651,7 +707,7 @@ export function KnowledgeFeed({
         {pendingAction && (
           <UsernamePrompt
             action={pendingAction.type}
-            initialValue={guestName || ""}
+            initialValue={identity?.displayName || guestName || ""}
             onConfirm={handleNameConfirm}
             onClose={() => setPendingAction(null)}
           />
@@ -661,10 +717,127 @@ export function KnowledgeFeed({
   );
 }
 
+function HomeActivityPanel({
+  identity,
+  notifications,
+  unreadCount,
+  onOpenProfile,
+  onOpenEntry,
+}: {
+  identity: KnowledgeIdentity;
+  notifications: UserNotification[];
+  unreadCount: number;
+  onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
+}) {
+  const recentNotifications = notifications.slice(0, 4);
+
+  const openNotification = async (notification: UserNotification) => {
+    if (!notification.read) {
+      await markNotificationAsRead(notification.id);
+    }
+
+    onOpenEntry(notification.entryId);
+  };
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-[30px] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50 shadow-[0_20px_60px_rgba(16,185,129,0.08)]">
+      <div className="flex flex-col gap-4 border-b border-emerald-100 px-6 py-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-600">
+            Live Activity
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+            @{identity.displayName}, everything happening around you is here.
+          </h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+            <Bell className="h-4 w-4 text-emerald-600" />
+            {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
+          </div>
+          <button
+            onClick={() => void markNotificationsAsRead(notifications.map((item) => item.id))}
+            disabled={notifications.length === 0 || unreadCount === 0}
+            className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+          >
+            Mark all read
+          </button>
+        </div>
+      </div>
+
+      {recentNotifications.length === 0 ? (
+        <div className="px-6 py-8 text-sm text-slate-500">
+          Likes, comments, and tags on your knowledge will appear here in realtime.
+        </div>
+      ) : (
+        <div className="divide-y divide-emerald-100/80">
+          {recentNotifications.map((notification) => (
+            <div
+              key={notification.id}
+              className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-white/70"
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-1 rounded-2xl p-2 ${
+                    notification.type === "like"
+                      ? "bg-rose-100 text-rose-600"
+                      : notification.type === "comment"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-cyan-100 text-cyan-700"
+                  }`}
+                >
+                  {notification.type === "like" ? (
+                    <Heart className="h-4 w-4" />
+                  ) : notification.type === "comment" ? (
+                    <MessageCircle className="h-4 w-4" />
+                  ) : (
+                    <AtSign className="h-4 w-4" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenProfile(notification.actorAuthorId);
+                      }}
+                      className="text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
+                    >
+                      @{notification.actorUsername}
+                    </button>
+                    {!notification.read && (
+                      <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
+                        New
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {notification.preview}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    {new Date(notification.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => void openNotification(notification)}
+                className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50"
+              >
+                Open
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ComposerModal({
   identity,
   onOpenProfile,
-  onGoogleSignOut,
   onClose,
   draftTitle,
   setDraftTitle,
@@ -689,7 +862,6 @@ function ComposerModal({
 }: {
   identity: KnowledgeIdentity | null;
   onOpenProfile: (authorId: string) => void;
-  onGoogleSignOut: () => void;
   onClose: () => void;
   draftTitle: string;
   setDraftTitle: (value: string) => void;
@@ -746,7 +918,9 @@ function ComposerModal({
               <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-semibold">Posting as @{identity.displayName}</p>
-                  <p className="text-xs text-emerald-700">{identity.email}</p>
+                  <p className="text-xs text-emerald-700">
+                    Remembered on this device for all your activity.
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em]">
                   <button
@@ -755,18 +929,11 @@ function ComposerModal({
                   >
                     View profile
                   </button>
-                  <button
-                    onClick={onGoogleSignOut}
-                    className="inline-flex items-center gap-1 underline underline-offset-2"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sign out
-                  </button>
                 </div>
               </div>
             ) : (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Google sign-in is only needed when you publish.
+                Choose your username once when you publish. We will remember it after that.
               </div>
             )}
 

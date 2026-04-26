@@ -1,4 +1,5 @@
 import {
+  type DocumentReference,
   collection,
   doc,
   getDoc,
@@ -6,16 +7,13 @@ import {
   query,
   setDoc,
   updateDoc,
-  writeBatch,
   where,
+  writeBatch,
 } from "firebase/firestore";
-import type { User } from "firebase/auth";
 import { db } from "../firebase/firebase";
-import { UserProfile } from "../types";
-import {
-  emailToAuthorId,
-  saveKnowledgeIdentity,
-} from "./knowledgeIdentity";
+import { type KnowledgeEntry, type UserProfile } from "../types";
+import { getGuestId, saveGuestName } from "./guestIdentity";
+import { saveKnowledgeIdentity } from "./knowledgeIdentity";
 
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
@@ -32,6 +30,38 @@ function mapProfile(data: Partial<UserProfile>, id: string): UserProfile {
     updatedAt: data.updatedAt || Date.now(),
     lastUsernameChangedAt: data.lastUsernameChangedAt ?? null,
   };
+}
+
+function syncLocalProfileIdentity(profile: UserProfile) {
+  saveGuestName(profile.username);
+  saveKnowledgeIdentity(profile.username, profile.id);
+}
+
+async function commitUpdates(
+  updates: Array<{
+    ref: DocumentReference;
+    data: Record<string, unknown>;
+  }>
+) {
+  if (updates.length === 0) return;
+
+  let batch = writeBatch(db);
+  let pendingCount = 0;
+
+  for (const update of updates) {
+    batch.update(update.ref, update.data);
+    pendingCount += 1;
+
+    if (pendingCount >= 400) {
+      await batch.commit();
+      batch = writeBatch(db);
+      pendingCount = 0;
+    }
+  }
+
+  if (pendingCount > 0) {
+    await batch.commit();
+  }
 }
 
 export function sanitizeUsername(input: string): string {
@@ -60,78 +90,77 @@ async function isUsernameTaken(usernameLower: string, authorId?: string) {
 }
 
 async function syncUsernameAcrossContent(authorId: string, username: string) {
-  const knowledgeSnapshot = await getDocs(
+  const updates: Array<{
+    ref: DocumentReference;
+    data: Record<string, unknown>;
+  }> = [];
+
+  const authoredKnowledgeSnapshot = await getDocs(
     query(collection(db, "knowledge"), where("authorId", "==", authorId))
   );
 
-  if (!knowledgeSnapshot.empty) {
-    const knowledgeBatch = writeBatch(db);
-    knowledgeSnapshot.docs.forEach((item) => {
-      knowledgeBatch.update(item.ref, {
+  authoredKnowledgeSnapshot.docs.forEach((item) => {
+    updates.push({
+      ref: item.ref,
+      data: {
         author: username,
-      });
+      },
     });
-    await knowledgeBatch.commit();
-  }
+  });
+
+  const allKnowledgeSnapshot = await getDocs(collection(db, "knowledge"));
+  allKnowledgeSnapshot.docs.forEach((item) => {
+    const data = item.data() as Partial<KnowledgeEntry>;
+    const nextComments = (data.comments || []).map((comment) =>
+      comment.authorId === authorId && comment.author !== username
+        ? {
+            ...comment,
+            author: username,
+          }
+        : comment
+    );
+    const nextMentions = (data.mentions || []).map((mention) =>
+      mention.authorId === authorId && mention.username !== username
+        ? {
+            ...mention,
+            username,
+          }
+        : mention
+    );
+
+    const commentsChanged =
+      JSON.stringify(nextComments) !== JSON.stringify(data.comments || []);
+    const mentionsChanged =
+      JSON.stringify(nextMentions) !== JSON.stringify(data.mentions || []);
+
+    if (!commentsChanged && !mentionsChanged) {
+      return;
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (commentsChanged) payload.comments = nextComments;
+    if (mentionsChanged) payload.mentions = nextMentions;
+
+    updates.push({
+      ref: item.ref,
+      data: payload,
+    });
+  });
 
   const notificationSnapshot = await getDocs(
     query(collection(db, "notifications"), where("actorAuthorId", "==", authorId))
   );
 
-  if (!notificationSnapshot.empty) {
-    const notificationBatch = writeBatch(db);
-    notificationSnapshot.docs.forEach((item) => {
-      notificationBatch.update(item.ref, {
+  notificationSnapshot.docs.forEach((item) => {
+    updates.push({
+      ref: item.ref,
+      data: {
         actorUsername: username,
-      });
+      },
     });
-    await notificationBatch.commit();
-  }
-}
+  });
 
-function normalizeUsernameSeed(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[\s.-]+/g, "_");
-}
-
-function buildGoogleUsernameSeeds(user: User, authorId: string): string[] {
-  const emailLocal = user.email?.split("@")[0] || "";
-  const displayName = user.displayName || "";
-
-  return [
-    normalizeUsernameSeed(displayName),
-    normalizeUsernameSeed(emailLocal),
-    `reader_${authorId.slice(0, 6)}`,
-  ].filter(Boolean);
-}
-
-async function reserveAvailableUsername(
-  user: User,
-  authorId: string
-): Promise<string> {
-  const seeds = buildGoogleUsernameSeeds(user, authorId);
-
-  for (const seed of seeds) {
-    const candidate = sanitizeUsername(seed);
-    if (candidate.length < 3) continue;
-    if (!(await isUsernameTaken(candidate, authorId))) {
-      return candidate;
-    }
-  }
-
-  const fallbackBase = sanitizeUsername(seeds[0] || "reader") || "reader";
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const suffix = attempt === 0 ? authorId.slice(0, 4) : `${authorId.slice(0, 4)}${attempt}`;
-    const candidate = sanitizeUsername(`${fallbackBase}_${suffix}`);
-    if (candidate.length < 3) continue;
-    if (!(await isUsernameTaken(candidate, authorId))) {
-      return candidate;
-    }
-  }
-
-  throw new Error("Could not reserve a username for this Google account.");
+  await commitUpdates(updates);
 }
 
 export async function getUserProfile(authorId: string): Promise<UserProfile | null> {
@@ -140,29 +169,28 @@ export async function getUserProfile(authorId: string): Promise<UserProfile | nu
   return mapProfile(snapshot.data() as Partial<UserProfile>, snapshot.id);
 }
 
-export async function ensureSignedInProfile(
-  email: string,
-  requestedUsername: string
+export async function ensureGuestProfile(
+  requestedUsername: string,
+  authorId: string = getGuestId()
 ): Promise<UserProfile> {
-  const authorId = emailToAuthorId(email);
   const reference = doc(db, "userProfiles", authorId);
   const existing = await getDoc(reference);
 
   if (existing.exists()) {
     const profile = mapProfile(existing.data() as Partial<UserProfile>, existing.id);
-    saveKnowledgeIdentity(profile.email, profile.username);
+    syncLocalProfileIdentity(profile);
     return profile;
   }
 
   const username = validateUsername(requestedUsername);
-  if (await isUsernameTaken(username)) {
+  if (await isUsernameTaken(username, authorId)) {
     throw new Error("That username is already taken.");
   }
 
   const now = Date.now();
   const profile: UserProfile = {
     id: authorId,
-    email: email.trim(),
+    email: "",
     username,
     usernameLower: username,
     bio: "",
@@ -172,51 +200,7 @@ export async function ensureSignedInProfile(
   };
 
   await setDoc(reference, profile);
-  saveKnowledgeIdentity(profile.email, profile.username);
-  return profile;
-}
-
-export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
-  const email = user.email?.trim().toLowerCase();
-  if (!email) {
-    throw new Error("Your Google account did not return an email address.");
-  }
-
-  const authorId = emailToAuthorId(email);
-  const reference = doc(db, "userProfiles", authorId);
-  const existing = await getDoc(reference);
-
-  if (existing.exists()) {
-    const profile = mapProfile(existing.data() as Partial<UserProfile>, existing.id);
-
-    if (profile.email !== email) {
-      await updateDoc(reference, {
-        email,
-        updatedAt: Date.now(),
-      });
-      profile.email = email;
-      profile.updatedAt = Date.now();
-    }
-
-    saveKnowledgeIdentity(profile.email, profile.username);
-    return profile;
-  }
-
-  const username = await reserveAvailableUsername(user, authorId);
-  const now = Date.now();
-  const profile: UserProfile = {
-    id: authorId,
-    email,
-    username,
-    usernameLower: username,
-    bio: "",
-    createdAt: now,
-    updatedAt: now,
-    lastUsernameChangedAt: null,
-  };
-
-  await setDoc(reference, profile);
-  saveKnowledgeIdentity(profile.email, profile.username);
+  syncLocalProfileIdentity(profile);
   return profile;
 }
 
@@ -261,8 +245,8 @@ export async function changeProfileUsername(
     updatedAt: updated.updatedAt,
     lastUsernameChangedAt: updated.lastUsernameChangedAt,
   });
-  await syncUsernameAcrossContent(profile.id, updated.username);
 
-  saveKnowledgeIdentity(updated.email, updated.username);
+  await syncUsernameAcrossContent(profile.id, updated.username);
+  syncLocalProfileIdentity(updated);
   return updated;
 }

@@ -1,31 +1,52 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import {
+  AtSign,
   CheckCircle,
-  Chrome,
   Heart,
   MessageCircle,
   ShieldCheck,
   X,
 } from "lucide-react";
 
-interface GoogleAccessPromptProps {
-  onContinue: () => void | Promise<void>;
+interface IdentityPromptProps {
+  title?: string;
+  description?: string;
+  submitLabel?: string;
+  initialValue?: string;
+  onConfirm: (username: string) => void | Promise<void>;
   onClose: () => void;
 }
 
-export function GoogleAccessPrompt({
-  onContinue,
+export function IdentityPrompt({
+  title = "Choose your username",
+  description = "You only need to do this once. We remember this username on this browser for posting, liking, commenting, tagging, and notifications.",
+  submitLabel = "Save username",
+  initialValue = "",
+  onConfirm,
   onClose,
-}: GoogleAccessPromptProps) {
-  const [isStarting, setIsStarting] = useState(false);
+}: IdentityPromptProps) {
+  const [username, setUsername] = useState(initialValue);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleContinue = async () => {
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!username.trim()) return;
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
     try {
-      setIsStarting(true);
-      await onContinue();
+      await onConfirm(username.trim());
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save this username right now."
+      );
     } finally {
-      setIsStarting(false);
+      setIsSaving(false);
     }
   };
 
@@ -48,42 +69,50 @@ export function GoogleAccessPrompt({
           <div className="mb-4 inline-flex rounded-full bg-white/15 p-3">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight">
-            Sign In With Google
-          </h2>
-          <p className="mt-2 text-sm text-emerald-50">
-            Use the Gmail account already signed into this browser or device.
-            Firebase verifies the account securely.
-          </p>
+          <h2 className="text-2xl font-black tracking-tight">{title}</h2>
+          <p className="mt-2 text-sm text-emerald-50">{description}</p>
         </div>
 
-        <div className="space-y-5 p-6">
+        <form onSubmit={handleSubmit} className="space-y-5 p-6">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">What happens next</p>
+            <p className="font-semibold text-slate-900">What we save</p>
             <p className="mt-2 leading-6">
-              We sign you in with your Google account, create your profile
-              automatically, and keep the session secure through Firebase Auth.
+              Your username is remembered on this device and tied to your posts,
+              likes, comments, tags, and realtime notifications.
             </p>
           </div>
 
+          <div className="relative">
+            <AtSign className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={username}
+              onChange={(event) => {
+                setUsername(event.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+              placeholder="your_name"
+              autoFocus
+              required
+            />
+          </div>
+
+          {errorMessage && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
+
           <button
-            onClick={() => void handleContinue()}
-            disabled={isStarting}
+            type="submit"
+            disabled={isSaving || !username.trim()}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
           >
-            {isStarting ? (
-              <>
-                <CheckCircle className="h-4 w-4 animate-pulse" />
-                Starting Google sign-in...
-              </>
-            ) : (
-              <>
-                <Chrome className="h-4 w-4" />
-                Continue with Google
-              </>
-            )}
+            <CheckCircle className="h-4 w-4" />
+            {isSaving ? "Saving..." : submitLabel}
           </button>
-        </div>
+        </form>
       </motion.div>
     </div>
   );
@@ -96,7 +125,7 @@ interface UsernamePromptProps {
   submitLabel?: string;
   placeholder?: string;
   initialValue?: string;
-  onConfirm: (username: string) => void;
+  onConfirm: (username: string) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -111,18 +140,35 @@ export function UsernamePrompt({
   onClose,
 }: UsernamePromptProps) {
   const [username, setUsername] = useState(initialValue);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const resolvedTitle =
     title || (action === "like" ? "Like this knowledge?" : "Add a comment?");
-  const resolvedDescription = description || "Share your name before joining in";
+  const resolvedDescription =
+    description || "Share your username once before joining in";
   const resolvedSubmitLabel =
     submitLabel || (action === "like" ? "Like" : "Continue");
   const PromptIcon = action === "like" ? Heart : MessageCircle;
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!username.trim()) return;
-    onConfirm(username.trim());
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      await onConfirm(username.trim());
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save this username right now."
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -156,7 +202,10 @@ export function UsernamePrompt({
             <input
               type="text"
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) => {
+                setUsername(event.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
               placeholder={placeholder}
               autoFocus
@@ -164,13 +213,19 @@ export function UsernamePrompt({
             />
           </div>
 
+          {errorMessage && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={!username.trim()}
+            disabled={isSaving || !username.trim()}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
           >
             <CheckCircle className="h-4 w-4" />
-            {resolvedSubmitLabel}
+            {isSaving ? "Saving..." : resolvedSubmitLabel}
           </button>
         </form>
       </motion.div>

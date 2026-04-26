@@ -25,6 +25,14 @@ function buildTagNotificationId(entryId: string, targetAuthorId: string) {
   return `tag_${entryId}_${targetAuthorId}`;
 }
 
+function buildActorTagNotificationId(
+  entryId: string,
+  targetAuthorId: string,
+  actorAuthorId: string
+) {
+  return `tag_${entryId}_${targetAuthorId}_${actorAuthorId}`;
+}
+
 function createNotification(
   input: Omit<UserNotification, "id" | "read" | "createdAt">
 ): Omit<UserNotification, "id"> {
@@ -49,7 +57,7 @@ export async function notifyLikeOnKnowledge(
     type: "like",
     entryId: entry.id,
     entryTitle: entry.title,
-    preview: `${actor.username} liked "${entry.title}".`,
+    preview: `@${actor.username} liked your post "${entry.title}".`,
   });
 
   await setDoc(doc(db, "notifications", notificationId), payload);
@@ -77,7 +85,7 @@ export async function notifyCommentOnKnowledge(
     type: "comment",
     entryId: entry.id,
     entryTitle: entry.title,
-    preview: `${actor.username} commented: ${comment.text.slice(0, 80)}`,
+    preview: `@${actor.username} commented on your post: ${comment.text.slice(0, 80)}`,
   });
 
   await setDoc(doc(db, "notifications", notificationId), payload);
@@ -100,7 +108,11 @@ export async function notifyTaggedUsers(
   const batch = writeBatch(db);
 
   uniqueMentions.forEach((mention) => {
-    const notificationId = buildTagNotificationId(entry.id, mention.authorId);
+    const notificationId = buildActorTagNotificationId(
+      entry.id,
+      mention.authorId,
+      actor.authorId
+    );
     const payload = createNotification({
       targetAuthorId: mention.authorId,
       actorAuthorId: actor.authorId,
@@ -108,7 +120,7 @@ export async function notifyTaggedUsers(
       type: "tag",
       entryId: entry.id,
       entryTitle: entry.title,
-      preview: `${actor.username} tagged you in "${entry.title}".`,
+      preview: `@${actor.username} tagged you in "${entry.title}".`,
     });
 
     batch.set(doc(db, "notifications", notificationId), payload);

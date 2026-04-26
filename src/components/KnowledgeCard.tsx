@@ -462,9 +462,18 @@ export function KnowledgeCard({
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-800">
-                      @{comment.author}
-                    </span>
+                    {comment.authorId ? (
+                      <button
+                        onClick={() => onOpenProfile(comment.authorId!)}
+                        className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
+                      >
+                        @{comment.author}
+                      </button>
+                    ) : (
+                      <span className="text-xs font-bold text-slate-800">
+                        @{comment.author}
+                      </span>
+                    )}
                     <span className="text-[11px] text-slate-400">
                       {new Date(comment.createdAt).toLocaleString()}
                     </span>
