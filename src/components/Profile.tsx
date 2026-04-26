@@ -18,12 +18,19 @@ import {
 import { db } from "../firebase/firebase";
 import { KnowledgeEntry, UserNotification, UserProfile } from "../types";
 import { SEO } from "./SEO";
-import { EmailAccessPrompt, UsernamePrompt } from "./Auth";
+import { GoogleAccessPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
-import { ensureSignedInProfile, changeProfileUsername, getUsernameChangeRemaining } from "../utils/userProfiles";
+import {
+  changeProfileUsername,
+  getUsernameChangeRemaining,
+} from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { markNotificationsAsRead } from "../utils/notifications";
 import { getGuestName } from "../utils/guestIdentity";
+import {
+  formatGoogleAuthError,
+  signInWithGoogleProfile,
+} from "../utils/googleAuth";
 
 type ProfileSection = "shared" | "liked" | "notifications";
 
@@ -208,21 +215,15 @@ export function Profile({
       }
     : undefined;
 
-  const handleSignIn = async (email: string, username: string) => {
+  const handleSignIn = async () => {
     try {
-      const nextProfile = await ensureSignedInProfile(email, username);
-      onIdentityChange({
-        email: nextProfile.email,
-        displayName: nextProfile.username,
-        authorId: nextProfile.id,
-      });
+      const nextIdentity = await signInWithGoogleProfile();
+      if (nextIdentity) {
+        onIdentityChange(nextIdentity);
+      }
       setShowAccessPrompt(false);
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not sign you in right now."
-      );
+      alert(formatGoogleAuthError(error));
     }
   };
 
@@ -266,7 +267,7 @@ export function Profile({
       <div className="space-y-6 pb-20">
         <SEO
           title="Profile | Readative"
-          description="Sign in with your email to see your profile and notifications."
+          description="Sign in with Google to see your profile and notifications."
         />
 
         <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-center text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
@@ -277,23 +278,21 @@ export function Profile({
             Sign in to unlock profiles
           </h2>
           <p className="mt-2 text-sm text-emerald-100">
-            Your email profile stores your shared knowledge, liked posts, and
+            Your Google-backed profile stores your shared knowledge, liked posts, and
             live notifications.
           </p>
           <button
             onClick={() => setShowAccessPrompt(true)}
             className="mt-6 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
           >
-            Continue with email
+            Continue with Google
           </button>
         </div>
 
         <AnimatePresence>
           {showAccessPrompt && (
-            <EmailAccessPrompt
-              onConfirm={(email, username) => {
-                void handleSignIn(email, username);
-              }}
+            <GoogleAccessPrompt
+              onContinue={() => handleSignIn()}
               onClose={() => setShowAccessPrompt(false)}
             />
           )}
@@ -483,12 +482,8 @@ export function Profile({
 
       <AnimatePresence>
         {showAccessPrompt && (
-          <EmailAccessPrompt
-            initialEmail={currentIdentity.email}
-            initialDisplayName={currentIdentity.displayName}
-            onConfirm={(email, username) => {
-              void handleSignIn(email, username);
-            }}
+          <GoogleAccessPrompt
+            onContinue={() => handleSignIn()}
             onClose={() => setShowAccessPrompt(false)}
           />
         )}

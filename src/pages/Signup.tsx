@@ -1,53 +1,34 @@
 import { useState } from "react";
-import { ensureSignedInProfile } from "../utils/userProfiles";
+import { formatGoogleAuthError, signInWithGoogleProfile } from "../utils/googleAuth";
 
 export default function Signup() {
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
 
   const handleSignup = async () => {
-    if (!email.trim() || !username.trim()) {
-      alert("Please enter your username and email.");
-      return;
-    }
-
     try {
-      await ensureSignedInProfile(email, username);
-      alert("Account created successfully");
+      setIsStarting(true);
+      await signInWithGoogleProfile();
+      alert("Google account connected successfully");
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not create the account right now."
-      );
+      alert(formatGoogleAuthError(error));
+    } finally {
+      setIsStarting(false);
     }
   };
 
   return (
     <div className="mx-auto mt-20 max-w-md space-y-4">
-      <h2 className="text-2xl font-bold">Sign Up</h2>
-
-      <input
-        type="text"
-        placeholder="Username"
-        className="w-full border p-2"
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
-      />
-
-      <input
-        type="email"
-        placeholder="Email"
-        className="w-full border p-2"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
+      <h2 className="text-2xl font-bold">Create Account</h2>
+      <p className="text-sm text-slate-500">
+        Use your Gmail account to create your secure Readative profile.
+      </p>
 
       <button
         onClick={() => void handleSignup()}
-        className="w-full rounded bg-emerald-600 px-4 py-2 text-white"
+        disabled={isStarting}
+        className="w-full rounded bg-emerald-600 px-4 py-2 text-white disabled:opacity-50"
       >
-        Create Account
+        {isStarting ? "Starting Google sign-in..." : "Continue with Google"}
       </button>
     </div>
   );

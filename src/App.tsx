@@ -1,16 +1,19 @@
 import { HelmetProvider } from "react-helmet-async";
 import { type ReactNode, Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { ExternalLink, Mail, MessageSquareMore, X } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "./firebase/firebase";
+import { auth, authPersistenceReady, db } from "./firebase/firebase";
 import { Header } from "./components/Header";
 import { KnowledgeFeed } from "./components/KnowledgeFeed";
 import {
+  clearKnowledgeIdentity,
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
   type KnowledgeIdentity,
 } from "./utils/knowledgeIdentity";
 import { UserNotification } from "./types";
+import { ensureGoogleProfile } from "./utils/userProfiles";
 
 type Tab = "knowledge" | "smarttalk" | "profile";
 
@@ -157,6 +160,41 @@ export default function App() {
     return () => {
       window.removeEventListener(KNOWLEDGE_IDENTITY_EVENT, handler);
       window.removeEventListener("storage", syncIdentity);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    let unsubscribe = () => undefined;
+
+    void authPersistenceReady.then(() => {
+      if (!isActive) return;
+
+      unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+          clearKnowledgeIdentity();
+          if (isActive) setIdentity(null);
+          return;
+        }
+
+        try {
+          const profile = await ensureGoogleProfile(user);
+          if (!isActive) return;
+
+          setIdentity({
+            email: profile.email,
+            displayName: profile.username,
+            authorId: profile.id,
+          });
+        } catch (error) {
+          console.error("Failed to sync Google profile:", error);
+        }
+      });
+    });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
     };
   }, []);
 

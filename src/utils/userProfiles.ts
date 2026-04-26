@@ -9,6 +9,7 @@ import {
   writeBatch,
   where,
 } from "firebase/firestore";
+import type { User } from "firebase/auth";
 import { db } from "../firebase/firebase";
 import { UserProfile } from "../types";
 import {
@@ -88,6 +89,51 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
   }
 }
 
+function normalizeUsernameSeed(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.-]+/g, "_");
+}
+
+function buildGoogleUsernameSeeds(user: User, authorId: string): string[] {
+  const emailLocal = user.email?.split("@")[0] || "";
+  const displayName = user.displayName || "";
+
+  return [
+    normalizeUsernameSeed(displayName),
+    normalizeUsernameSeed(emailLocal),
+    `reader_${authorId.slice(0, 6)}`,
+  ].filter(Boolean);
+}
+
+async function reserveAvailableUsername(
+  user: User,
+  authorId: string
+): Promise<string> {
+  const seeds = buildGoogleUsernameSeeds(user, authorId);
+
+  for (const seed of seeds) {
+    const candidate = sanitizeUsername(seed);
+    if (candidate.length < 3) continue;
+    if (!(await isUsernameTaken(candidate, authorId))) {
+      return candidate;
+    }
+  }
+
+  const fallbackBase = sanitizeUsername(seeds[0] || "reader") || "reader";
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const suffix = attempt === 0 ? authorId.slice(0, 4) : `${authorId.slice(0, 4)}${attempt}`;
+    const candidate = sanitizeUsername(`${fallbackBase}_${suffix}`);
+    if (candidate.length < 3) continue;
+    if (!(await isUsernameTaken(candidate, authorId))) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Could not reserve a username for this Google account.");
+}
+
 export async function getUserProfile(authorId: string): Promise<UserProfile | null> {
   const snapshot = await getDoc(doc(db, "userProfiles", authorId));
   if (!snapshot.exists()) return null;
@@ -117,6 +163,50 @@ export async function ensureSignedInProfile(
   const profile: UserProfile = {
     id: authorId,
     email: email.trim(),
+    username,
+    usernameLower: username,
+    bio: "",
+    createdAt: now,
+    updatedAt: now,
+    lastUsernameChangedAt: null,
+  };
+
+  await setDoc(reference, profile);
+  saveKnowledgeIdentity(profile.email, profile.username);
+  return profile;
+}
+
+export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
+  const email = user.email?.trim().toLowerCase();
+  if (!email) {
+    throw new Error("Your Google account did not return an email address.");
+  }
+
+  const authorId = emailToAuthorId(email);
+  const reference = doc(db, "userProfiles", authorId);
+  const existing = await getDoc(reference);
+
+  if (existing.exists()) {
+    const profile = mapProfile(existing.data() as Partial<UserProfile>, existing.id);
+
+    if (profile.email !== email) {
+      await updateDoc(reference, {
+        email,
+        updatedAt: Date.now(),
+      });
+      profile.email = email;
+      profile.updatedAt = Date.now();
+    }
+
+    saveKnowledgeIdentity(profile.email, profile.username);
+    return profile;
+  }
+
+  const username = await reserveAvailableUsername(user, authorId);
+  const now = Date.now();
+  const profile: UserProfile = {
+    id: authorId,
+    email,
     username,
     usernameLower: username,
     bio: "",

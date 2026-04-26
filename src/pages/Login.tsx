@@ -1,53 +1,34 @@
 import { useState } from "react";
-import { ensureSignedInProfile } from "../utils/userProfiles";
+import { formatGoogleAuthError, signInWithGoogleProfile } from "../utils/googleAuth";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
 
   const handleLogin = async () => {
-    if (!email.trim() || !username.trim()) {
-      alert("Please enter your username and email.");
-      return;
-    }
-
     try {
-      await ensureSignedInProfile(email, username);
+      setIsStarting(true);
+      await signInWithGoogleProfile();
       alert("Signed in successfully");
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not sign in right now."
-      );
+      alert(formatGoogleAuthError(error));
+    } finally {
+      setIsStarting(false);
     }
   };
 
   return (
     <div className="mx-auto mt-20 max-w-md space-y-4">
       <h2 className="text-2xl font-bold">Sign In</h2>
-
-      <input
-        type="text"
-        placeholder="Username"
-        className="w-full border p-2"
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
-      />
-
-      <input
-        type="email"
-        placeholder="Email"
-        className="w-full border p-2"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
+      <p className="text-sm text-slate-500">
+        Continue directly with your Gmail account.
+      </p>
 
       <button
         onClick={() => void handleLogin()}
-        className="w-full rounded bg-emerald-600 px-4 py-2 text-white"
+        disabled={isStarting}
+        className="w-full rounded bg-emerald-600 px-4 py-2 text-white disabled:opacity-50"
       >
-        Continue With Email
+        {isStarting ? "Starting Google sign-in..." : "Continue with Google"}
       </button>
     </div>
   );

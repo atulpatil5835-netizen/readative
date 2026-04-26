@@ -1,34 +1,36 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { AtSign, CheckCircle, Mail, PenSquare, X } from "lucide-react";
+import {
+  CheckCircle,
+  Chrome,
+  Heart,
+  MessageCircle,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 
-interface EmailAccessPromptProps {
-  initialEmail?: string;
-  initialDisplayName?: string;
-  onConfirm: (email: string, displayName: string) => void;
+interface GoogleAccessPromptProps {
+  onContinue: () => void | Promise<void>;
   onClose: () => void;
 }
 
-export function EmailAccessPrompt({
-  initialEmail = "",
-  initialDisplayName = "",
-  onConfirm,
+export function GoogleAccessPrompt({
+  onContinue,
   onClose,
-}: EmailAccessPromptProps) {
-  const [email, setEmail] = useState(initialEmail);
-  const [displayName, setDisplayName] = useState(initialDisplayName);
+}: GoogleAccessPromptProps) {
+  const [isStarting, setIsStarting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!email.trim() || !displayName.trim()) return;
-    onConfirm(email.trim(), displayName.trim());
+  const handleContinue = async () => {
+    try {
+      setIsStarting(true);
+      await onContinue();
+    } finally {
+      setIsStarting(false);
+    }
   };
 
-  const inputClass =
-    "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200";
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 18 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -44,61 +46,44 @@ export function EmailAccessPrompt({
           </button>
 
           <div className="mb-4 inline-flex rounded-full bg-white/15 p-3">
-            <PenSquare className="h-6 w-6" />
+            <ShieldCheck className="h-6 w-6" />
           </div>
           <h2 className="text-2xl font-black tracking-tight">
-            Sign In To Share Knowledge
+            Sign In With Google
           </h2>
           <p className="mt-2 text-sm text-emerald-50">
-            No password. No OTP. Just your name and email to start publishing.
+            Use the Gmail account already signed into this browser or device.
+            Firebase verifies the account securely.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-              Username
-            </label>
-            <div className="relative">
-              <AtSign className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                className={`${inputClass} pl-11`}
-                placeholder="your_username"
-                autoFocus
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-              Email
-            </label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className={`${inputClass} pl-11`}
-                placeholder="you@example.com"
-                required
-              />
-            </div>
+        <div className="space-y-5 p-6">
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            <p className="font-semibold text-slate-900">What happens next</p>
+            <p className="mt-2 leading-6">
+              We sign you in with your Google account, create your profile
+              automatically, and keep the session secure through Firebase Auth.
+            </p>
           </div>
 
           <button
-            type="submit"
-            disabled={!email.trim() || !displayName.trim()}
+            onClick={() => void handleContinue()}
+            disabled={isStarting}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
           >
-            <CheckCircle className="h-4 w-4" />
-            Continue
+            {isStarting ? (
+              <>
+                <CheckCircle className="h-4 w-4 animate-pulse" />
+                Starting Google sign-in...
+              </>
+            ) : (
+              <>
+                <Chrome className="h-4 w-4" />
+                Continue with Google
+              </>
+            )}
           </button>
-        </form>
+        </div>
       </motion.div>
     </div>
   );
@@ -132,7 +117,7 @@ export function UsernamePrompt({
   const resolvedDescription = description || "Share your name before joining in";
   const resolvedSubmitLabel =
     submitLabel || (action === "like" ? "Like" : "Continue");
-  const emoji = action === "like" ? "❤️" : "💬";
+  const PromptIcon = action === "like" ? Heart : MessageCircle;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -141,7 +126,7 @@ export function UsernamePrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -157,7 +142,9 @@ export function UsernamePrompt({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="text-center">
-            <div className="mb-2 text-2xl">{emoji}</div>
+            <div className="mb-3 inline-flex rounded-full bg-emerald-50 p-3 text-emerald-600">
+              <PromptIcon className="h-5 w-5" />
+            </div>
             <h2 className="text-lg font-bold text-slate-900">{resolvedTitle}</h2>
             <p className="mt-1 text-sm text-slate-500">{resolvedDescription}</p>
           </div>

@@ -22,16 +22,19 @@ import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firesto
 import { db } from "../firebase/firebase";
 import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import { SEO } from "./SEO";
-import { EmailAccessPrompt, UsernamePrompt } from "./Auth";
+import { GoogleAccessPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import {
-  clearKnowledgeIdentity,
   type KnowledgeIdentity,
 } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
-import { ensureSignedInProfile } from "../utils/userProfiles";
 import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
+import {
+  formatGoogleAuthError,
+  signInWithGoogleProfile,
+  signOutGoogleProfile,
+} from "../utils/googleAuth";
 
 type PendingAction =
   | { type: "like" | "comment"; entryId: string }
@@ -224,7 +227,7 @@ export function KnowledgeFeed({
   const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
-  const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [showGooglePrompt, setShowGooglePrompt] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [publishAfterAccess, setPublishAfterAccess] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -440,24 +443,20 @@ export function KnowledgeFeed({
 
     if (!identity) {
       setPublishAfterAccess(true);
-      setShowEmailPrompt(true);
+      setShowGooglePrompt(true);
       return;
     }
 
     void publishKnowledge(identity);
   };
 
-  const handleEmailConfirm = async (email: string, username: string) => {
+  const handleGoogleAccess = async () => {
     try {
-      const profile = await ensureSignedInProfile(email, username);
-      const nextIdentity: KnowledgeIdentity = {
-        email: profile.email,
-        displayName: profile.username,
-        authorId: profile.id,
-      };
+      const nextIdentity = await signInWithGoogleProfile();
+      if (!nextIdentity) return;
 
       onIdentityChange(nextIdentity);
-      setShowEmailPrompt(false);
+      setShowGooglePrompt(false);
 
       if (publishAfterAccess && draftTitle.trim() && draftContent.trim()) {
         setPublishAfterAccess(false);
@@ -467,11 +466,7 @@ export function KnowledgeFeed({
 
       setPublishAfterAccess(false);
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not sign you in right now."
-      );
+      alert(formatGoogleAuthError(error));
     }
   };
 
@@ -610,8 +605,11 @@ export function KnowledgeFeed({
         {showComposer && (
           <ComposerModal
             identity={identity}
-            onIdentityChange={onIdentityChange}
             onOpenProfile={onOpenProfile}
+            onGoogleSignOut={() => {
+              void signOutGoogleProfile();
+              onIdentityChange(null);
+            }}
             onClose={() => {
               if (isPosting || isModerating || isPreparingImage) return;
               setShowComposer(false);
@@ -640,16 +638,12 @@ export function KnowledgeFeed({
           />
         )}
 
-        {showEmailPrompt && (
-          <EmailAccessPrompt
-            initialEmail={identity?.email}
-            initialDisplayName={identity?.displayName}
-            onConfirm={(email, username) => {
-              void handleEmailConfirm(email, username);
-            }}
+        {showGooglePrompt && (
+          <GoogleAccessPrompt
+            onContinue={() => handleGoogleAccess()}
             onClose={() => {
               setPublishAfterAccess(false);
-              setShowEmailPrompt(false);
+              setShowGooglePrompt(false);
             }}
           />
         )}
@@ -669,8 +663,8 @@ export function KnowledgeFeed({
 
 function ComposerModal({
   identity,
-  onIdentityChange,
   onOpenProfile,
+  onGoogleSignOut,
   onClose,
   draftTitle,
   setDraftTitle,
@@ -694,8 +688,8 @@ function ComposerModal({
   updateMentionState,
 }: {
   identity: KnowledgeIdentity | null;
-  onIdentityChange: (identity: KnowledgeIdentity | null) => void;
   onOpenProfile: (authorId: string) => void;
+  onGoogleSignOut: () => void;
   onClose: () => void;
   draftTitle: string;
   setDraftTitle: (value: string) => void;
@@ -762,10 +756,7 @@ function ComposerModal({
                     View profile
                   </button>
                   <button
-                    onClick={() => {
-                      clearKnowledgeIdentity();
-                      onIdentityChange(null);
-                    }}
+                    onClick={onGoogleSignOut}
                     className="inline-flex items-center gap-1 underline underline-offset-2"
                   >
                     <LogOut className="h-3.5 w-3.5" />
@@ -775,7 +766,7 @@ function ComposerModal({
               </div>
             ) : (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Sign in with email will be asked only when you publish.
+                Google sign-in is only needed when you publish.
               </div>
             )}
 
