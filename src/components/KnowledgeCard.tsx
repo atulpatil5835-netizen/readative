@@ -39,6 +39,7 @@ interface KnowledgeCardProps {
   }) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
+  onSelectHashtag?: (tag: string) => void;
   highlighted?: boolean;
 }
 
@@ -82,6 +83,7 @@ export function KnowledgeCard({
   onIdentityRequired,
   onOpenProfile,
   onOpenEntry,
+  onSelectHashtag,
   highlighted = false,
 }: KnowledgeCardProps) {
   const [showComments, setShowComments] = useState(false);
@@ -358,6 +360,17 @@ export function KnowledgeCard({
     setShareCopied(true);
   };
 
+  const handleSelectHashtag = (tag: string) => {
+    if (onSelectHashtag) {
+      onSelectHashtag(tag);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.location.hash = `knowledge?tag=${encodeURIComponent(tag.toLowerCase())}`;
+    }
+  };
+
   return (
     <motion.article
       id={`knowledge-${entry.id}`}
@@ -439,12 +452,13 @@ export function KnowledgeCard({
         {entry.hashtags.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-2">
             {entry.hashtags.map((tag) => (
-              <span
+              <button
                 key={tag}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                onClick={() => handleSelectHashtag(tag)}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
               >
                 #{tag}
-              </span>
+              </button>
             ))}
           </div>
         )}

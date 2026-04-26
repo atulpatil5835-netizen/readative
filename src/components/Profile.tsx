@@ -1,16 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
-import {
-  Bell,
-  BookOpenText,
-  Clock3,
-  Heart,
-  Sparkles,
-  User,
-} from "lucide-react";
+import { BookOpenText, Clock3, Heart, Sparkles, User } from "lucide-react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, UserNotification, UserProfile } from "../types";
+import { KnowledgeEntry, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
@@ -20,10 +13,9 @@ import {
   getUsernameChangeRemaining,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { markNotificationsAsRead } from "../utils/notifications";
 import { getGuestName } from "../utils/guestIdentity";
 
-type ProfileSection = "shared" | "liked" | "notifications";
+type ProfileSection = "shared" | "liked";
 
 interface ProfileProps {
   currentIdentity: KnowledgeIdentity | null;
@@ -55,7 +47,6 @@ export function Profile({
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
-  const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
@@ -81,7 +72,6 @@ export function Profile({
       setProfile(null);
       setSharedEntries([]);
       setLikedEntries([]);
-      setNotifications([]);
       setIsLoadingProfile(false);
       return;
     }
@@ -143,31 +133,6 @@ export function Profile({
       )
     );
 
-    if (isOwnProfile) {
-      unsubscribers.push(
-        onSnapshot(
-          query(
-            collection(db, "notifications"),
-            where("targetAuthorId", "==", activeAuthorId)
-          ),
-          (snapshot) => {
-            const data = snapshot.docs
-              .map((item) => ({
-                id: item.id,
-                ...(item.data() as UserNotification),
-                createdAt:
-                  (item.data() as UserNotification).createdAt || Date.now(),
-              }))
-              .sort((left, right) => right.createdAt - left.createdAt);
-
-            setNotifications(data);
-          }
-        )
-      );
-    } else {
-      setNotifications([]);
-    }
-
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
@@ -186,10 +151,6 @@ export function Profile({
     return () => unsubscribe();
   }, []);
 
-  const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.read),
-    [notifications]
-  );
   const usernameCooldown = profile ? getUsernameChangeRemaining(profile) : 0;
   const engagementCount = sharedEntries.reduce(
     (sum, entry) =>
@@ -259,7 +220,7 @@ export function Profile({
       <div className="space-y-6 pb-20">
         <SEO
           title="Profile | Readative"
-          description="Claim a username once to unlock your Readative profile, posts, likes, and notifications."
+          description="Claim a username once to unlock your Readative profile, posts, and likes."
         />
 
         <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-center text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
@@ -298,7 +259,7 @@ export function Profile({
     <div className="space-y-6 pb-20">
       <SEO
         title={profile ? `@${profile.username} | Readative` : "Profile | Readative"}
-        description="Explore user profiles, liked knowledge, and live notifications on Readative."
+        description="Explore user profiles, shared knowledge, and liked posts on Readative."
         type="profile"
         url={profileUrl}
         schema={profileSchema}
@@ -343,10 +304,7 @@ export function Profile({
               <div className="grid grid-cols-3 gap-3 md:min-w-[320px]">
                 <ProfileStat label="Shared" value={sharedEntries.length} />
                 <ProfileStat label="Liked" value={likedEntries.length} />
-                <ProfileStat
-                  label={isOwnProfile ? "Unread" : "Engagement"}
-                  value={isOwnProfile ? unreadNotifications.length : engagementCount}
-                />
+                <ProfileStat label="Engagement" value={engagementCount} />
               </div>
             </div>
 
@@ -377,17 +335,10 @@ export function Profile({
               onClick={() => setSection("liked")}
               label={`Liked (${likedEntries.length})`}
             />
-            {isOwnProfile && (
-              <SectionButton
-                active={section === "notifications"}
-                onClick={() => setSection("notifications")}
-                label={`Notifications (${notifications.length})`}
-              />
-            )}
           </div>
 
           {section === "shared" && (
-          <KnowledgeSection
+            <KnowledgeSection
               title={
                 isOwnProfile
                   ? "Your shared knowledge"
@@ -403,7 +354,7 @@ export function Profile({
           )}
 
           {section === "liked" && (
-          <KnowledgeSection
+            <KnowledgeSection
               title={
                 isOwnProfile
                   ? "Posts you liked"
@@ -416,66 +367,6 @@ export function Profile({
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
             />
-          )}
-
-          {isOwnProfile && section === "notifications" && (
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900">
-                  <Bell className="h-5 w-5 text-emerald-600" />
-                  Live notifications
-                </h3>
-                <button
-                  onClick={() =>
-                    void markNotificationsAsRead(unreadNotifications.map((item) => item.id))
-                  }
-                  disabled={unreadNotifications.length === 0}
-                  className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 disabled:opacity-40"
-                >
-                  Mark all read
-                </button>
-              </div>
-
-              {notifications.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">
-                  No notifications yet.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`rounded-2xl border p-4 ${
-                        notification.read
-                          ? "border-slate-200 bg-slate-50"
-                          : "border-emerald-200 bg-emerald-50/60"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <button
-                            onClick={() => onOpenProfile(notification.actorAuthorId)}
-                            className="text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-                          >
-                            @{notification.actorUsername}
-                          </button>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {notification.preview}
-                          </p>
-                          <p className="mt-2 text-xs text-slate-400">
-                            On "{notification.entryTitle}" •{" "}
-                            {new Date(notification.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                        {!notification.read && (
-                          <span className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           )}
         </>
       )}

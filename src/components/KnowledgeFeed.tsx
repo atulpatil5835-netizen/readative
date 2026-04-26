@@ -10,11 +10,8 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
   AtSign,
-  Bell,
   BookOpenText,
-  Heart,
   ImagePlus,
-  MessageCircle,
   Send,
   Sparkles,
   Tag,
@@ -26,10 +23,9 @@ import {
   onSnapshot,
   orderBy,
   query,
-  where,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, TaggedUser, UserNotification, UserProfile } from "../types";
+import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
@@ -38,8 +34,6 @@ import {
 } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
 import {
-  markNotificationAsRead,
-  markNotificationsAsRead,
   notifyTaggedUsers,
 } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
@@ -150,6 +144,19 @@ function estimateReadMinutes(text: string) {
   return Math.max(1, Math.round(wordCount / 180) || 1);
 }
 
+function readSelectedHashtagFromHash() {
+  if (typeof window === "undefined") return null;
+
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash.startsWith("knowledge")) return null;
+
+  const [, search = ""] = hash.split("?");
+  const tag = new URLSearchParams(search).get("tag");
+  const normalizedTag = tag?.replace(/^#/, "").trim().toLowerCase();
+
+  return normalizedTag || null;
+}
+
 async function optimizeImage(file: File): Promise<string> {
   const rawDataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(rawDataUrl);
@@ -245,7 +252,9 @@ export function KnowledgeFeed({
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
   const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
-  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
+    readSelectedHashtagFromHash()
+  );
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const guestName = getGuestName();
@@ -315,31 +324,15 @@ export function KnowledgeFeed({
   }, [entries.length, focusedEntryId]);
 
   useEffect(() => {
-    if (!identity?.authorId) {
-      setNotifications([]);
-      return;
-    }
+    const syncSelectedHashtag = () => {
+      setSelectedHashtag(readSelectedHashtagFromHash());
+    };
 
-    const notificationsQuery = query(
-      collection(db, "notifications"),
-      where("targetAuthorId", "==", identity.authorId)
-    );
+    syncSelectedHashtag();
+    window.addEventListener("hashchange", syncSelectedHashtag);
 
-    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      const data = snapshot.docs
-        .map((item) => ({
-          id: item.id,
-          ...(item.data() as UserNotification),
-          createdAt:
-            (item.data() as UserNotification).createdAt || Date.now(),
-        }))
-        .sort((left, right) => right.createdAt - left.createdAt);
-
-      setNotifications(data);
-    });
-
-    return () => unsubscribe();
-  }, [identity?.authorId]);
+    return () => window.removeEventListener("hashchange", syncSelectedHashtag);
+  }, []);
 
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
@@ -350,11 +343,13 @@ export function KnowledgeFeed({
     () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
     [entries]
   );
-  const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.read),
-    [notifications]
-  );
-  const feedNotifications = useMemo(() => notifications.slice(0, 4), [notifications]);
+  const visibleEntries = useMemo(() => {
+    if (!selectedHashtag) return orderedEntries;
+
+    return orderedEntries.filter((entry) =>
+      entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag)
+    );
+  }, [orderedEntries, selectedHashtag]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -586,17 +581,38 @@ export function KnowledgeFeed({
     updateMentionState(event.currentTarget.value, event.currentTarget.selectionStart);
   };
 
+  const handleSelectHashtag = (tag: string) => {
+    const normalizedTag = tag.trim().toLowerCase();
+    if (!normalizedTag) return;
+
+    setSelectedHashtag(normalizedTag);
+    window.location.hash = `knowledge?tag=${encodeURIComponent(normalizedTag)}`;
+  };
+
+  const clearSelectedHashtag = () => {
+    setSelectedHashtag(null);
+    window.location.hash = "knowledge";
+  };
+
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
+    : selectedHashtag
+    ? `#${selectedHashtag} posts | Readative`
     : "Home Feed | Readative";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
+    : selectedHashtag
+    ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
     : "Readative homepage showing only knowledge posts from the community.";
   const pageUrl =
     typeof window === "undefined"
       ? "https://readative.com/#knowledge"
       : `${window.location.origin}${window.location.pathname}${
-          focusedEntry ? `#knowledge/${focusedEntry.id}` : "#knowledge"
+          focusedEntry
+            ? `#knowledge/${focusedEntry.id}`
+            : selectedHashtag
+            ? `#knowledge?tag=${encodeURIComponent(selectedHashtag)}`
+            : "#knowledge"
         }`;
 
   return (
@@ -604,7 +620,13 @@ export function KnowledgeFeed({
       <SEO
         title={pageTitle}
         description={pageDescription}
-        keywords={["homepage", "knowledge posts", "learning feed", "readative"]}
+        keywords={[
+          "homepage",
+          "knowledge posts",
+          "learning feed",
+          "readative",
+          ...(selectedHashtag ? [selectedHashtag] : []),
+        ]}
         type={focusedEntry ? "article" : "website"}
         url={pageUrl}
         schema={buildKnowledgeSchemas(focusedEntry)}
@@ -621,35 +643,48 @@ export function KnowledgeFeed({
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
           <p className="text-sm text-slate-400">Loading posts...</p>
         </div>
-      ) : orderedEntries.length === 0 && feedNotifications.length === 0 ? (
-        <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-          <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
-          <h3 className="mt-4 text-xl font-black text-slate-900">
-            No posts yet
-          </h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Tap the `+` button at the top to upload the first knowledge post.
-          </p>
-        </div>
       ) : (
         <div className="space-y-6">
-          {identity &&
-            feedNotifications.map((notification, index) => (
-              <ActivityFeedCard
-                key={notification.id}
-                identity={identity}
-                notification={notification}
-                unreadCount={unreadNotifications.length}
-                showHeader={index === 0}
-                onOpenProfile={onOpenProfile}
-                onOpenEntry={onOpenEntry}
-                onMarkAllRead={() =>
-                  void markNotificationsAsRead(notifications.map((item) => item.id))
-                }
-              />
-            ))}
+          {selectedHashtag && (
+            <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 px-5 py-4 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-700">
+                    Hashtag View
+                  </p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                    Showing posts for #{selectedHashtag}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {visibleEntries.length} related post
+                    {visibleEntries.length === 1 ? "" : "s"} found.
+                  </p>
+                </div>
+                <button
+                  onClick={clearSelectedHashtag}
+                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  Clear filter
+                </button>
+              </div>
+            </div>
+          )}
+
+          {visibleEntries.length === 0 ? (
+            <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+              <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-4 text-xl font-black text-slate-900">
+                {selectedHashtag ? `No posts for #${selectedHashtag}` : "No posts yet"}
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                {selectedHashtag
+                  ? "Try another hashtag or clear this filter to explore the full feed."
+                  : "Tap the `+` button at the top to upload the first knowledge post."}
+              </p>
+            </div>
+          ) : (
           <AnimatePresence mode="popLayout">
-            {orderedEntries.map((entry) => (
+            {visibleEntries.map((entry) => (
               <KnowledgeCard
                 key={entry.id}
                 entry={entry}
@@ -657,10 +692,12 @@ export function KnowledgeFeed({
                 onIdentityRequired={(action) => setPendingAction(action)}
                 onOpenProfile={onOpenProfile}
                 onOpenEntry={onOpenEntry}
+                onSelectHashtag={handleSelectHashtag}
                 highlighted={entry.id === focusedEntryId}
               />
             ))}
           </AnimatePresence>
+          )}
         </div>
       )}
 
@@ -721,112 +758,6 @@ export function KnowledgeFeed({
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-function ActivityFeedCard({
-  identity,
-  notification,
-  unreadCount,
-  showHeader,
-  onOpenProfile,
-  onOpenEntry,
-  onMarkAllRead,
-}: {
-  identity: KnowledgeIdentity;
-  notification: UserNotification;
-  unreadCount: number;
-  showHeader: boolean;
-  onOpenProfile: (authorId: string) => void;
-  onOpenEntry: (entryId: string) => void;
-  onMarkAllRead: () => void;
-}) {
-  const openNotification = async (notification: UserNotification) => {
-    if (!notification.read) {
-      await markNotificationAsRead(notification.id);
-    }
-
-    onOpenEntry(notification.entryId);
-  };
-
-  return (
-    <article className="overflow-hidden rounded-[30px] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50 shadow-[0_20px_60px_rgba(16,185,129,0.08)]">
-      {showHeader && (
-        <div className="flex flex-col gap-4 border-b border-emerald-100 px-6 py-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-600">
-              Live Activity In Feed
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              @{identity.displayName}, your alerts now live inside the feed.
-            </h2>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
-              <Bell className="h-4 w-4 text-emerald-600" />
-              {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
-            </div>
-            <button
-              onClick={onMarkAllRead}
-              disabled={unreadCount === 0}
-              className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
-            >
-              Mark all read
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-white/70">
-        <div className="flex items-start gap-3">
-          <div
-            className={`mt-1 rounded-2xl p-2 ${
-              notification.type === "like"
-                ? "bg-rose-100 text-rose-600"
-                : notification.type === "comment"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-cyan-100 text-cyan-700"
-            }`}
-          >
-            {notification.type === "like" ? (
-              <Heart className="h-4 w-4" />
-            ) : notification.type === "comment" ? (
-              <MessageCircle className="h-4 w-4" />
-            ) : (
-              <AtSign className="h-4 w-4" />
-            )}
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => onOpenProfile(notification.actorAuthorId)}
-                className="text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-              >
-                @{notification.actorUsername}
-              </button>
-              {!notification.read && (
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                  New
-                </span>
-              )}
-            </div>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              {notification.preview}
-            </p>
-            <p className="mt-2 text-xs text-slate-400">
-              {new Date(notification.createdAt).toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => void openNotification(notification)}
-          className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50"
-        >
-          Open
-        </button>
-      </div>
-    </article>
   );
 }
 
