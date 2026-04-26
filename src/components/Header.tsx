@@ -1,4 +1,4 @@
-import { CirclePlus, Info, Plus } from "lucide-react";
+import { Bell, CirclePlus, Info, Plus } from "lucide-react";
 import { Logo } from "./Logo";
 
 interface HeaderProps {
@@ -6,6 +6,7 @@ interface HeaderProps {
   setActiveTab: (tab: "knowledge" | "smarttalk" | "profile") => void;
   unreadNotificationCount: number;
   onOpenComposer: () => void;
+  onOpenNotifications: () => void;
   onOpenInfo: () => void;
 }
 
@@ -14,6 +15,7 @@ export function Header({
   setActiveTab,
   unreadNotificationCount,
   onOpenComposer,
+  onOpenNotifications,
   onOpenInfo,
 }: HeaderProps) {
   const tabs = ["knowledge", "smarttalk", "profile"] as const;
@@ -82,6 +84,20 @@ export function Header({
             <Plus className="h-4 w-4 md:hidden" />
             <CirclePlus className="hidden h-4 w-4 md:block" />
             <span className="hidden md:inline">Post</span>
+          </button>
+
+          <button
+            onClick={onOpenNotifications}
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+            aria-label="Open notifications"
+            title="Realtime notifications"
+          >
+            <Bell className="h-4 w-4" />
+            {unreadNotificationCount > 0 && (
+              <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+              </span>
+            )}
           </button>
 
           <button
