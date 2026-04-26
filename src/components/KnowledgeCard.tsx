@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { KnowledgeComment, KnowledgeEntry, TaggedUser } from "../types";
+import { KnowledgeComment, KnowledgeEntry } from "../types";
 import {
   BookOpenText,
   Heart,
@@ -23,6 +23,7 @@ import {
   removeLikeNotification,
 } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
+import { renderRichText } from "../utils/renderRichText";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,35 +38,6 @@ interface KnowledgeCardProps {
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   highlighted?: boolean;
-}
-
-function renderTextWithMentions(
-  text: string,
-  mentions: TaggedUser[],
-  onOpenProfile: (authorId: string) => void
-) {
-  const mentionMap = new Map(
-    mentions.map((mention) => [mention.username.toLowerCase(), mention] as const)
-  );
-
-  return text.split(/(@[a-z0-9_]+)/gi).map((part, index) => {
-    if (part.startsWith("@")) {
-      const mention = mentionMap.get(part.slice(1).toLowerCase());
-      if (mention) {
-        return (
-          <button
-            key={`${mention.authorId}-${index}`}
-            onClick={() => onOpenProfile(mention.authorId)}
-            className="font-semibold text-emerald-700 underline underline-offset-2"
-          >
-            @{mention.username}
-          </button>
-        );
-      }
-    }
-
-    return <Fragment key={`${part}-${index}`}>{part}</Fragment>;
-  });
 }
 
 function estimateReadMinutes(text: string) {
@@ -359,7 +331,11 @@ export function KnowledgeCard({
           </h3>
         </button>
         <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-slate-600">
-          {renderTextWithMentions(entry.content, mentions, onOpenProfile)}
+          {renderRichText({
+            text: entry.content,
+            mentions,
+            onOpenProfile,
+          })}
         </p>
 
         {entry.hashtags.length > 0 && (
@@ -494,7 +470,7 @@ export function KnowledgeCard({
                     </span>
                   </div>
                   <p className="text-sm leading-6 text-slate-600">
-                    {comment.text}
+                    {renderRichText({ text: comment.text })}
                   </p>
                 </div>
               ))

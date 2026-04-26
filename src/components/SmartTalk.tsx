@@ -29,6 +29,7 @@ import {
   saveGuestName,
 } from "../utils/guestIdentity";
 import { moderateContent } from "../utils/contentModeration";
+import { renderRichText } from "../utils/renderRichText";
 
 interface Answer {
   id: string;
@@ -470,7 +471,7 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-gray-900 leading-snug">
-                      {question.content}
+                      {renderRichText({ text: question.content })}
                     </h3>
                     <p className="text-xs text-gray-400 mt-1">
                       Asked by{" "}
@@ -563,7 +564,7 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                             </div>
 
                             <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap mb-3">
-                              {answer.content}
+                              {renderRichText({ text: answer.content })}
                             </p>
 
                             <div className="flex items-center gap-4">
