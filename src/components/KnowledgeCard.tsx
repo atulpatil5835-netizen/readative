@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "motion/react";
 import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import {
   BookOpenText,
@@ -25,6 +24,7 @@ import {
 } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
+import { queueLegacyKnowledgeImageMigration } from "../utils/knowledgeImages";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -120,6 +120,10 @@ export function KnowledgeCard({
     setLocalLikes(entry.likes || []);
     setLocalComments(entry.comments || []);
   }, [entry.id, entry.likes, entry.comments]);
+
+  useEffect(() => {
+    queueLegacyKnowledgeImageMigration(entry);
+  }, [entry]);
 
   useEffect(() => {
     if (!shareCopied) return;
@@ -372,11 +376,8 @@ export function KnowledgeCard({
   };
 
   return (
-    <motion.article
+    <article
       id={`knowledge-${entry.id}`}
-      layout
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
       className={cn(
         "overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]",
         highlighted && "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]"
@@ -389,6 +390,9 @@ export function KnowledgeCard({
             alt={entry.title}
             loading="lazy"
             decoding="async"
+            width={entry.imageWidth || undefined}
+            height={entry.imageHeight || undefined}
+            sizes="(max-width: 768px) 100vw, 768px"
             className="h-full w-full object-cover"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/50 via-transparent to-transparent" />
@@ -633,6 +637,6 @@ export function KnowledgeCard({
           </div>
         </div>
       )}
-    </motion.article>
+    </article>
   );
 }

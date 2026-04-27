@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion } from "motion/react";
 import {
   AtSign,
   CheckCircle,
@@ -52,12 +51,7 @@ export function IdentityPrompt({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 18 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 18 }}
-        className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl"
-      >
+      <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl">
         <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-6 text-white">
           <button
             onClick={onClose}
@@ -113,7 +107,7 @@ export function IdentityPrompt({
             {isSaving ? "Saving..." : submitLabel}
           </button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -173,12 +167,7 @@ export function UsernamePrompt({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl"
-      >
+      <div className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-1 text-slate-400 transition-colors hover:text-slate-600"
@@ -228,7 +217,7 @@ export function UsernamePrompt({
             {isSaving ? "Saving..." : resolvedSubmitLabel}
           </button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }

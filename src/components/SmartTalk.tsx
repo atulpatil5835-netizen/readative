@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronDown,
   ChevronUp,
@@ -372,12 +371,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
     const userDisliked = (answer.dislikes || []).includes(guestId);
 
     return (
-      <motion.div
+      <div
         key={answer.id}
-        layout
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -6 }}
         className={`rounded-2xl p-4 transition-all duration-300 bg-gray-50 ${getAnswerBorderClass(
           answer,
           isTop,
@@ -462,7 +457,7 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
             {dislikeCount}
           </button>
         </div>
-      </motion.div>
+      </div>
     );
   };
 
@@ -592,10 +587,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
             const hiddenAnswerCount = hiddenAnswers.length;
 
             return (
-              <motion.div
+              <div
                 key={question.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
                 className="bg-white rounded-3xl p-6 shadow-sm border border-black/5"
               >
                 <div className="flex items-start gap-4 mb-5">
@@ -616,76 +609,72 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                 </div>
 
                 <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
-                  <AnimatePresence>
-                    {allSortedAnswers.length === 0 ? (
-                      <p className="text-sm text-gray-400 italic py-2">
-                        No answers yet. Be the first or wait 6 hours for Gemini
-                        AI to answer.
-                      </p>
-                    ) : (
-                      <>
-                        {featuredAnswer &&
-                          renderAnswerCard(question, featuredAnswer, {
+                  {allSortedAnswers.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic py-2">
+                      No answers yet. Be the first or wait 6 hours for Gemini
+                      AI to answer.
+                    </p>
+                  ) : (
+                    <>
+                      {featuredAnswer &&
+                        renderAnswerCard(question, featuredAnswer, {
+                          isTop:
+                            Boolean(topAnswerId) &&
+                            featuredAnswer.id === topAnswerId &&
+                            !featuredAnswer.isAI,
+                          isWorst: featuredAnswer.id === worstAnswerId,
+                        })}
+
+                      {hiddenAnswerCount > 0 && (
+                        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-indigo-700">
+                                Showing the top answer first
+                              </p>
+                              <p className="text-xs text-indigo-500">
+                                {hiddenAnswerCount} more answer
+                                {hiddenAnswerCount === 1 ? "" : "s"} hidden
+                                below.
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={() =>
+                                setExpandedAnswers((current) => ({
+                                  ...current,
+                                  [question.id]: !current[question.id],
+                                }))
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-full border border-indigo-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-700 transition-colors hover:bg-indigo-100"
+                            >
+                              {answersExpanded ? (
+                                <>
+                                  See less <ChevronUp className="w-4 h-4" />
+                                </>
+                              ) : (
+                                <>
+                                  See {hiddenAnswerCount} more
+                                  <ChevronDown className="w-4 h-4" />
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {answersExpanded &&
+                        hiddenAnswers.map((answer) =>
+                          renderAnswerCard(question, answer, {
                             isTop:
                               Boolean(topAnswerId) &&
-                              featuredAnswer.id === topAnswerId &&
-                              !featuredAnswer.isAI,
-                            isWorst: featuredAnswer.id === worstAnswerId,
-                          })}
-
-                        {hiddenAnswerCount > 0 && (
-                          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-indigo-700">
-                                  Showing the top answer first
-                                </p>
-                                <p className="text-xs text-indigo-500">
-                                  {hiddenAnswerCount} more answer
-                                  {hiddenAnswerCount === 1 ? "" : "s"} hidden
-                                  below.
-                                </p>
-                              </div>
-
-                              <button
-                                onClick={() =>
-                                  setExpandedAnswers((current) => ({
-                                    ...current,
-                                    [question.id]: !current[question.id],
-                                  }))
-                                }
-                                className="inline-flex items-center justify-center gap-2 rounded-full border border-indigo-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-700 transition-colors hover:bg-indigo-100"
-                              >
-                                {answersExpanded ? (
-                                  <>
-                                    See less <ChevronUp className="w-4 h-4" />
-                                  </>
-                                ) : (
-                                  <>
-                                    See {hiddenAnswerCount} more
-                                    <ChevronDown className="w-4 h-4" />
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
+                              answer.id === topAnswerId &&
+                              !answer.isAI,
+                            isWorst: answer.id === worstAnswerId,
+                          })
                         )}
-
-                        <AnimatePresence initial={false}>
-                          {answersExpanded &&
-                            hiddenAnswers.map((answer) =>
-                              renderAnswerCard(question, answer, {
-                                isTop:
-                                  Boolean(topAnswerId) &&
-                                  answer.id === topAnswerId &&
-                                  !answer.isAI,
-                                isWorst: answer.id === worstAnswerId,
-                              })
-                            )}
-                        </AnimatePresence>
-                      </>
-                    )}
-                  </AnimatePresence>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-2 space-y-3">
@@ -734,26 +723,22 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                     </button>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>
       )}
 
-      <AnimatePresence>
-        {namePrompt && (
-          <UsernamePrompt
-            title={
-              namePrompt.type === "ask" ? "Who is asking?" : "Who is answering?"
-            }
-            description="Add your display name so everyone can see who posted it."
-            submitLabel={namePrompt.type === "ask" ? "Ask" : "Answer"}
-            initialValue={guestName || ""}
-            onConfirm={handlePromptConfirm}
-            onClose={() => setNamePrompt(null)}
-          />
-        )}
-      </AnimatePresence>
+      {namePrompt && (
+        <UsernamePrompt
+          title={namePrompt.type === "ask" ? "Who is asking?" : "Who is answering?"}
+          description="Add your display name so everyone can see who posted it."
+          submitLabel={namePrompt.type === "ask" ? "Ask" : "Answer"}
+          initialValue={guestName || ""}
+          onConfirm={handlePromptConfirm}
+          onClose={() => setNamePrompt(null)}
+        />
+      )}
     </div>
   );
 }

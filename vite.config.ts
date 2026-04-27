@@ -35,7 +35,6 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             react: ["react", "react-dom", "react-helmet-async"],
             firebase: ["firebase/app", "firebase/auth", "firebase/firestore"],
-            motion: ["motion/react"],
           },
         },
       },

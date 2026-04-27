@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import {
   AtSign,
   BookOpenText,
@@ -18,34 +17,39 @@ import {
   X,
 } from "lucide-react";
 import {
-  addDoc,
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
-import {
-  type KnowledgeIdentity,
-} from "../utils/knowledgeIdentity";
+import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
-import {
-  notifyTaggedUsers,
-} from "../utils/notifications";
+import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
 import { ensureGuestProfile } from "../utils/userProfiles";
+import {
+  optimizeKnowledgeImageFile,
+  type OptimizedKnowledgeImage,
+} from "../utils/knowledgeImages";
 
 type PendingAction =
   | { type: "like" | "comment"; entryId: string }
   | null;
 
 interface SelectedImage {
-  dataUrl: string;
   fileName: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+  mimeType: string;
+  optimizedAt: number;
 }
 
 interface MentionState {
@@ -115,24 +119,6 @@ function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
     }));
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Failed to read image file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImage(source: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Failed to load selected image."));
-    image.src = source;
-  });
-}
-
 function createExcerpt(text: string, maxLength = 155) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
@@ -155,36 +141,6 @@ function readSelectedHashtagFromHash() {
   const normalizedTag = tag?.replace(/^#/, "").trim().toLowerCase();
 
   return normalizedTag || null;
-}
-
-async function optimizeImage(file: File): Promise<string> {
-  const rawDataUrl = await readFileAsDataUrl(file);
-  const image = await loadImage(rawDataUrl);
-
-  const maxDimension = 1400;
-  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not prepare the image canvas.");
-
-  context.drawImage(image, 0, 0, width, height);
-
-  let dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-  if (dataUrl.length > 850000) {
-    dataUrl = canvas.toDataURL("image/jpeg", 0.68);
-  }
-
-  if (dataUrl.length > 950000) {
-    throw new Error("Image is too large. Please choose a smaller image.");
-  }
-
-  return dataUrl;
 }
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
@@ -428,6 +384,7 @@ export function KnowledgeFeed({
 
       const mentions = resolveMentions(`${title}\n${content}`, profiles);
       const createdAt = Date.now();
+      const reference = doc(collection(db, "knowledge"));
       const entryPayload = {
         author: currentIdentity.displayName,
         authorId: currentIdentity.authorId,
@@ -439,13 +396,17 @@ export function KnowledgeFeed({
         likes: [],
         mentions,
         imageDataUrl: selectedImage?.dataUrl || null,
+        imageMimeType: selectedImage?.mimeType || null,
+        imageWidth: selectedImage?.width || null,
+        imageHeight: selectedImage?.height || null,
+        imageOptimizedAt: selectedImage?.optimizedAt || null,
         createdAt,
         excerpt: createExcerpt(content, 180),
         readingMinutes: estimateReadMinutes(content),
         qualityScore: moderation.knowledgeScore,
       };
 
-      const reference = await addDoc(collection(db, "knowledge"), entryPayload);
+      await setDoc(reference, entryPayload);
 
       await notifyTaggedUsers(
         {
@@ -519,10 +480,10 @@ export function KnowledgeFeed({
     setIsPreparingImage(true);
 
     try {
-      const dataUrl = await optimizeImage(file);
+      const optimizedImage = await optimizeKnowledgeImageFile(file);
       setSelectedImage({
-        dataUrl,
         fileName: file.name,
+        ...optimizedImage,
       });
     } catch (error) {
       console.error("Image preparation failed:", error);
@@ -683,7 +644,7 @@ export function KnowledgeFeed({
               </p>
             </div>
           ) : (
-          <AnimatePresence mode="popLayout">
+          <>
             {visibleEntries.map((entry) => (
               <KnowledgeCard
                 key={entry.id}
@@ -696,67 +657,65 @@ export function KnowledgeFeed({
                 highlighted={entry.id === focusedEntryId}
               />
             ))}
-          </AnimatePresence>
+          </>
           )}
         </div>
       )}
 
-      <AnimatePresence>
-        {showComposer && (
-          <ComposerModal
-            identity={identity}
-            onOpenProfile={onOpenProfile}
-            onClose={() => {
-              if (isPosting || isModerating || isPreparingImage) return;
-              setShowComposer(false);
-              setFeedMessage(null);
-            }}
-            draftTitle={draftTitle}
-            setDraftTitle={setDraftTitle}
-            draftContent={draftContent}
-            setDraftContent={setDraftContent}
-            hashtagInput={hashtagInput}
-            setHashtagInput={setHashtagInput}
-            selectedImage={selectedImage}
-            setSelectedImage={setSelectedImage}
-            isPosting={isPosting}
-            isModerating={isModerating}
-            isPreparingImage={isPreparingImage}
-            feedMessage={feedMessage}
-            handlePublish={handlePublish}
-            handleImageSelected={handleImageSelected}
-            contentRef={contentRef}
-            activeMention={activeMention}
-            filteredMentionProfiles={filteredMentionProfiles}
-            handleMentionInsert={handleMentionInsert}
-            handleContentKeyUp={handleContentKeyUp}
-            updateMentionState={updateMentionState}
-          />
-        )}
+      {showComposer && (
+        <ComposerModal
+          identity={identity}
+          onOpenProfile={onOpenProfile}
+          onClose={() => {
+            if (isPosting || isModerating || isPreparingImage) return;
+            setShowComposer(false);
+            setFeedMessage(null);
+          }}
+          draftTitle={draftTitle}
+          setDraftTitle={setDraftTitle}
+          draftContent={draftContent}
+          setDraftContent={setDraftContent}
+          hashtagInput={hashtagInput}
+          setHashtagInput={setHashtagInput}
+          selectedImage={selectedImage}
+          setSelectedImage={setSelectedImage}
+          isPosting={isPosting}
+          isModerating={isModerating}
+          isPreparingImage={isPreparingImage}
+          feedMessage={feedMessage}
+          handlePublish={handlePublish}
+          handleImageSelected={handleImageSelected}
+          contentRef={contentRef}
+          activeMention={activeMention}
+          filteredMentionProfiles={filteredMentionProfiles}
+          handleMentionInsert={handleMentionInsert}
+          handleContentKeyUp={handleContentKeyUp}
+          updateMentionState={updateMentionState}
+        />
+      )}
 
-        {showIdentityPrompt && (
-          <IdentityPrompt
-            title="Choose your posting username"
-            description="Set your username once and Readative will remember it on this browser for posts, likes, comments, mentions, and notifications."
-            submitLabel="Continue"
-            initialValue={identity?.displayName || guestName || ""}
-            onConfirm={handleIdentityConfirm}
-            onClose={() => {
-              setPublishAfterAccess(false);
-              setShowIdentityPrompt(false);
-            }}
-          />
-        )}
+      {showIdentityPrompt && (
+        <IdentityPrompt
+          title="Choose your posting username"
+          description="Set your username once and Readative will remember it on this browser for posts, likes, comments, mentions, and notifications."
+          submitLabel="Continue"
+          initialValue={identity?.displayName || guestName || ""}
+          onConfirm={handleIdentityConfirm}
+          onClose={() => {
+            setPublishAfterAccess(false);
+            setShowIdentityPrompt(false);
+          }}
+        />
+      )}
 
-        {pendingAction && (
-          <UsernamePrompt
-            action={pendingAction.type}
-            initialValue={identity?.displayName || guestName || ""}
-            onConfirm={handleNameConfirm}
-            onClose={() => setPendingAction(null)}
-          />
-        )}
-      </AnimatePresence>
+      {pendingAction && (
+        <UsernamePrompt
+          action={pendingAction.type}
+          initialValue={identity?.displayName || guestName || ""}
+          onConfirm={handleNameConfirm}
+          onClose={() => setPendingAction(null)}
+        />
+      )}
     </div>
   );
 }
@@ -812,12 +771,7 @@ function ComposerModal({
 }) {
   return (
     <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 16, scale: 0.98 }}
-        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:max-h-[calc(100vh-6rem)]"
-      >
+      <div className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:max-h-[calc(100vh-6rem)]">
         <div className="shrink-0 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
           <button
             onClick={onClose}
@@ -950,6 +904,8 @@ function ComposerModal({
                     src={selectedImage.dataUrl}
                     alt={selectedImage.fileName}
                     decoding="async"
+                    width={selectedImage.width}
+                    height={selectedImage.height}
                     className="h-64 w-full object-cover"
                   />
                   <div className="flex items-center justify-between bg-white px-4 py-3">
@@ -1019,7 +975,7 @@ function ComposerModal({
             </button>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

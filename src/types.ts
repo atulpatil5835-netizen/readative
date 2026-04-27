@@ -26,6 +26,10 @@ export interface KnowledgeEntry {
   mentions: TaggedUser[];
   createdAt: number;
   imageDataUrl?: string | null;
+  imageMimeType?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  imageOptimizedAt?: number | null;
 }
 
 export interface UserProfile {

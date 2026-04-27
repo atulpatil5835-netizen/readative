@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence } from "motion/react";
 import { BookOpenText, Clock3, Heart, Sparkles, User } from "lucide-react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -242,15 +241,13 @@ export function Profile({
           </button>
         </div>
 
-        <AnimatePresence>
-          {showIdentityPrompt && (
-            <IdentityPrompt
-              initialValue={guestName || ""}
-              onConfirm={handleClaimIdentity}
-              onClose={() => setShowIdentityPrompt(false)}
-            />
-          )}
-        </AnimatePresence>
+        {showIdentityPrompt && (
+          <IdentityPrompt
+            initialValue={guestName || ""}
+            onConfirm={handleClaimIdentity}
+            onClose={() => setShowIdentityPrompt(false)}
+          />
+        )}
       </div>
     );
   }
@@ -371,35 +368,33 @@ export function Profile({
         </>
       )}
 
-      <AnimatePresence>
-        {showIdentityPrompt && (
-          <IdentityPrompt
-            initialValue={currentIdentity?.displayName || guestName || ""}
-            onConfirm={handleClaimIdentity}
-            onClose={() => setShowIdentityPrompt(false)}
-          />
-        )}
+      {showIdentityPrompt && (
+        <IdentityPrompt
+          initialValue={currentIdentity?.displayName || guestName || ""}
+          onConfirm={handleClaimIdentity}
+          onClose={() => setShowIdentityPrompt(false)}
+        />
+      )}
 
-        {showUsernamePrompt && profile && (
-          <UsernamePrompt
-            title="Change username"
-            description="You can change your username only once every 5 days."
-            submitLabel="Save username"
-            initialValue={profile.username}
-            onConfirm={handleChangeUsername}
-            onClose={() => setShowUsernamePrompt(false)}
-          />
-        )}
+      {showUsernamePrompt && profile && (
+        <UsernamePrompt
+          title="Change username"
+          description="You can change your username only once every 5 days."
+          submitLabel="Save username"
+          initialValue={profile.username}
+          onConfirm={handleChangeUsername}
+          onClose={() => setShowUsernamePrompt(false)}
+        />
+      )}
 
-        {pendingAction && (
-          <UsernamePrompt
-            action={pendingAction.type}
-            initialValue={currentIdentity?.displayName || guestName || ""}
-            onConfirm={handleNameConfirm}
-            onClose={() => setPendingAction(null)}
-          />
-        )}
-      </AnimatePresence>
+      {pendingAction && (
+        <UsernamePrompt
+          action={pendingAction.type}
+          initialValue={currentIdentity?.displayName || guestName || ""}
+          onConfirm={handleNameConfirm}
+          onClose={() => setPendingAction(null)}
+        />
+      )}
     </div>
   );
 }
