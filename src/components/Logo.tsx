@@ -3,7 +3,7 @@ export function Logo({ className = "h-10 w-10" }: { className?: string }) {
     <img
       src="/logo-mark.png"
       alt="Readative"
-      className={className}
+      className={`${className} object-contain`}
       width={256}
       height={256}
       decoding="async"
