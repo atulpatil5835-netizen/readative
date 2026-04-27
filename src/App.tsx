@@ -25,6 +25,7 @@ import {
   markNotificationsAsRead,
 } from "./utils/notifications";
 import { ensureGuestProfile } from "./utils/userProfiles";
+import { trackPageView } from "./utils/analytics";
 
 type Tab = "knowledge" | "smarttalk" | "profile";
 
@@ -169,6 +170,10 @@ export default function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    trackPageView();
+  }, [activeTab, profileAuthorId, focusedEntryId]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
