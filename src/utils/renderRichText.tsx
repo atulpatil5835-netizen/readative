@@ -29,7 +29,8 @@ export function renderRichText({
     mentions.map((mention) => [mention.username.toLowerCase(), mention] as const)
   );
   const nodes: ReactNode[] = [];
-  const tokenPattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(@[a-z0-9_]+)/gi;
+  const tokenPattern =
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*\*([^*]+?)\*\*\*|\*\*([^*]+?)\*\*|\*([^*]+?)\*|(@[a-z0-9_]+)/gi;
 
   let cursor = 0;
   let index = 0;
@@ -56,7 +57,25 @@ export function renderRichText({
         </a>
       );
     } else if (match[3]) {
-      const mention = mentionMap.get(match[3].slice(1).toLowerCase());
+      nodes.push(
+        <span key={`triple-${index++}`} className="font-semibold text-emerald-600">
+          {match[3]}
+        </span>
+      );
+    } else if (match[4]) {
+      nodes.push(
+        <span key={`double-${index++}`} className="font-semibold text-rose-600">
+          {match[4]}
+        </span>
+      );
+    } else if (match[5]) {
+      nodes.push(
+        <strong key={`single-${index++}`} className="font-bold text-slate-900">
+          {match[5]}
+        </strong>
+      );
+    } else if (match[6]) {
+      const mention = mentionMap.get(match[6].slice(1).toLowerCase());
 
       if (mention && onOpenProfile) {
         nodes.push(
@@ -69,7 +88,7 @@ export function renderRichText({
           </button>
         );
       } else {
-        nodes.push(<Fragment key={`raw-${index++}`}>{match[3]}</Fragment>);
+        nodes.push(<Fragment key={`raw-${index++}`}>{match[6]}</Fragment>);
       }
     }
 
