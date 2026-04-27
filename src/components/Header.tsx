@@ -22,11 +22,11 @@ export function Header({
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
-        <div className="flex items-center gap-3">
+      <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
+        <div className="flex items-center gap-3.5">
           <button
             onClick={() => setActiveTab("knowledge")}
-            className="relative flex h-10 w-10 items-center justify-center"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80 transition-transform hover:scale-[1.02]"
             aria-label="Open homepage"
           >
             <Logo className="h-full w-full" />
@@ -34,12 +34,12 @@ export function Header({
           <div>
             <button
               onClick={() => setActiveTab("knowledge")}
-              className="leading-none text-left text-xl font-black tracking-tight text-emerald-900"
+              className="leading-none text-left text-[22px] font-black tracking-tight text-slate-950"
             >
               Readative
             </button>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/60">
-              Knowledge Feed
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.22em] text-sky-700/70">
+              Knowledge First
             </p>
           </div>
         </div>
