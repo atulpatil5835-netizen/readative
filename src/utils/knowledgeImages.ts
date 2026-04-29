@@ -47,7 +47,7 @@ function waitForIdle(): Promise<void> {
       return;
     }
 
-    window.setTimeout(resolve, 120);
+    setTimeout(resolve, 120);
   });
 }
 

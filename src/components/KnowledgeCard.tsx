@@ -605,10 +605,19 @@ export function KnowledgeCard({
               localComments.map((comment) => (
                 <div
                   key={comment.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className={cn(
+                    "rounded-2xl border bg-white p-4 shadow-sm",
+                    comment.isAI
+                      ? "border-emerald-200 bg-emerald-50/40"
+                      : "border-slate-200"
+                  )}
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    {comment.authorId ? (
+                    {comment.isAI ? (
+                      <span className="text-xs font-bold text-emerald-700">
+                        {comment.author}
+                      </span>
+                    ) : comment.authorId ? (
                       <button
                         onClick={() => onOpenProfile(comment.authorId)}
                         className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
@@ -618,6 +627,11 @@ export function KnowledgeCard({
                     ) : (
                       <span className="text-xs font-bold text-slate-800">
                         @{comment.author}
+                      </span>
+                    )}
+                    {comment.isAI && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">
+                        Official
                       </span>
                     )}
                     <span className="text-[11px] text-slate-400">

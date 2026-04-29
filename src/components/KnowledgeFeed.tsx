@@ -22,14 +22,20 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, TaggedUser, UserProfile } from "../types";
+import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import {
+  CHATGPT_AUTHOR_ID,
+  CHATGPT_AUTHOR_NAME,
+  shouldPostRareChatGPTComment,
+} from "../utils/chatgpt";
 import { getGuestName } from "../utils/guestIdentity";
 import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
@@ -184,6 +190,55 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
   ];
 }
 
+function normalizeKnowledgeComments(comments: KnowledgeComment[] = []) {
+  return comments.map((comment) => ({
+    ...comment,
+    createdAt:
+      (comment.createdAt as { toMillis?: () => number })?.toMillis?.() ||
+      comment.createdAt ||
+      Date.now(),
+  }));
+}
+
+function normalizeKnowledgeEntry(
+  id: string,
+  data: Partial<KnowledgeEntry> & {
+    comments?: KnowledgeComment[];
+    createdAt?: number | { toMillis?: () => number };
+  }
+): KnowledgeEntry {
+  const {
+    comments,
+    createdAt,
+    likes,
+    mentions,
+    ...restData
+  } = data;
+  const rawCreatedAt = createdAt as number | { toMillis?: () => number } | undefined;
+
+  return {
+    author: "",
+    authorId: "",
+    authorEmail: "",
+    title: "",
+    content: "",
+    hashtags: [],
+    ...restData,
+    id,
+    likes: likes || [],
+    mentions: mentions || [],
+    comments: normalizeKnowledgeComments(comments || []),
+    createdAt:
+      rawCreatedAt &&
+      typeof rawCreatedAt === "object" &&
+      typeof rawCreatedAt.toMillis === "function"
+        ? rawCreatedAt.toMillis()
+        : typeof rawCreatedAt === "number"
+        ? rawCreatedAt
+        : Date.now(),
+  };
+}
+
 export function KnowledgeFeed({
   identity,
   onIdentityChange,
@@ -211,8 +266,10 @@ export function KnowledgeFeed({
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
     readSelectedHashtagFromHash()
   );
+  const [aiSweepTick, setAiSweepTick] = useState(0);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingAiCommentsRef = useRef<Set<string>>(new Set());
   const guestName = getGuestName();
 
   useEffect(() => {
@@ -289,6 +346,76 @@ export function KnowledgeFeed({
 
     return () => window.removeEventListener("hashchange", syncSelectedHashtag);
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setAiSweepTick((current) => current + 1);
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    entries.forEach((entry) => {
+      void checkAndTriggerAIComment(entry);
+    });
+  }, [entries, aiSweepTick]);
+
+  const checkAndTriggerAIComment = async (entry: KnowledgeEntry) => {
+    if (!shouldPostRareChatGPTComment(entry)) return;
+    if (pendingAiCommentsRef.current.has(entry.id)) return;
+
+    pendingAiCommentsRef.current.add(entry.id);
+    void triggerAIComment(entry);
+  };
+
+  const triggerAIComment = async (entry: KnowledgeEntry) => {
+    try {
+      const humanCommentCount = (entry.comments || []).filter(
+        (comment) => !comment.isAI
+      ).length;
+      const { geminiService } = await import("../services/gemini");
+      const text = await geminiService.generateKnowledgeFallbackComment(
+        entry.title,
+        entry.content,
+        entry.author,
+        humanCommentCount
+      );
+
+      if (!text.trim()) return;
+
+      const commentRef = doc(db, "knowledge", entry.id);
+      const aiComment: KnowledgeComment = {
+        id: Math.random().toString(36).slice(2, 11),
+        author: CHATGPT_AUTHOR_NAME,
+        authorId: CHATGPT_AUTHOR_ID,
+        text: text.trim(),
+        mentions: [],
+        createdAt: Date.now(),
+        isAI: true,
+      };
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(commentRef);
+        if (!snapshot.exists()) return;
+
+        const currentEntry = normalizeKnowledgeEntry(
+          snapshot.id,
+          snapshot.data() as Partial<KnowledgeEntry>
+        );
+
+        if (!shouldPostRareChatGPTComment(currentEntry)) return;
+
+        transaction.update(commentRef, {
+          comments: [...(currentEntry.comments || []), aiComment],
+        });
+      });
+    } catch (error) {
+      console.error("Failed to add ChatGPT comment:", error);
+    } finally {
+      pendingAiCommentsRef.current.delete(entry.id);
+    }
+  };
 
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,

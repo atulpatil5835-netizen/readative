@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -23,7 +23,14 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { geminiService } from "../services/gemini";
 import { UsernamePrompt } from "./Auth";
+import {
+  AI_FALLBACK_DELAY_HOURS,
+  CHATGPT_AUTHOR_ID,
+  CHATGPT_AUTHOR_NAME,
+  CHATGPT_VERSION_LABEL,
+} from "../utils/chatgpt";
 import {
   clearGuestName,
   getGuestId,
@@ -59,8 +66,6 @@ type NamePromptState =
   | { type: "answer"; questionId: string }
   | null;
 
-const AI_ANSWER_DELAY_HOURS = 6;
-
 export function SmartTalk() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,12 +74,13 @@ export function SmartTalk() {
   const [isModeratingQuestion, setIsModeratingQuestion] = useState(false);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
   const [isAnswering, setIsAnswering] = useState<Record<string, boolean>>({});
-  const [aiAnswering, setAiAnswering] = useState<Record<string, boolean>>({});
   const [moderatingAnswerId, setModeratingAnswerId] = useState<string | null>(null);
   const [namePrompt, setNamePrompt] = useState<NamePromptState>(null);
   const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
   const [moderationMessage, setModerationMessage] = useState<string | null>(null);
   const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
+  const [aiSweepTick, setAiSweepTick] = useState(0);
+  const pendingAiAnswersRef = useRef<Set<string>>(new Set());
 
   const guestId = getGuestId();
 
@@ -98,9 +104,6 @@ export function SmartTalk() {
 
         setQuestions(data);
         setIsLoading(false);
-        data.forEach((question) => {
-          void checkAndTriggerAIAnswer(question);
-        });
       },
       (error) => {
         console.error("Firestore SmartTalk error:", error);
@@ -111,44 +114,44 @@ export function SmartTalk() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setAiSweepTick((current) => current + 1);
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    questions.forEach((question) => {
+      void checkAndTriggerAIAnswer(question);
+    });
+  }, [questions, aiSweepTick]);
+
   const checkAndTriggerAIAnswer = async (question: Question) => {
     if (question.aiAnswered) return;
     if ((question.answers || []).length > 0) return;
 
     const ageHours = (Date.now() - question.createdAt) / (1000 * 60 * 60);
-    if (ageHours < AI_ANSWER_DELAY_HOURS) return;
+    if (ageHours < AI_FALLBACK_DELAY_HOURS) return;
+    if (pendingAiAnswersRef.current.has(question.id)) return;
 
-    setAiAnswering((current) => {
-      if (current[question.id]) return current;
-      void triggerAIAnswer(question);
-      return { ...current, [question.id]: true };
-    });
+    pendingAiAnswersRef.current.add(question.id);
+    void triggerAIAnswer(question);
   };
 
   const triggerAIAnswer = async (question: Question) => {
     try {
-      const response = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "answer",
-          prompt: `You are Gemini, a helpful AI assistant on Readative, a reading and writing platform.
-Answer this community question clearly, helpfully, and in 2-3 paragraphs.
-
-Question: "${question.content}"
-
-Write a thoughtful, insightful answer. Be direct and informative.`,
-        }),
-      });
-
-      const data = await response.json();
-      if (!data.text?.trim()) return;
+      const text = await geminiService.generateSmartTalkFallbackAnswer(
+        question.content
+      );
+      if (!text.trim()) return;
 
       const aiAnswer: Answer = {
         id: Math.random().toString(36).slice(2, 11),
-        author: "Gemini AI",
-        authorId: "gemini-ai",
-        content: data.text.trim(),
+        author: CHATGPT_AUTHOR_NAME,
+        authorId: CHATGPT_AUTHOR_ID,
+        content: text.trim(),
         likes: [],
         dislikes: [],
         createdAt: Date.now(),
@@ -161,6 +164,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
       });
     } catch (error) {
       console.error("AI answer failed for question", question.id, error);
+    } finally {
+      pendingAiAnswersRef.current.delete(question.id);
     }
   };
 
@@ -387,10 +392,10 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                   <Sparkles className="w-3 h-3 text-white" />
                 </div>
                 <span className="text-xs font-bold text-purple-700">
-                  Gemini AI
+                  {CHATGPT_AUTHOR_NAME}
                 </span>
                 <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-bold">
-                  AI
+                  {CHATGPT_VERSION_LABEL}
                 </span>
               </div>
             ) : (
@@ -518,8 +523,9 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
               setNewQuestion(e.target.value);
               if (moderationMessage) setModerationMessage(null);
             }}
+            enterKeyHint="send"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleAsk();
               }
@@ -532,7 +538,7 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
             <p className="flex items-center gap-2 text-xs text-indigo-100">
               <Link2 className="w-3.5 h-3.5" />
               Use `[title](https://example.com)` for clickable links. Press
-              `Ctrl+Enter` to ask faster.
+              `Enter` to send and `Shift+Enter` for a new line.
             </p>
             <button
               onClick={handleAsk}
@@ -611,8 +617,8 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                 <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
                   {allSortedAnswers.length === 0 ? (
                     <p className="text-sm text-gray-400 italic py-2">
-                      No answers yet. Be the first or wait 6 hours for Gemini
-                      AI to answer.
+                      No answers yet. Be the first or wait 6 hours for{" "}
+                      {CHATGPT_AUTHOR_NAME} to answer.
                     </p>
                   ) : (
                     <>
@@ -686,8 +692,9 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                         [question.id]: e.target.value,
                       }))
                     }
+                    enterKeyHint="send"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleAnswer(question.id);
                       }
@@ -700,7 +707,7 @@ Write a thoughtful, insightful answer. Be direct and informative.`,
                     <p className="flex items-center gap-2 text-xs text-gray-400">
                       <Link2 className="w-3.5 h-3.5" />
                       Use `[title](https://example.com)` for clickable links.
-                      Press `Ctrl+Enter` to answer faster.
+                      Press `Enter` to send and `Shift+Enter` for a new line.
                     </p>
                     <button
                       onClick={() => handleAnswer(question.id)}

@@ -104,6 +104,14 @@ Question: ${question}`,
     return res.text || "Unable to generate an answer right now."
   },
 
+  async generateSmartTalkFallbackAnswer(question: string): Promise<string> {
+    const res = await callAI({
+      type: "chatgptSmartAnswer",
+      content: question,
+    })
+    return res.text || ""
+  },
+
   async generateHashtags(content: string): Promise<string[]> {
     const res = await callAI({ type: "hashtags", content })
     const raw = res.text || ""
@@ -135,6 +143,20 @@ Question: ${question}`,
       type: "autoReply",
       content,
       prompt: `${author}|||${category}`,
+    })
+    return res.text || ""
+  },
+
+  async generateKnowledgeFallbackComment(
+    title: string,
+    content: string,
+    author: string,
+    existingHumanCommentCount: number
+  ): Promise<string> {
+    const res = await callAI({
+      type: "chatgptKnowledgeComment",
+      content,
+      prompt: `${author}|||${title}|||${existingHumanCommentCount}`,
     })
     return res.text || ""
   },

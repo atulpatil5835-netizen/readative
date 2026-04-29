@@ -3,6 +3,10 @@ import cors from "cors"
 import dotenv from "dotenv"
 import path from "path"
 import { fileURLToPath } from "url"
+import {
+  CHATGPT_MODEL,
+  CHATGPT_VERSION_LABEL,
+} from "./src/utils/chatgpt"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -12,8 +16,11 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") })
 dotenv.config()
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ""
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ""
 
 console.log("🔑 GEMINI KEY:", GEMINI_API_KEY ? `${GEMINI_API_KEY.slice(0, 8)}...` : "❌ NOT FOUND")
+
+console.log("OPENAI KEY:", OPENAI_API_KEY ? `${OPENAI_API_KEY.slice(0, 8)}...` : "NOT FOUND")
 
 const app = express()
 app.use(cors())
@@ -90,6 +97,49 @@ async function callGemini(prompt: string): Promise<string> {
     return text
   } catch (error) {
     console.error("❌ Gemini fetch error:", error)
+    return ""
+  }
+}
+
+async function callChatGPT(prompt: string): Promise<string> {
+  if (!OPENAI_API_KEY) {
+    console.error("No OpenAI API key found!")
+    return ""
+  }
+
+  try {
+    console.log("Calling ChatGPT:", prompt.slice(0, 80) + "...")
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: CHATGPT_MODEL,
+        input: prompt,
+      }),
+    })
+    const data = await response.json()
+
+    if (data.error) {
+      console.error("OpenAI API error:", data.error.message)
+      return ""
+    }
+
+    const text =
+      data.output_text ||
+      data.output
+        ?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content || [])
+        .map((item: { text?: string }) => item.text || "")
+        .join("")
+        .trim() ||
+      ""
+
+    console.log("ChatGPT response:", text.slice(0, 80) + "...")
+    return text
+  } catch (error) {
+    console.error("OpenAI fetch error:", error)
     return ""
   }
 }
@@ -247,10 +297,21 @@ app.post("/api/ai", async (req, res) => {
   try {
     const { type, prompt, content, topic, language } = req.body
     let finalPrompt = ""
+    let provider: "gemini" | "chatgpt" = "gemini"
 
     switch (type) {
       case "answer":
         finalPrompt = prompt || ""
+        break
+      case "chatgptSmartAnswer":
+        provider = "chatgpt"
+        finalPrompt = `You are ChatGPT (${CHATGPT_VERSION_LABEL}), helping on Readative's SmartTalk Q&A.
+Write one thoughtful answer in 2-3 short paragraphs.
+Be direct, clear, and genuinely useful without sounding robotic.
+
+Question:
+${content || ""}
+`
         break
       case "hashtags":
         finalPrompt = `Generate 5-6 relevant hashtags (with # prefix, space-separated) for this content. Return only hashtags, nothing else:\n${content}`
@@ -266,13 +327,34 @@ app.post("/api/ai", async (req, res) => {
         finalPrompt = `You are a warm reader on Readative. Write ONE short smart comment (2-3 sentences) on this ${category || "post"} by ${author}:\n"${content}"`
         break
       }
+      case "chatgptKnowledgeComment": {
+        provider = "chatgpt"
+        const [author, title, existingHumanCommentCount] = (prompt || "").split("|||")
+        const commentCount = Number(existingHumanCommentCount || "0")
+        finalPrompt = `You are ChatGPT (${CHATGPT_VERSION_LABEL}) joining a quiet discussion on Readative.
+Write exactly one natural, supportive comment in 2-3 sentences.
+Sound like a thoughtful community member, not a moderator or bot disclaimer.
+The goal is to gently start discussion on a low-interaction post after 6 quiet hours.
+Do not mention low interaction, algorithms, or that you were triggered automatically.
+${commentCount > 0 ? "Build on the existing discussion without repeating it." : "Be the first helpful reply and invite reflection."}
+
+Post title: ${title || "Untitled"}
+Post author: ${author || "Unknown"}
+Post content:
+${content || ""}
+`
+        break
+      }
       case "tts":
         return res.json({ audio: null })
       default:
         finalPrompt = prompt || content || ""
     }
 
-    const text = await callGemini(finalPrompt)
+    const text =
+      provider === "chatgpt"
+        ? await callChatGPT(finalPrompt)
+        : await callGemini(finalPrompt)
     res.json({ text })
   } catch (error) {
     console.error("❌ AI route error:", error)

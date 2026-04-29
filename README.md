@@ -15,6 +15,8 @@ View your app in AI Studio: https://ai.studio/apps/9284e864-ea53-486c-b150-f2122
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the AI keys in `.env.local`:
+   `GEMINI_API_KEY` for the existing Gemini-powered tools
+   `OPENAI_API_KEY` for the new ChatGPT SmartTalk and low-interaction comment fallbacks
 3. Run the app:
    `npm run dev`
