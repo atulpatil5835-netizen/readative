@@ -3,11 +3,12 @@ import { type ReactNode, Suspense, lazy, useEffect, useMemo, useState } from "re
 import {
   AtSign,
   Bell,
-  ExternalLink,
   Heart,
+  Linkedin,
   Mail,
   MessageCircle,
   MessageSquareMore,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -28,6 +29,7 @@ import { ensureGuestProfile } from "./utils/userProfiles";
 import { trackPageView } from "./utils/analytics";
 
 type Tab = "knowledge" | "smarttalk" | "profile";
+type InfoSection = "about" | "contact" | "privacy";
 
 const SmartTalk = lazy(() =>
   import("./components/SmartTalk").then((module) => ({
@@ -325,6 +327,8 @@ export default function App() {
 }
 
 function InfoPanel({ onClose }: { onClose: () => void }) {
+  const [activeSection, setActiveSection] = useState<InfoSection>("about");
+
   return (
     <div
       className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[1px]"
@@ -332,44 +336,159 @@ function InfoPanel({ onClose }: { onClose: () => void }) {
     >
       <aside
         onClick={(event) => event.stopPropagation()}
-        className="absolute right-4 top-20 w-[min(92vw,360px)] rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
+        className="absolute right-4 top-20 flex w-[min(92vw,390px)] max-h-[min(78vh,720px)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-500">
-              Contact Info
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-              Readative details
-            </h2>
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-200">
+                Readative Info
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-tight">
+                About, contact, and privacy
+              </h2>
+              <p className="mt-2 text-sm text-emerald-50">
+                Open the section you need from the buttons below.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-4 w-4" />
-          </button>
+
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <InfoSectionButton
+              active={activeSection === "about"}
+              label="About Us"
+              onClick={() => setActiveSection("about")}
+            />
+            <InfoSectionButton
+              active={activeSection === "contact"}
+              label="Contact Us"
+              onClick={() => setActiveSection("contact")}
+            />
+            <InfoSectionButton
+              active={activeSection === "privacy"}
+              label="Privacy Policy"
+              onClick={() => setActiveSection("privacy")}
+            />
+          </div>
         </div>
 
-        <div className="mt-6 space-y-4">
-          <InfoRow
-            icon={<ExternalLink className="h-4 w-4" />}
-            label="LinkedIn Page"
-            value="Innovation InfoHub"
-            href="https://www.linkedin.com/company/innovation-infohub/"
-          />
-          <InfoRow
-            icon={<Mail className="h-4 w-4" />}
-            label="Support Email"
-            value="reader@readative.com"
-            href="mailto:reader@readative.com"
-          />
-          <InfoRow
-            icon={<ExternalLink className="h-4 w-4" />}
-            label="Creator"
-            value="Atul Hinge"
-            href="https://www.linkedin.com/in/atul-hinge-304aab155/"
-          />
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          {activeSection === "about" && (
+            <div className="space-y-6">
+              <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 px-5 py-5">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
+                  About Us
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  Readative is a knowledge-first community designed for useful
+                  ideas, thoughtful learning posts, and SmartTalk discussions that
+                  stay educational and practical.
+                </p>
+                <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/80 bg-white px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Company LinkedIn
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Innovation InfoHub
+                    </p>
+                  </div>
+                  <IconOnlyLink
+                    href="https://www.linkedin.com/company/innovation-infohub/"
+                    label="Open company LinkedIn page"
+                    icon={<Linkedin className="h-4 w-4" />}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Creator
+                </p>
+                <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+                  Atul Hinge
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Founder and creator of Readative.
+                </p>
+                <div className="mt-4">
+                  <IconOnlyLink
+                    href="https://www.linkedin.com/in/atul-hinge-304aab155/"
+                    label="Open creator LinkedIn profile"
+                    icon={<Linkedin className="h-4 w-4" />}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "contact" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                Contact Us
+              </p>
+              <a
+                href="mailto:reader@readative.com"
+                className="mt-4 flex items-center gap-3 rounded-2xl border border-white bg-white px-4 py-4 text-slate-900 transition-colors hover:border-emerald-200 hover:bg-emerald-50/70"
+              >
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <Mail className="h-4 w-4" />
+                </span>
+                <span className="text-sm font-semibold">reader@readative.com</span>
+              </a>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                Use this email for support, business questions, creator contact,
+                or privacy requests.
+              </p>
+            </div>
+          )}
+
+          {activeSection === "privacy" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <ShieldCheck className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Privacy Policy
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Key platform and advertising policies
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+                <PolicyBlock
+                  title="Information we store"
+                  body="Readative may store usernames, posts, comments, likes, notifications, and basic usage information needed to run the community experience."
+                />
+                <PolicyBlock
+                  title="Google cookies for ads"
+                  body="Readative uses Google cookies and related advertising technology for ads and monetization. Google and its partners may use cookies to serve and personalize ads based on your visits to this site and other websites."
+                />
+                <PolicyBlock
+                  title="No copyrighted content without permission"
+                  body="Users should only upload or publish content they own or have permission to share. Copyrighted material, spam, abusive content, and sexual content are not allowed on the platform."
+                />
+                <PolicyBlock
+                  title="Third-party services"
+                  body="When you open LinkedIn, Google, or other outside services from Readative, those services apply their own privacy practices and terms."
+                />
+                <PolicyBlock
+                  title="Updates and contact"
+                  body="These policies may be updated as Readative grows. For privacy or policy questions, contact reader@readative.com."
+                />
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </div>
@@ -522,34 +641,64 @@ function NotificationsPanel({
   );
 }
 
-function InfoRow({
-  icon,
+function InfoSectionButton({
+  active,
   label,
-  value,
-  href,
+  onClick,
 }: {
-  icon: ReactNode;
+  active: boolean;
   label: string;
-  value: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-2xl px-3 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
+        active
+          ? "bg-white text-emerald-800"
+          : "bg-white/10 text-white/85 hover:bg-white/20"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function IconOnlyLink({
+  href,
+  label,
+  icon,
+}: {
   href: string;
+  label: string;
+  icon: ReactNode;
 }) {
   return (
     <a
       href={href}
-      target={href.startsWith("http") ? "_blank" : undefined}
-      rel={href.startsWith("http") ? "noreferrer" : undefined}
-      className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60"
+      target="_blank"
+      rel="noreferrer"
+      aria-label={label}
+      title={label}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
     >
-      <div className="mt-0.5 rounded-full bg-white p-2 text-emerald-700 shadow-sm">
-        {icon}
-      </div>
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-          {label}
-        </p>
-        <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
-      </div>
+      {icon}
     </a>
+  );
+}
+
+function PolicyBlock({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white bg-white px-4 py-4">
+      <p className="text-sm font-bold text-slate-900">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
+    </div>
   );
 }
 
