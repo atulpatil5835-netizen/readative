@@ -78,6 +78,7 @@ export function SmartTalk() {
   const [namePrompt, setNamePrompt] = useState<NamePromptState>(null);
   const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
   const [moderationMessage, setModerationMessage] = useState<string | null>(null);
+  const [answerMessages, setAnswerMessages] = useState<Record<string, string>>({});
   const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
   const [aiSweepTick, setAiSweepTick] = useState(0);
   const pendingAiAnswersRef = useRef<Set<string>>(new Set());
@@ -227,6 +228,7 @@ export function SmartTalk() {
     if (!normalizedName || !answerText) return;
 
     setModerationMessage(null);
+    setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
     setModeratingAnswerId(questionId);
 
     const moderation = await moderateContent("smarttalk-answer", {
@@ -235,7 +237,10 @@ export function SmartTalk() {
 
     if (!moderation.allowed) {
       setModeratingAnswerId(null);
-      setModerationMessage(moderation.message);
+      setAnswerMessages((current) => ({
+        ...current,
+        [questionId]: moderation.message,
+      }));
       return;
     }
 
@@ -260,8 +265,14 @@ export function SmartTalk() {
       });
 
       setAnswerInputs((current) => ({ ...current, [questionId]: "" }));
+      setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
+      setExpandedAnswers((current) => ({ ...current, [questionId]: true }));
     } catch (error) {
       console.error("Failed to post answer:", error);
+      setAnswerMessages((current) => ({
+        ...current,
+        [questionId]: "Could not post your answer right now. Please try again.",
+      }));
     } finally {
       setIsAnswering((current) => ({ ...current, [questionId]: false }));
     }
@@ -271,6 +282,7 @@ export function SmartTalk() {
     if (!answerInputs[questionId]?.trim()) return;
 
     setModerationMessage(null);
+    setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
 
     if (guestName) {
       void submitAnswer(questionId, guestName);
@@ -692,6 +704,12 @@ export function SmartTalk() {
                         [question.id]: e.target.value,
                       }))
                     }
+                    onInput={() =>
+                      setAnswerMessages((current) => ({
+                        ...current,
+                        [question.id]: "",
+                      }))
+                    }
                     enterKeyHint="send"
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -729,6 +747,11 @@ export function SmartTalk() {
                       )}
                     </button>
                   </div>
+                  {answerMessages[question.id] && (
+                    <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      {answerMessages[question.id]}
+                    </p>
+                  )}
                 </div>
               </div>
             );
