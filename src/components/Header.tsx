@@ -5,6 +5,7 @@ import { type AppTab } from "../utils/routes";
 interface HeaderProps {
   activeTab: AppTab | "notFound";
   setActiveTab: (tab: AppTab) => void;
+  onHomeAction: () => void;
   unreadNotificationCount: number;
   onOpenComposer: () => void;
   onOpenNotifications: () => void;
@@ -14,6 +15,7 @@ interface HeaderProps {
 export function Header({
   activeTab,
   setActiveTab,
+  onHomeAction,
   unreadNotificationCount,
   onOpenComposer,
   onOpenNotifications,
@@ -26,7 +28,7 @@ export function Header({
       <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setActiveTab("knowledge")}
+            onClick={onHomeAction}
             className="relative flex h-9 w-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.02] md:h-10 md:w-10"
             aria-label="Open homepage"
           >
@@ -34,7 +36,7 @@ export function Header({
           </button>
           <div className="flex flex-col justify-center">
             <button
-              onClick={() => setActiveTab("knowledge")}
+              onClick={onHomeAction}
               className="leading-none text-left text-[18px] font-black tracking-tight text-emerald-800 md:text-[20px]"
             >
               Readative
@@ -58,7 +60,7 @@ export function Header({
               return (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={tab === "knowledge" ? onHomeAction : () => setActiveTab(tab)}
                   className={`relative text-sm font-medium transition-colors ${
                     activeTab === tab
                       ? "text-emerald-600"

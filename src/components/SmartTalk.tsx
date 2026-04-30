@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -25,6 +25,7 @@ import {
 import { db } from "../firebase/firebase";
 import { geminiService } from "../services/gemini";
 import { UsernamePrompt } from "./Auth";
+import { DiscoverySearch } from "./DiscoverySearch";
 import {
   AI_FALLBACK_DELAY_HOURS,
   CHATGPT_AUTHOR_ID,
@@ -66,6 +67,42 @@ type NamePromptState =
   | { type: "answer"; questionId: string }
   | null;
 
+function tokenizeSearch(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function matchesSmartTalkSearch(question: Question, terms: string[]) {
+  if (terms.length === 0) return true;
+
+  const people = [question.author, ...(question.answers || []).map((answer) => answer.author)]
+    .filter(Boolean)
+    .map((value) => value.toLowerCase());
+  const searchableText = [
+    question.author,
+    question.content,
+    ...(question.answers || []).map((answer) => answer.author),
+    ...(question.answers || []).map((answer) => answer.content),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return terms.every((term) => {
+    if (term.startsWith("@")) {
+      const normalized = term.slice(1);
+      return Boolean(normalized) && people.some((person) => person.includes(normalized));
+    }
+
+    const normalized = term.startsWith("#") ? term.slice(1) : term;
+    return Boolean(normalized) && searchableText.includes(normalized);
+  });
+}
+
 export function SmartTalk() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,9 +118,11 @@ export function SmartTalk() {
   const [answerMessages, setAnswerMessages] = useState<Record<string, string>>({});
   const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
   const [aiSweepTick, setAiSweepTick] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const pendingAiAnswersRef = useRef<Set<string>>(new Set());
 
   const guestId = getGuestId();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
     const smartTalkQuery = query(
@@ -370,6 +409,16 @@ export function SmartTalk() {
     void submitAnswer(prompt.questionId, normalizedName);
   };
 
+  const searchTerms = tokenizeSearch(deferredSearchQuery);
+  const visibleQuestions =
+    searchTerms.length === 0
+      ? questions
+      : questions.filter((question) => matchesSmartTalkSearch(question, searchTerms));
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const searchResultLabel = hasSearchQuery
+    ? `${visibleQuestions.length} match${visibleQuestions.length === 1 ? "" : "es"}`
+    : `${questions.length} question${questions.length === 1 ? "" : "s"}`;
+
   const renderAnswerCard = (
     question: Question,
     answer: Answer,
@@ -563,6 +612,24 @@ export function SmartTalk() {
         </div>
       </div>
 
+      <DiscoverySearch
+        theme="indigo"
+        title="Search questions, answers, and people"
+        description="Scan SmartTalk by keywords, author names, answer text, or focused prompts without pinning anything to the top."
+        placeholder="Try @username, notebooklm, ai answer, productivity, study plan..."
+        value={searchQuery}
+        onChange={setSearchQuery}
+        onClear={() => setSearchQuery("")}
+        resultLabel={searchResultLabel}
+        helperText="Search understands plain text and @user lookups across both questions and answers."
+        suggestions={[
+          { label: "@username", query: "@username" },
+          { label: "ai answer", query: "ai answer" },
+          { label: "notebooklm", query: "notebooklm" },
+          { label: "study plan", query: "study plan" },
+        ]}
+      />
+
       {isLoading ? (
         <div className="flex flex-col items-center py-16 gap-3">
           <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
@@ -572,9 +639,21 @@ export function SmartTalk() {
         <div className="text-center py-16 text-gray-400 text-sm">
           No questions yet. Be the first to ask!
         </div>
+      ) : visibleQuestions.length === 0 ? (
+        <div className="rounded-[30px] border border-dashed border-indigo-200 bg-white px-6 py-16 text-center shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">
+            No Search Matches
+          </p>
+          <h3 className="mt-3 text-xl font-black text-slate-900">
+            No SmartTalk posts matched "{searchQuery.trim()}"
+          </h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Try a broader phrase or search by the author with @username.
+          </p>
+        </div>
       ) : (
-        <div className="space-y-6">
-          {questions.map((question) => {
+        <div className="space-y-4">
+          {visibleQuestions.map((question) => {
             const humanAnswers = (question.answers || []).filter(
               (answer) => !answer.isAI
             );

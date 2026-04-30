@@ -70,6 +70,7 @@ export default function App() {
   const [composerOpenSignal, setComposerOpenSignal] = useState(0);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
 
   const syncRouteState = () => {
     const route = parseRouteFromLocation();
@@ -98,6 +99,21 @@ export default function App() {
 
   const handleOpenEntry = (entryId: string) => {
     handleTabChange("knowledge", null, entryId);
+  };
+
+  const handleHomeAction = () => {
+    setShowInfoPanel(false);
+    setShowNotificationsPanel(false);
+
+    const route = parseRouteFromLocation();
+    const alreadyOnBaseHome =
+      route.tab === "knowledge" && !route.focusedEntryId && !route.selectedHashtag;
+
+    if (!alreadyOnBaseHome) {
+      navigateToRoute("knowledge");
+    }
+
+    setHomeRefreshSignal((current) => current + 1);
   };
 
   const handleOpenComposer = () => {
@@ -221,6 +237,7 @@ export default function App() {
         <Header
           activeTab={activeTab}
           setActiveTab={(tab) => handleTabChange(tab)}
+          onHomeAction={handleHomeAction}
           unreadNotificationCount={unreadNotificationCount}
           onOpenComposer={handleOpenComposer}
           onOpenNotifications={handleOpenNotifications}
@@ -253,6 +270,7 @@ export default function App() {
               focusedEntryId={focusedEntryId}
               onOpenEntry={handleOpenEntry}
               composerOpenSignal={composerOpenSignal}
+              refreshSignal={homeRefreshSignal}
             />
           ) : null}
           {activeTab === "smarttalk" && (
@@ -294,7 +312,7 @@ export default function App() {
 
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between border-t border-black/5 bg-white px-6 py-3 md:hidden">
           <button
-            onClick={() => handleTabChange("knowledge")}
+            onClick={handleHomeAction}
             className={`p-2 ${
               activeTab === "knowledge" ? "text-emerald-600" : "text-gray-400"
             }`}

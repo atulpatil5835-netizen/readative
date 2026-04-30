@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  useDeferredValue,
   type KeyboardEvent,
   type RefObject,
   useEffect,
@@ -30,6 +31,7 @@ import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../ty
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
+import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import {
   CHATGPT_AUTHOR_ID,
@@ -82,6 +84,7 @@ interface KnowledgeFeedProps {
   focusedEntryId: string | null;
   onOpenEntry: (entryId: string) => void;
   composerOpenSignal: number;
+  refreshSignal: number;
 }
 
 function parseManualHashtags(input: string): string[] {
@@ -146,6 +149,51 @@ function readSelectedHashtagFromLocation() {
   if (typeof window === "undefined") return null;
 
   return parseRouteFromLocation().selectedHashtag;
+}
+
+function tokenizeSearch(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
+  if (terms.length === 0) return true;
+
+  const hashtags = entry.hashtags.map((tag) => tag.toLowerCase());
+  const people = [
+    entry.author,
+    ...(entry.mentions || []).map((mention) => mention.username),
+    ...(entry.comments || []).map((comment) => comment.author || ""),
+  ].map((value) => value.toLowerCase());
+  const searchableText = [
+    entry.title,
+    entry.content,
+    entry.author,
+    ...entry.hashtags,
+    ...(entry.mentions || []).map((mention) => mention.username),
+    ...(entry.comments || []).map((comment) => comment.text),
+    ...(entry.comments || []).map((comment) => comment.author || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return terms.every((term) => {
+    if (term.startsWith("#")) {
+      const normalized = term.slice(1);
+      return Boolean(normalized) && hashtags.some((tag) => tag.includes(normalized));
+    }
+
+    if (term.startsWith("@")) {
+      const normalized = term.slice(1);
+      return Boolean(normalized) && people.some((person) => person.includes(normalized));
+    }
+
+    return searchableText.includes(term);
+  });
 }
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
@@ -244,6 +292,7 @@ export function KnowledgeFeed({
   focusedEntryId,
   onOpenEntry,
   composerOpenSignal,
+  refreshSignal,
 }: KnowledgeFeedProps) {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -266,11 +315,14 @@ export function KnowledgeFeed({
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
     readSelectedHashtagFromLocation()
   );
+  const [feedSearchQuery, setFeedSearchQuery] = useState("");
+  const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [aiSweepTick, setAiSweepTick] = useState(0);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingAiCommentsRef = useRef<Set<string>>(new Set());
   const guestName = getGuestName();
+  const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -278,6 +330,21 @@ export function KnowledgeFeed({
       setFeedMessage(null);
     }
   }, [composerOpenSignal]);
+
+  useEffect(() => {
+    if (refreshSignal === 0) return;
+
+    setFeedSearchQuery("");
+    setFeedMessage(null);
+    setShowRefreshFeedback(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    const timeoutId = window.setTimeout(() => {
+      setShowRefreshFeedback(false);
+    }, 2400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [refreshSignal]);
 
   useEffect(() => {
     const knowledgeQuery = query(
@@ -454,6 +521,12 @@ export function KnowledgeFeed({
       entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag)
     );
   }, [orderedEntries, selectedHashtag]);
+  const filteredEntries = useMemo(() => {
+    const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
+    if (searchTerms.length === 0) return visibleEntries;
+
+    return visibleEntries.filter((entry) => matchesKnowledgeSearch(entry, searchTerms));
+  }, [deferredFeedSearchQuery, visibleEntries]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -716,6 +789,13 @@ export function KnowledgeFeed({
     : selectedHashtag
     ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
     : buildAbsoluteRouteUrl("knowledge");
+  const hasActiveSearch = feedSearchQuery.trim().length > 0;
+  const searchResultLabel = hasActiveSearch
+    ? `${filteredEntries.length} result${filteredEntries.length === 1 ? "" : "s"}`
+    : `${visibleEntries.length} live post${visibleEntries.length === 1 ? "" : "s"}`;
+  const searchHelperText = showRefreshFeedback
+    ? "Home pressed again: you are back at the newest posts and your feed search is cleared."
+    : "Search title, body text, #hashtags, @people, and comment text. Press Home again anytime to jump back to the latest posts.";
 
   return (
     <div className="pb-20">
@@ -761,6 +841,24 @@ export function KnowledgeFeed({
             />
           )}
 
+          <DiscoverySearch
+            theme="emerald"
+            title="Search the live home feed"
+            description="Find posts by keywords, long-form text, hashtags, people, or even comments without leaving the homepage."
+            placeholder="Try @creator, #science, visual explainer, productivity, comments..."
+            value={feedSearchQuery}
+            onChange={setFeedSearchQuery}
+            onClear={() => setFeedSearchQuery("")}
+            resultLabel={searchResultLabel}
+            helperText={searchHelperText}
+            suggestions={[
+              { label: "@username", query: "@username" },
+              { label: "#learning", query: "#learning" },
+              { label: "visual explainer", query: "visual explainer" },
+              { label: "productivity", query: "productivity" },
+            ]}
+          />
+
           {selectedHashtag && (
             <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 px-5 py-4 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -786,33 +884,39 @@ export function KnowledgeFeed({
             </div>
           )}
 
-          {visibleEntries.length === 0 ? (
+          {filteredEntries.length === 0 ? (
             <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
               <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
               <h3 className="mt-4 text-xl font-black text-slate-900">
-                {selectedHashtag ? `No posts for #${selectedHashtag}` : "No posts yet"}
+                {hasActiveSearch
+                  ? `No posts matched "${feedSearchQuery.trim()}"`
+                  : selectedHashtag
+                  ? `No posts for #${selectedHashtag}`
+                  : "No posts yet"}
               </h3>
               <p className="mt-2 text-sm text-slate-500">
-                {selectedHashtag
+                {hasActiveSearch
+                  ? "Try a broader keyword, another hashtag, or search by @username."
+                  : selectedHashtag
                   ? "Try another hashtag or clear this filter to explore the full feed."
                   : "Tap the `+` button at the top to upload the first knowledge post."}
               </p>
             </div>
           ) : (
-          <>
-            {visibleEntries.map((entry) => (
-              <KnowledgeCard
-                key={entry.id}
-                entry={entry}
-                profiles={profiles}
-                onIdentityRequired={(action) => setPendingAction(action)}
-                onOpenProfile={onOpenProfile}
-                onOpenEntry={onOpenEntry}
-                onSelectHashtag={handleSelectHashtag}
-                highlighted={entry.id === focusedEntryId}
-              />
-            ))}
-          </>
+            <div className="space-y-4">
+              {filteredEntries.map((entry) => (
+                <KnowledgeCard
+                  key={entry.id}
+                  entry={entry}
+                  profiles={profiles}
+                  onIdentityRequired={(action) => setPendingAction(action)}
+                  onOpenProfile={onOpenProfile}
+                  onOpenEntry={onOpenEntry}
+                  onSelectHashtag={handleSelectHashtag}
+                  highlighted={entry.id === focusedEntryId}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
