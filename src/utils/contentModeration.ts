@@ -17,7 +17,7 @@ export interface ModerationDecision {
   suggestions: string[];
   knowledgeScore: number;
   safetyScore: number;
-  source: "local" | "hybrid";
+  source: "local";
 }
 
 interface PatternRule {
@@ -35,15 +35,6 @@ interface LocalEvaluation {
   safetyScore: number;
 }
 
-interface AIModerationResult {
-  allow: boolean;
-  category: ModerationDecision["category"];
-  reason: string;
-  suggestion: string;
-  knowledgeScore: number;
-  safetyScore: number;
-}
-
 const EXPLICIT_RULES: PatternRule[] = [
   { label: "sexual content", pattern: /\bsex(ual)?\b/i },
   { label: "adult content", pattern: /\badult\b/i },
@@ -53,7 +44,10 @@ const EXPLICIT_RULES: PatternRule[] = [
   { label: "explicit roleplay", pattern: /\broleplay\b/i },
   { label: "fetish content", pattern: /\bfetish\b/i },
   { label: "sexting", pattern: /\bsext(ing)?\b/i },
-  { label: "explicit body language", pattern: /\bboobs?|breasts?|penis|vagina|nipple|tits?\b/i },
+  {
+    label: "explicit body language",
+    pattern: /\bboobs?|breasts?|penis|vagina|nipple|tits?\b/i,
+  },
   { label: "seductive language", pattern: /\bhorny|turn me on|dirty talk\b/i },
 ];
 
@@ -67,8 +61,14 @@ const PROMO_RULES: PatternRule[] = [
 ];
 
 const CHAT_RULES: PatternRule[] = [
-  { label: "casual greeting", pattern: /\bgood morning|good night|hello everyone|hi friends\b/i },
-  { label: "attention bait", pattern: /\banyone online|who is awake|reply fast\b/i },
+  {
+    label: "casual greeting",
+    pattern: /\bgood morning|good night|hello everyone|hi friends\b/i,
+  },
+  {
+    label: "attention bait",
+    pattern: /\banyone online|who is awake|reply fast\b/i,
+  },
   { label: "flirting", pattern: /\blove you|miss you|date me|be mine\b/i },
   { label: "status update", pattern: /\bi am bored|feeling lonely|rate me\b/i },
 ];
@@ -81,8 +81,14 @@ const ABUSE_RULES: PatternRule[] = [
 const KNOWLEDGE_RULES: PatternRule[] = [
   { label: "explainer", pattern: /\bhow to|why|explained?|definition\b/i },
   { label: "teaching", pattern: /\blearn|lesson|tutorial|guide\b/i },
-  { label: "framework", pattern: /\bframework|strategy|method|process|workflow\b/i },
-  { label: "detail", pattern: /\bexample|examples|case study|compare|summary\b/i },
+  {
+    label: "framework",
+    pattern: /\bframework|strategy|method|process|workflow\b/i,
+  },
+  {
+    label: "detail",
+    pattern: /\bexample|examples|case study|compare|summary\b/i,
+  },
   { label: "improvement", pattern: /\btips?|mistakes?|benefits?|checklist\b/i },
   { label: "evidence", pattern: /\bresearch|data|result|insight\b/i },
   { label: "structured list", pattern: /(^|\n)([-*]|\d+\.)\s/m },
@@ -92,12 +98,12 @@ const QUESTION_HINT = /^(how|why|what|when|where|which|can|does|is|should)\b/i;
 
 const MODE_SETTINGS: Record<
   ModerationMode,
-  { minWords: number; passScore: number; aiFloor: number; minSentences: number }
+  { minWords: number; passScore: number; minSentences: number }
 > = {
-  "knowledge-post": { minWords: 20, passScore: 6, aiFloor: 60, minSentences: 2 },
-  "knowledge-comment": { minWords: 3, passScore: 1, aiFloor: 0, minSentences: 1 },
-  "smarttalk-question": { minWords: 5, passScore: 2, aiFloor: 45, minSentences: 1 },
-  "smarttalk-answer": { minWords: 10, passScore: 3, aiFloor: 50, minSentences: 1 },
+  "knowledge-post": { minWords: 20, passScore: 6, minSentences: 2 },
+  "knowledge-comment": { minWords: 3, passScore: 1, minSentences: 1 },
+  "smarttalk-question": { minWords: 5, passScore: 2, minSentences: 1 },
+  "smarttalk-answer": { minWords: 10, passScore: 3, minSentences: 1 },
 };
 
 function countWords(text: string) {
@@ -112,7 +118,9 @@ function countSentences(text: string) {
 }
 
 function findMatches(text: string, rules: PatternRule[]) {
-  return rules.filter((rule) => rule.pattern.test(text)).map((rule) => rule.label);
+  return rules
+    .filter((rule) => rule.pattern.test(text))
+    .map((rule) => rule.label);
 }
 
 function createSuggestions(mode: ModerationMode) {
@@ -143,12 +151,16 @@ function createSuggestions(mode: ModerationMode) {
   ];
 }
 
-function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEvaluation {
+function evaluateLocally(
+  mode: ModerationMode,
+  input: ModerationInput,
+): LocalEvaluation {
   const config = MODE_SETTINGS[mode];
   const title = input.title?.trim() || "";
   const content = input.content.trim();
   const hashtags = input.hashtags || [];
-  const combinedText = `${title}\n${content}\n${hashtags.join(" ")}`.toLowerCase();
+  const combinedText =
+    `${title}\n${content}\n${hashtags.join(" ")}`.toLowerCase();
   const words = countWords(`${title} ${content}`);
   const sentences = countSentences(`${title}. ${content}`);
 
@@ -173,7 +185,10 @@ function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEva
 
   knowledgeScore += Math.min(4, knowledgeMatches.length);
 
-  if (mode === "knowledge-post" && title.split(/\s+/).filter(Boolean).length >= 3) {
+  if (
+    mode === "knowledge-post" &&
+    title.split(/\s+/).filter(Boolean).length >= 3
+  ) {
     knowledgeScore += 1;
   }
 
@@ -196,11 +211,15 @@ function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEva
   const suggestions = createSuggestions(mode);
 
   if (explicitMatches.length > 0) {
-    reasons.push("Readative accepts knowledge-only content, so sexual or adult material is blocked.");
+    reasons.push(
+      "Readative accepts knowledge-only content, so sexual or adult material is blocked.",
+    );
   }
 
   if (promoMatches.length > 0) {
-    reasons.push("Promotional or contact-bait posts are not allowed in the knowledge feed.");
+    reasons.push(
+      "Promotional or contact-bait posts are not allowed in the knowledge feed.",
+    );
   }
 
   if (abuseMatches.length > 0) {
@@ -208,7 +227,9 @@ function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEva
   }
 
   if (mode !== "knowledge-comment" && chatMatches.length > 0) {
-    reasons.push("This reads more like casual chat than a useful knowledge contribution.");
+    reasons.push(
+      "This reads more like casual chat than a useful knowledge contribution.",
+    );
   }
 
   if (words < config.minWords) {
@@ -220,7 +241,9 @@ function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEva
     knowledgeMatches.length === 0 &&
     words >= Math.max(4, Math.floor(config.minWords * 0.6))
   ) {
-    reasons.push("Make the post more educational with explanation, steps, examples, or a takeaway.");
+    reasons.push(
+      "Make the post more educational with explanation, steps, examples, or a takeaway.",
+    );
   }
 
   const hardBlocked =
@@ -247,92 +270,9 @@ function evaluateLocally(mode: ModerationMode, input: ModerationInput): LocalEva
   };
 }
 
-function buildModerationPrompt(mode: ModerationMode, input: ModerationInput) {
-  const modeLabel =
-    mode === "knowledge-post"
-      ? "knowledge post"
-      : mode === "knowledge-comment"
-      ? "knowledge comment"
-      : mode === "smarttalk-question"
-      ? "learning question"
-      : "learning answer";
-
-  return `You are the strict moderation gate for Readative.
-The platform allows educational knowledge sharing only.
-
-Allow:
-- practical knowledge
-- tutorials, explainers, summaries, frameworks, examples
-- genuine learning questions
-- thoughtful, useful answers
-
-Reject:
-- sexual or adult content
-- flirting, dating, seductive language, roleplay
-- follower bait, contact bait, promotion
-- generic chat, status updates, empty reactions
-- abusive or hateful language
-
-Evaluate this ${modeLabel} and return JSON only with this exact shape:
-{"allow":true,"category":"knowledge","knowledgeScore":82,"safetyScore":96,"reason":"short reason","suggestion":"short suggestion"}
-
-Title: ${input.title || "(none)"}
-Hashtags: ${(input.hashtags || []).join(", ") || "(none)"}
-Content:
-${input.content}`;
-}
-
-function parseAIModeration(text: string): AIModerationResult | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-
-  try {
-    const parsed = JSON.parse(text.slice(start, end + 1)) as Partial<AIModerationResult>;
-    if (typeof parsed.allow !== "boolean") return null;
-    if (typeof parsed.reason !== "string") return null;
-    if (typeof parsed.suggestion !== "string") return null;
-
-    const category =
-      parsed.category === "knowledge" ||
-      parsed.category === "sexual" ||
-      parsed.category === "promo" ||
-      parsed.category === "chat" ||
-      parsed.category === "abuse" ||
-      parsed.category === "unclear"
-        ? parsed.category
-        : "unclear";
-
-    return {
-      allow: parsed.allow,
-      category,
-      reason: parsed.reason,
-      suggestion: parsed.suggestion,
-      knowledgeScore: Number(parsed.knowledgeScore) || 0,
-      safetyScore: Number(parsed.safetyScore) || 0,
-    };
-  } catch (error) {
-    console.error("Failed to parse AI moderation:", error);
-    return null;
-  }
-}
-
-async function runAIModeration(
-  mode: ModerationMode,
-  input: ModerationInput
-): Promise<AIModerationResult | null> {
-  const { callAI } = await import("../services/gemini");
-  const response = await callAI({
-    type: "answer",
-    prompt: buildModerationPrompt(mode, input),
-  });
-
-  return parseAIModeration(response.text || "");
-}
-
 function finalizeLocal(
   evaluation: LocalEvaluation,
-  fallbackMessage: string
+  fallbackMessage: string,
 ): ModerationDecision {
   return {
     allowed: evaluation.allowed,
@@ -347,7 +287,7 @@ function finalizeLocal(
 
 export async function moderateContent(
   mode: ModerationMode,
-  input: ModerationInput
+  input: ModerationInput,
 ): Promise<ModerationDecision> {
   const local = evaluateLocally(mode, input);
   const fallbackMessage =
@@ -355,31 +295,5 @@ export async function moderateContent(
       ? "This post needs to be more educational before it can be published."
       : "This submission does not match Readative's knowledge-only rules yet.";
 
-  if (local.hardBlocked || mode === "knowledge-comment" || local.allowed) {
-    return finalizeLocal(local, fallbackMessage);
-  }
-
-  try {
-    const ai = await runAIModeration(mode, input);
-    if (!ai) {
-      return finalizeLocal(local, fallbackMessage);
-    }
-
-    const config = MODE_SETTINGS[mode];
-    const allowed =
-      ai.allow && ai.safetyScore >= 70 && ai.knowledgeScore >= config.aiFloor;
-
-    return {
-      allowed,
-      category: allowed ? "knowledge" : ai.category,
-      message: ai.reason || fallbackMessage,
-      suggestions: [ai.suggestion, ...local.suggestions].filter(Boolean).slice(0, 3),
-      knowledgeScore: Math.max(local.knowledgeScore * 10, ai.knowledgeScore),
-      safetyScore: Math.min(local.safetyScore, ai.safetyScore || local.safetyScore),
-      source: "hybrid",
-    };
-  } catch (error) {
-    console.error("AI moderation failed:", error);
-    return finalizeLocal(local, fallbackMessage);
-  }
+  return finalizeLocal(local, fallbackMessage);
 }

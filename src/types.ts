@@ -10,9 +10,6 @@ export interface KnowledgeComment {
   text: string;
   mentions?: TaggedUser[];
   createdAt: number;
-  isAI?: boolean;
-  aiProvider?: "gemini" | "grok";
-  aiNote?: string | null;
 }
 
 export interface KnowledgeEntry {
@@ -69,12 +66,9 @@ export interface SmartAnswer {
   author: string;
   authorId?: string;
   content: string;
-  type: "user" | "ai";
   likes: string[];
   dislikes: string[];
   createdAt: number;
-  aiProvider?: "gemini" | "grok";
-  aiNote?: string | null;
 }
 
 export interface SmartQuestion {

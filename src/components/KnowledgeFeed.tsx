@@ -23,19 +23,20 @@ import {
   onSnapshot,
   orderBy,
   query,
-  runTransaction,
   setDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../types";
+import {
+  KnowledgeComment,
+  KnowledgeEntry,
+  TaggedUser,
+  UserProfile,
+} from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import {
-  shouldPostRareAIKnowledgeComment,
-} from "../utils/aiContributors";
 import { getGuestName } from "../utils/guestIdentity";
 import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
@@ -51,9 +52,7 @@ import {
   type OptimizedKnowledgeImage,
 } from "../utils/knowledgeImages";
 
-type PendingAction =
-  | { type: "like" | "comment"; entryId: string }
-  | null;
+type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
 interface SelectedImage {
   fileName: string;
@@ -95,7 +94,7 @@ function parseManualHashtags(input: string): string[] {
 
 function extractInlineHashtags(text: string): string[] {
   return [...text.matchAll(/#([a-z0-9][a-z0-9_-]*)/gi)].map((match) =>
-    match[1].toLowerCase()
+    match[1].toLowerCase(),
   );
 }
 
@@ -112,15 +111,15 @@ function extractMentionKeys(text: string): string[] {
   return [
     ...new Set(
       [...text.matchAll(/(?:^|\s)@([a-z0-9_]{1,20})/gi)].map((match) =>
-        match[1].toLowerCase()
-      )
+        match[1].toLowerCase(),
+      ),
     ),
   ];
 }
 
 function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
   const profileMap = new Map(
-    profiles.map((profile) => [profile.usernameLower, profile] as const)
+    profiles.map((profile) => [profile.usernameLower, profile] as const),
   );
 
   return extractMentionKeys(text)
@@ -150,12 +149,7 @@ function readSelectedHashtagFromLocation() {
 }
 
 function tokenizeSearch(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 10);
+  return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
 }
 
 function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
@@ -182,12 +176,17 @@ function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
   return terms.every((term) => {
     if (term.startsWith("#")) {
       const normalized = term.slice(1);
-      return Boolean(normalized) && hashtags.some((tag) => tag.includes(normalized));
+      return (
+        Boolean(normalized) && hashtags.some((tag) => tag.includes(normalized))
+      );
     }
 
     if (term.startsWith("@")) {
       const normalized = term.slice(1);
-      return Boolean(normalized) && people.some((person) => person.includes(normalized));
+      return (
+        Boolean(normalized) &&
+        people.some((person) => person.includes(normalized))
+      );
     }
 
     return searchableText.includes(term);
@@ -249,16 +248,13 @@ function normalizeKnowledgeEntry(
   data: Partial<KnowledgeEntry> & {
     comments?: KnowledgeComment[];
     createdAt?: number | { toMillis?: () => number };
-  }
+  },
 ): KnowledgeEntry {
-  const {
-    comments,
-    createdAt,
-    likes,
-    mentions,
-    ...restData
-  } = data;
-  const rawCreatedAt = createdAt as number | { toMillis?: () => number } | undefined;
+  const { comments, createdAt, likes, mentions, ...restData } = data;
+  const rawCreatedAt = createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
 
   return {
     author: "",
@@ -278,8 +274,8 @@ function normalizeKnowledgeEntry(
       typeof rawCreatedAt.toMillis === "function"
         ? rawCreatedAt.toMillis()
         : typeof rawCreatedAt === "number"
-        ? rawCreatedAt
-        : Date.now(),
+          ? rawCreatedAt
+          : Date.now(),
   };
 }
 
@@ -296,7 +292,9 @@ export function KnowledgeFeed({
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [feedLoadError, setFeedLoadError] = useState<string | null>(null);
-  const [profilesLoadError, setProfilesLoadError] = useState<string | null>(null);
+  const [profilesLoadError, setProfilesLoadError] = useState<string | null>(
+    null,
+  );
   const [isPosting, setIsPosting] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
@@ -307,18 +305,18 @@ export function KnowledgeFeed({
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
   const [hashtagInput, setHashtagInput] = useState("");
-  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
+  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
+    null,
+  );
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
   const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
-    readSelectedHashtagFromLocation()
+    readSelectedHashtagFromLocation(),
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
-  const [aiSweepTick, setAiSweepTick] = useState(0);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
-  const pendingAiCommentsRef = useRef<Set<string>>(new Set());
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
 
@@ -347,7 +345,7 @@ export function KnowledgeFeed({
   useEffect(() => {
     const knowledgeQuery = query(
       collection(db, "knowledge"),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -370,9 +368,9 @@ export function KnowledgeFeed({
         console.error("Knowledge feed error:", error);
         setIsLoading(false);
         setFeedLoadError(
-          "Could not load the latest posts right now. Please refresh in a moment."
+          "Could not load the latest posts right now. Please refresh in a moment.",
         );
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -381,7 +379,7 @@ export function KnowledgeFeed({
   useEffect(() => {
     const profilesQuery = query(
       collection(db, "userProfiles"),
-      orderBy("usernameLower", "asc")
+      orderBy("usernameLower", "asc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -399,9 +397,9 @@ export function KnowledgeFeed({
         console.error("Profile directory error:", error);
         setProfiles([]);
         setProfilesLoadError(
-          "User mentions and profile previews may be incomplete for a moment."
+          "User mentions and profile previews may be incomplete for a moment.",
         );
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -433,99 +431,29 @@ export function KnowledgeFeed({
     };
   }, []);
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setAiSweepTick((current) => current + 1);
-    }, 60_000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
-    entries.forEach((entry) => {
-      void checkAndTriggerAIComment(entry);
-    });
-  }, [entries, aiSweepTick]);
-
-  const checkAndTriggerAIComment = async (entry: KnowledgeEntry) => {
-    if (!shouldPostRareAIKnowledgeComment(entry)) return;
-    if (pendingAiCommentsRef.current.has(entry.id)) return;
-
-    pendingAiCommentsRef.current.add(entry.id);
-    void triggerAIComment(entry);
-  };
-
-  const triggerAIComment = async (entry: KnowledgeEntry) => {
-    try {
-      const humanCommentCount = (entry.comments || []).filter(
-        (comment) => !comment.isAI
-      ).length;
-      const { geminiService } = await import("../services/gemini");
-      const aiReply = await geminiService.generateKnowledgeFallbackComment(
-        entry.title,
-        entry.content,
-        entry.author,
-        humanCommentCount
-      );
-
-      if (!aiReply.text.trim()) return;
-
-      const commentRef = doc(db, "knowledge", entry.id);
-      const aiComment: KnowledgeComment = {
-        id: Math.random().toString(36).slice(2, 11),
-        author: aiReply.authorName || "Readative AI",
-        authorId: aiReply.authorId,
-        text: aiReply.text.trim(),
-        mentions: [],
-        createdAt: Date.now(),
-        isAI: true,
-        aiProvider: aiReply.provider,
-        aiNote: aiReply.note || null,
-      };
-
-      await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(commentRef);
-        if (!snapshot.exists()) return;
-
-        const currentEntry = normalizeKnowledgeEntry(
-          snapshot.id,
-          snapshot.data() as Partial<KnowledgeEntry>
-        );
-
-        if (!shouldPostRareAIKnowledgeComment(currentEntry)) return;
-
-        transaction.update(commentRef, {
-          comments: [...(currentEntry.comments || []), aiComment],
-        });
-      });
-    } catch (error) {
-      console.error("Failed to add AI knowledge comment:", error);
-    } finally {
-      pendingAiCommentsRef.current.delete(entry.id);
-    }
-  };
-
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
-    [entries, focusedEntryId]
+    [entries, focusedEntryId],
   );
 
   const orderedEntries = useMemo(
     () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
-    [entries]
+    [entries],
   );
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
 
     return orderedEntries.filter((entry) =>
-      entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag)
+      entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag),
     );
   }, [orderedEntries, selectedHashtag]);
   const filteredEntries = useMemo(() => {
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
     if (searchTerms.length === 0) return visibleEntries;
 
-    return visibleEntries.filter((entry) => matchesKnowledgeSearch(entry, searchTerms));
+    return visibleEntries.filter((entry) =>
+      matchesKnowledgeSearch(entry, searchTerms),
+    );
   }, [deferredFeedSearchQuery, visibleEntries]);
 
   const filteredMentionProfiles = useMemo(() => {
@@ -533,7 +461,7 @@ export function KnowledgeFeed({
 
     return profiles
       .filter((profile) =>
-        profile.usernameLower.startsWith(activeMention.query.toLowerCase())
+        profile.usernameLower.startsWith(activeMention.query.toLowerCase()),
       )
       .slice(0, 6);
   }, [activeMention, profiles]);
@@ -570,7 +498,7 @@ export function KnowledgeFeed({
 
     const seedHashtags = mergeHashtags(
       parseManualHashtags(hashtagInput),
-      extractInlineHashtags(`${title}\n${content}`)
+      extractInlineHashtags(`${title}\n${content}`),
     );
 
     setFeedMessage(null);
@@ -587,7 +515,9 @@ export function KnowledgeFeed({
       setFeedMessage({
         tone: "warning",
         title: "Post blocked",
-        body: [moderation.message, ...moderation.suggestions].slice(0, 2).join(" "),
+        body: [moderation.message, ...moderation.suggestions]
+          .slice(0, 2)
+          .join(" "),
       });
       return;
     }
@@ -596,13 +526,7 @@ export function KnowledgeFeed({
     setIsPosting(true);
 
     try {
-      let hashtags = seedHashtags;
-
-      if (hashtags.length === 0) {
-        const { geminiService } = await import("../services/gemini");
-        hashtags = await geminiService.generateHashtags(`${title}\n${content}`);
-      }
-
+      const hashtags = seedHashtags;
       const mentions = resolveMentions(`${title}\n${content}`, profiles);
       const createdAt = Date.now();
       const reference = doc(collection(db, "knowledge"));
@@ -639,7 +563,7 @@ export function KnowledgeFeed({
           authorId: currentIdentity.authorId,
           username: currentIdentity.displayName,
         },
-        mentions
+        mentions,
       );
 
       resetComposer();
@@ -709,9 +633,7 @@ export function KnowledgeFeed({
     } catch (error) {
       console.error("Image preparation failed:", error);
       alert(
-        error instanceof Error
-          ? error.message
-          : "Could not prepare the image."
+        error instanceof Error ? error.message : "Could not prepare the image.",
       );
     } finally {
       setIsPreparingImage(false);
@@ -734,7 +656,7 @@ export function KnowledgeFeed({
           ...pendingAction,
           username: profile.username,
         },
-      })
+      }),
     );
     setPendingAction(null);
   };
@@ -760,7 +682,10 @@ export function KnowledgeFeed({
   };
 
   const handleContentKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    updateMentionState(event.currentTarget.value, event.currentTarget.selectionStart);
+    updateMentionState(
+      event.currentTarget.value,
+      event.currentTarget.selectionStart,
+    );
   };
 
   const handleSelectHashtag = (tag: string) => {
@@ -777,18 +702,18 @@ export function KnowledgeFeed({
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
     : selectedHashtag
-    ? `#${selectedHashtag} posts | Readative`
-    : "Home Feed | Readative";
+      ? `#${selectedHashtag} posts | Readative`
+      : "Home Feed | Readative";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
-    ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
-    : "Readative homepage showing only knowledge posts from the community.";
+      ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
+      : "Readative homepage showing only knowledge posts from the community.";
   const pageUrl = focusedEntry
     ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
     : selectedHashtag
-    ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
-    : buildAbsoluteRouteUrl("knowledge");
+      ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
+      : buildAbsoluteRouteUrl("knowledge");
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
 
   return (
@@ -822,10 +747,7 @@ export function KnowledgeFeed({
       ) : (
         <div className="space-y-6">
           {feedLoadError && (
-            <FeedNotice
-              title="Feed loading issue"
-              body={feedLoadError}
-            />
+            <FeedNotice title="Feed loading issue" body={feedLoadError} />
           )}
 
           {profilesLoadError && (
@@ -882,15 +804,15 @@ export function KnowledgeFeed({
                 {hasActiveSearch
                   ? `No posts matched "${feedSearchQuery.trim()}"`
                   : selectedHashtag
-                  ? `No posts for #${selectedHashtag}`
-                  : "No posts yet"}
+                    ? `No posts for #${selectedHashtag}`
+                    : "No posts yet"}
               </h3>
               <p className="mt-2 text-sm text-slate-500">
                 {hasActiveSearch
                   ? "Try a broader keyword, another hashtag, or search by @username."
                   : selectedHashtag
-                  ? "Try another hashtag or clear this filter to explore the full feed."
-                  : "Tap the `+` button at the top to upload the first knowledge post."}
+                    ? "Try another hashtag or clear this filter to explore the full feed."
+                    : "Tap the `+` button at the top to upload the first knowledge post."}
               </p>
             </div>
           ) : (
@@ -1047,7 +969,9 @@ function ComposerModal({
             {identity ? (
               <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold">Posting as @{identity.displayName}</p>
+                  <p className="font-semibold">
+                    Posting as @{identity.displayName}
+                  </p>
                   <p className="text-xs text-emerald-700">
                     Remembered on this device for all your activity.
                   </p>
@@ -1063,7 +987,8 @@ function ComposerModal({
               </div>
             ) : (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Choose your username once when you publish. We will remember it after that.
+                Choose your username once when you publish. We will remember it
+                after that.
               </div>
             )}
 
@@ -1083,14 +1008,14 @@ function ComposerModal({
                     setDraftContent(event.target.value);
                     updateMentionState(
                       event.target.value,
-                      event.target.selectionStart
+                      event.target.selectionStart,
                     );
                   }}
                   onKeyUp={handleContentKeyUp}
                   onClick={(event) =>
                     updateMentionState(
                       event.currentTarget.value,
-                      event.currentTarget.selectionStart
+                      event.currentTarget.selectionStart,
                     )
                   }
                   placeholder="Write the full post here. Share useful knowledge only, and tag users with @username."
@@ -1159,7 +1084,9 @@ function ComposerModal({
                     className="h-64 w-full object-cover"
                   />
                   <div className="flex items-center justify-between bg-white px-4 py-3">
-                    <p className="text-sm text-slate-500">{selectedImage.fileName}</p>
+                    <p className="text-sm text-slate-500">
+                      {selectedImage.fileName}
+                    </p>
                     <button
                       onClick={() => setSelectedImage(null)}
                       className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
@@ -1202,7 +1129,8 @@ function ComposerModal({
         <div className="shrink-0 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
-              Scroll inside this window to see image upload and all post details.
+              Scroll inside this window to see image upload and all post
+              details.
             </p>
 
             <button
@@ -1230,13 +1158,7 @@ function ComposerModal({
   );
 }
 
-function FeedNotice({
-  title,
-  body,
-}: {
-  title: string;
-  body: string;
-}) {
+function FeedNotice({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
       <p className="font-bold">{title}</p>

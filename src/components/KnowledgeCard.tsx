@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserProfile } from "../types";
+import {
+  KnowledgeComment,
+  KnowledgeEntry,
+  TaggedUser,
+  UserProfile,
+} from "../types";
 import {
   BookOpenText,
   Heart,
@@ -26,7 +31,6 @@ import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { queueLegacyKnowledgeImageMigration } from "../utils/knowledgeImages";
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
-import { AI_RESPONSE_NOTE } from "../utils/aiContributors";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -59,15 +63,15 @@ function extractMentionKeys(text: string): string[] {
   return [
     ...new Set(
       [...text.matchAll(/(?:^|\s)@([a-z0-9_]{1,20})/gi)].map((match) =>
-        match[1].toLowerCase()
-      )
+        match[1].toLowerCase(),
+      ),
     ),
   ];
 }
 
 function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
   const profileMap = new Map(
-    profiles.map((profile) => [profile.usernameLower, profile] as const)
+    profiles.map((profile) => [profile.usernameLower, profile] as const),
   );
 
   return extractMentionKeys(text)
@@ -93,16 +97,20 @@ export function KnowledgeCard({
   const [isCommenting, setIsCommenting] = useState(false);
   const [isModeratingComment, setIsModeratingComment] = useState(false);
   const [commentMessage, setCommentMessage] = useState<string | null>(null);
-  const [interactionMessage, setInteractionMessage] = useState<string | null>(null);
+  const [interactionMessage, setInteractionMessage] = useState<string | null>(
+    null,
+  );
   const [shareCopied, setShareCopied] = useState(false);
   const [localLikes, setLocalLikes] = useState<string[]>(entry.likes || []);
   const [localComments, setLocalComments] = useState<KnowledgeComment[]>(
-    entry.comments || []
+    entry.comments || [],
   );
   const [pendingCommenter, setPendingCommenter] = useState<string | null>(null);
   const [activeCommentMention, setActiveCommentMention] =
     useState<CommentMentionState | null>(null);
-  const [guestName, setGuestName] = useState<string | null>(() => getGuestName());
+  const [guestName, setGuestName] = useState<string | null>(() =>
+    getGuestName(),
+  );
   const commentInputRef = useRef<HTMLInputElement | null>(null);
 
   const guestId = getGuestId();
@@ -114,7 +122,9 @@ export function KnowledgeCard({
 
     return profiles
       .filter((profile) =>
-        profile.usernameLower.startsWith(activeCommentMention.query.toLowerCase())
+        profile.usernameLower.startsWith(
+          activeCommentMention.query.toLowerCase(),
+        ),
       )
       .slice(0, 6);
   }, [activeCommentMention, profiles]);
@@ -136,11 +146,13 @@ export function KnowledgeCard({
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        type: "like" | "comment";
-        entryId: string;
-        username: string;
-      }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          type: "like" | "comment";
+          entryId: string;
+          username: string;
+        }>
+      ).detail;
 
       if (!detail || detail.entryId !== entry.id) return;
 
@@ -222,7 +234,9 @@ export function KnowledgeCard({
     } catch (error) {
       console.error("Failed to update like:", error);
       setLocalLikes(entry.likes || []);
-      setInteractionMessage("Could not update the like right now. Please try again.");
+      setInteractionMessage(
+        "Could not update the like right now. Please try again.",
+      );
     }
   };
 
@@ -298,7 +312,7 @@ export function KnowledgeCard({
           authorId: guestId,
           username: normalizedName,
         },
-        savedComment
+        savedComment,
       );
 
       await notifyTaggedUsersOnComment(
@@ -312,21 +326,23 @@ export function KnowledgeCard({
           authorId: guestId,
           username: normalizedName,
         },
-        commentMentions
+        commentMentions,
       );
 
       setLocalComments((current) =>
         current.map((comment) =>
-          comment.id === optimisticComment.id ? savedComment : comment
-        )
+          comment.id === optimisticComment.id ? savedComment : comment,
+        ),
       );
     } catch (error) {
       console.error("Failed to save comment:", error);
       setLocalComments((current) =>
-        current.filter((comment) => comment.id !== optimisticComment.id)
+        current.filter((comment) => comment.id !== optimisticComment.id),
       );
       setCommentText(content);
-      setCommentMessage("Could not add your comment right now. Please try again.");
+      setCommentMessage(
+        "Could not add your comment right now. Please try again.",
+      );
     } finally {
       setIsCommenting(false);
     }
@@ -374,7 +390,9 @@ export function KnowledgeCard({
       setShareCopied(true);
     } catch (error) {
       console.error("Clipboard share failed:", error);
-      setInteractionMessage("Could not copy the share link right now. Please try again.");
+      setInteractionMessage(
+        "Could not copy the share link right now. Please try again.",
+      );
     }
   };
 
@@ -396,7 +414,8 @@ export function KnowledgeCard({
       id={`knowledge-${entry.id}`}
       className={cn(
         "overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]",
-        highlighted && "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]"
+        highlighted &&
+          "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]",
       )}
     >
       {entry.imageDataUrl && (
@@ -503,7 +522,9 @@ export function KnowledgeCard({
               onClick={handleLike}
               className={cn(
                 "flex items-center gap-1.5 text-sm font-semibold transition-colors",
-                isLiked ? "text-rose-500" : "text-slate-400 hover:text-rose-500"
+                isLiked
+                  ? "text-rose-500"
+                  : "text-slate-400 hover:text-rose-500",
               )}
             >
               <Heart className={cn("h-5 w-5", isLiked ? "fill-current" : "")} />
@@ -516,7 +537,7 @@ export function KnowledgeCard({
                 "flex items-center gap-1.5 text-sm font-semibold transition-colors",
                 showComments
                   ? "text-emerald-600"
-                  : "text-slate-400 hover:text-emerald-600"
+                  : "text-slate-400 hover:text-emerald-600",
               )}
             >
               <MessageCircle className="h-5 w-5" />
@@ -565,18 +586,21 @@ export function KnowledgeCard({
                   setCommentText(event.target.value);
                   updateCommentMentionState(
                     event.target.value,
-                    event.target.selectionStart || event.target.value.length
+                    event.target.selectionStart || event.target.value.length,
                   );
                   if (commentMessage) setCommentMessage(null);
                 }}
                 onClick={(event) =>
                   updateCommentMentionState(
                     event.currentTarget.value,
-                    event.currentTarget.selectionStart || event.currentTarget.value.length
+                    event.currentTarget.selectionStart ||
+                      event.currentTarget.value.length,
                   )
                 }
                 onKeyDown={(event) =>
-                  event.key === "Enter" && !event.shiftKey && handleCommentSubmit()
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  handleCommentSubmit()
                 }
                 placeholder={
                   pendingCommenter
@@ -587,29 +611,32 @@ export function KnowledgeCard({
               />
               <button
                 onClick={handleCommentSubmit}
-                disabled={isCommenting || isModeratingComment || !commentText.trim()}
+                disabled={
+                  isCommenting || isModeratingComment || !commentText.trim()
+                }
                 className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
               >
                 {isCommenting || isModeratingComment ? "..." : "Post"}
               </button>
             </div>
 
-            {activeCommentMention && filteredCommentMentionProfiles.length > 0 && (
-              <div className="absolute left-0 right-16 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                {filteredCommentMentionProfiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    onClick={() => handleCommentMentionInsert(profile)}
-                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
-                  >
-                    <span className="font-semibold text-slate-800">
-                      @{profile.username}
-                    </span>
-                    <span className="text-xs text-slate-400">User</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            {activeCommentMention &&
+              filteredCommentMentionProfiles.length > 0 && (
+                <div className="absolute left-0 right-16 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  {filteredCommentMentionProfiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      onClick={() => handleCommentMentionInsert(profile)}
+                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                    >
+                      <span className="font-semibold text-slate-800">
+                        @{profile.username}
+                      </span>
+                      <span className="text-xs text-slate-400">User</span>
+                    </button>
+                  ))}
+                </div>
+              )}
           </div>
 
           {commentMessage && (
@@ -627,19 +654,10 @@ export function KnowledgeCard({
               localComments.map((comment) => (
                 <div
                   key={comment.id}
-                  className={cn(
-                    "rounded-2xl border bg-white p-4 shadow-sm",
-                    comment.isAI
-                      ? "border-emerald-200 bg-emerald-50/40"
-                      : "border-slate-200"
-                  )}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    {comment.isAI ? (
-                      <span className="text-xs font-bold text-emerald-700">
-                        {comment.author}
-                      </span>
-                    ) : comment.authorId ? (
+                    {comment.authorId ? (
                       <button
                         onClick={() => onOpenProfile(comment.authorId)}
                         className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
@@ -649,11 +667,6 @@ export function KnowledgeCard({
                     ) : (
                       <span className="text-xs font-bold text-slate-800">
                         @{comment.author}
-                      </span>
-                    )}
-                    {comment.isAI && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">
-                        Official
                       </span>
                     )}
                     <span className="text-[11px] text-slate-400">
@@ -667,11 +680,6 @@ export function KnowledgeCard({
                       onOpenProfile,
                     })}
                   </p>
-                  {comment.isAI && (
-                    <p className="mt-3 text-xs font-medium text-emerald-700/80">
-                      {comment.aiNote || AI_RESPONSE_NOTE}
-                    </p>
-                  )}
                 </div>
               ))
             )}
