@@ -415,9 +415,6 @@ export function SmartTalk() {
       ? questions
       : questions.filter((question) => matchesSmartTalkSearch(question, searchTerms));
   const hasSearchQuery = searchQuery.trim().length > 0;
-  const searchResultLabel = hasSearchQuery
-    ? `${visibleQuestions.length} match${visibleQuestions.length === 1 ? "" : "es"}`
-    : `${questions.length} question${questions.length === 1 ? "" : "s"}`;
 
   const renderAnswerCard = (
     question: Question,
@@ -614,20 +611,11 @@ export function SmartTalk() {
 
       <DiscoverySearch
         theme="indigo"
-        title="Search questions, answers, and people"
-        description="Scan SmartTalk by keywords, author names, answer text, or focused prompts without pinning anything to the top."
-        placeholder="Try @username, notebooklm, ai answer, productivity, study plan..."
+        placeholder="Search"
         value={searchQuery}
         onChange={setSearchQuery}
         onClear={() => setSearchQuery("")}
-        resultLabel={searchResultLabel}
-        helperText="Search understands plain text and @user lookups across both questions and answers."
-        suggestions={[
-          { label: "@username", query: "@username" },
-          { label: "ai answer", query: "ai answer" },
-          { label: "notebooklm", query: "notebooklm" },
-          { label: "study plan", query: "study plan" },
-        ]}
+        ariaLabel="Search SmartTalk"
       />
 
       {isLoading ? (

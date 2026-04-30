@@ -790,12 +790,6 @@ export function KnowledgeFeed({
     ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
     : buildAbsoluteRouteUrl("knowledge");
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
-  const searchResultLabel = hasActiveSearch
-    ? `${filteredEntries.length} result${filteredEntries.length === 1 ? "" : "s"}`
-    : `${visibleEntries.length} live post${visibleEntries.length === 1 ? "" : "s"}`;
-  const searchHelperText = showRefreshFeedback
-    ? "Home pressed again: you are back at the newest posts and your feed search is cleared."
-    : "Search title, body text, #hashtags, @people, and comment text. Press Home again anytime to jump back to the latest posts.";
 
   return (
     <div className="pb-20">
@@ -843,21 +837,18 @@ export function KnowledgeFeed({
 
           <DiscoverySearch
             theme="emerald"
-            title="Search the live home feed"
-            description="Find posts by keywords, long-form text, hashtags, people, or even comments without leaving the homepage."
-            placeholder="Try @creator, #science, visual explainer, productivity, comments..."
+            placeholder="Search"
             value={feedSearchQuery}
             onChange={setFeedSearchQuery}
             onClear={() => setFeedSearchQuery("")}
-            resultLabel={searchResultLabel}
-            helperText={searchHelperText}
-            suggestions={[
-              { label: "@username", query: "@username" },
-              { label: "#learning", query: "#learning" },
-              { label: "visual explainer", query: "visual explainer" },
-              { label: "productivity", query: "productivity" },
-            ]}
+            ariaLabel="Search home feed"
           />
+
+          {showRefreshFeedback && (
+            <p className="text-center text-xs font-medium text-emerald-700">
+              Latest posts refreshed
+            </p>
+          )}
 
           {selectedHashtag && (
             <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 px-5 py-4 shadow-sm">
