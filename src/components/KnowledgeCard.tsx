@@ -25,6 +25,7 @@ import {
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { queueLegacyKnowledgeImageMigration } from "../utils/knowledgeImages";
+import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -91,6 +92,7 @@ export function KnowledgeCard({
   const [isCommenting, setIsCommenting] = useState(false);
   const [isModeratingComment, setIsModeratingComment] = useState(false);
   const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [interactionMessage, setInteractionMessage] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [localLikes, setLocalLikes] = useState<string[]>(entry.likes || []);
   const [localComments, setLocalComments] = useState<KnowledgeComment[]>(
@@ -199,6 +201,7 @@ export function KnowledgeCard({
       : localLikes.filter((id) => id !== guestId);
 
     setLocalLikes(nextLikes);
+    setInteractionMessage(null);
 
     try {
       await updateDoc(doc(db, "knowledge", entry.id), {
@@ -218,6 +221,7 @@ export function KnowledgeCard({
     } catch (error) {
       console.error("Failed to update like:", error);
       setLocalLikes(entry.likes || []);
+      setInteractionMessage("Could not update the like right now. Please try again.");
     }
   };
 
@@ -242,6 +246,7 @@ export function KnowledgeCard({
     const commentMentions = resolveMentions(content, profiles);
 
     setCommentMessage(null);
+    setInteractionMessage(null);
     setIsModeratingComment(true);
 
     const moderation = await moderateContent("knowledge-comment", {
@@ -339,12 +344,15 @@ export function KnowledgeCard({
   };
 
   const handleShare = async () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}#knowledge/${entry.id}`;
+    const shareUrl = buildAbsoluteRouteUrl("knowledge", {
+      focusedEntryId: entry.id,
+    });
     const text = `${entry.title}\n\n${entry.content.slice(0, 160)}${
       entry.content.length > 160 ? "..." : ""
     }`;
 
     onOpenEntry(entry.id);
+    setInteractionMessage(null);
 
     if (navigator.share) {
       try {
@@ -360,8 +368,13 @@ export function KnowledgeCard({
       }
     }
 
-    await navigator.clipboard.writeText(`${text}\n\n${shareUrl}`);
-    setShareCopied(true);
+    try {
+      await navigator.clipboard.writeText(`${text}\n\n${shareUrl}`);
+      setShareCopied(true);
+    } catch (error) {
+      console.error("Clipboard share failed:", error);
+      setInteractionMessage("Could not copy the share link right now. Please try again.");
+    }
   };
 
   const handleSelectHashtag = (tag: string) => {
@@ -371,7 +384,9 @@ export function KnowledgeCard({
     }
 
     if (typeof window !== "undefined") {
-      window.location.hash = `knowledge?tag=${encodeURIComponent(tag.toLowerCase())}`;
+      navigateToRoute("knowledge", {
+        selectedHashtag: tag.toLowerCase(),
+      });
     }
   };
 
@@ -523,6 +538,12 @@ export function KnowledgeCard({
             </button>
           </div>
         </div>
+
+        {interactionMessage && (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {interactionMessage}
+          </p>
+        )}
       </div>
 
       {showComments && (

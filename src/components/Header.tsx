@@ -1,9 +1,10 @@
 import { Bell, CirclePlus, Info, Plus } from "lucide-react";
 import { Logo } from "./Logo";
+import { type AppTab } from "../utils/routes";
 
 interface HeaderProps {
-  activeTab: "knowledge" | "smarttalk" | "profile";
-  setActiveTab: (tab: "knowledge" | "smarttalk" | "profile") => void;
+  activeTab: AppTab | "notFound";
+  setActiveTab: (tab: AppTab) => void;
   unreadNotificationCount: number;
   onOpenComposer: () => void;
   onOpenNotifications: () => void;
@@ -18,7 +19,7 @@ export function Header({
   onOpenNotifications,
   onOpenInfo,
 }: HeaderProps) {
-  const tabs = ["knowledge", "smarttalk", "profile"] as const;
+  const tabs: AppTab[] = ["knowledge", "smarttalk", "profile"];
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">

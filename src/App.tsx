@@ -9,6 +9,7 @@ import {
   MessageCircle,
   MessageSquareMore,
   ShieldCheck,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -25,10 +26,15 @@ import {
   markNotificationAsRead,
   markNotificationsAsRead,
 } from "./utils/notifications";
+import {
+  navigateToRoute,
+  parseRouteFromLocation,
+  ROUTE_CHANGE_EVENT,
+  type AppTab,
+} from "./utils/routes";
 import { ensureGuestProfile } from "./utils/userProfiles";
 import { trackPageView } from "./utils/analytics";
 
-type Tab = "knowledge" | "smarttalk" | "profile";
 type InfoSection = "about" | "contact" | "privacy";
 
 const SmartTalk = lazy(() =>
@@ -43,99 +49,47 @@ const Profile = lazy(() =>
   }))
 );
 
-interface ParsedHash {
-  tab: Tab;
-  profileAuthorId: string | null;
-  focusedEntryId: string | null;
-}
-
-function parseHash(): ParsedHash {
-  const hash = window.location.hash.replace(/^#/, "");
-
-  if (hash.startsWith("knowledge/")) {
-    return {
-      tab: "knowledge",
-      profileAuthorId: null,
-      focusedEntryId: decodeURIComponent(hash.slice("knowledge/".length)),
-    };
-  }
-
-  if (hash.startsWith("profile/")) {
-    return {
-      tab: "profile",
-      profileAuthorId: decodeURIComponent(hash.slice("profile/".length)),
-      focusedEntryId: null,
-    };
-  }
-
-  if (hash === "profile") {
-    return {
-      tab: "profile",
-      profileAuthorId: null,
-      focusedEntryId: null,
-    };
-  }
-
-  if (hash === "smarttalk") {
-    return {
-      tab: "smarttalk",
-      profileAuthorId: null,
-      focusedEntryId: null,
-    };
-  }
-
-  return {
-    tab: "knowledge",
-    profileAuthorId: null,
-    focusedEntryId: null,
-  };
-}
-
-function buildHash(
-  tab: Tab,
-  profileAuthorId: string | null = null,
-  focusedEntryId: string | null = null
-) {
-  if (tab === "knowledge" && focusedEntryId) {
-    return `knowledge/${encodeURIComponent(focusedEntryId)}`;
-  }
-
-  if (tab === "profile" && profileAuthorId) {
-    return `profile/${encodeURIComponent(profileAuthorId)}`;
-  }
-
-  return tab;
-}
-
 export default function App() {
-  const initialRoute = useMemo(parseHash, []);
-  const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
+  const initialRoute = useMemo(parseRouteFromLocation, []);
+  const [activeTab, setActiveTab] = useState<AppTab | "notFound">(initialRoute.tab);
   const [profileAuthorId, setProfileAuthorId] = useState<string | null>(
     initialRoute.profileAuthorId
   );
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(
     initialRoute.focusedEntryId
   );
+  const [routeErrorPath, setRouteErrorPath] = useState<string | null>(
+    initialRoute.tab === "notFound" ? initialRoute.attemptedLocation : null
+  );
   const [identity, setIdentity] = useState<KnowledgeIdentity | null>(() =>
     getKnowledgeIdentity()
   );
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [composerOpenSignal, setComposerOpenSignal] = useState(0);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
 
+  const syncRouteState = () => {
+    const route = parseRouteFromLocation();
+    setActiveTab(route.tab);
+    setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
+    setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
+    setRouteErrorPath(route.tab === "notFound" ? route.attemptedLocation : null);
+  };
+
   const handleTabChange = (
-    tab: Tab,
+    tab: AppTab,
     nextProfileAuthorId: string | null = null,
     nextFocusedEntryId: string | null = null
   ) => {
-    setActiveTab(tab);
-    setProfileAuthorId(tab === "profile" ? nextProfileAuthorId : null);
-    setFocusedEntryId(tab === "knowledge" ? nextFocusedEntryId : null);
     setShowInfoPanel(false);
     setShowNotificationsPanel(false);
-    window.location.hash = buildHash(tab, nextProfileAuthorId, nextFocusedEntryId);
+    navigateToRoute(tab, {
+      profileAuthorId: nextProfileAuthorId,
+      focusedEntryId: nextFocusedEntryId,
+    });
   };
 
   const handleOpenProfile = (authorId: string) => {
@@ -162,20 +116,40 @@ export default function App() {
   };
 
   useEffect(() => {
-    const onHashChange = () => {
-      const route = parseHash();
-      setActiveTab(route.tab);
-      setProfileAuthorId(route.profileAuthorId);
-      setFocusedEntryId(route.focusedEntryId);
+    const syncAndNormalizeRoute = () => {
+      const route = parseRouteFromLocation();
+
+      if (route.source === "hash" && route.tab !== "notFound") {
+        navigateToRoute(
+          route.tab,
+          {
+            profileAuthorId: route.profileAuthorId,
+            focusedEntryId: route.focusedEntryId,
+            selectedHashtag: route.selectedHashtag,
+          },
+          "replace"
+        );
+        return;
+      }
+
+      syncRouteState();
     };
 
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    syncAndNormalizeRoute();
+    window.addEventListener("hashchange", syncAndNormalizeRoute);
+    window.addEventListener("popstate", syncAndNormalizeRoute);
+    window.addEventListener(ROUTE_CHANGE_EVENT, syncAndNormalizeRoute);
+
+    return () => {
+      window.removeEventListener("hashchange", syncAndNormalizeRoute);
+      window.removeEventListener("popstate", syncAndNormalizeRoute);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, syncAndNormalizeRoute);
+    };
   }, []);
 
   useEffect(() => {
     trackPageView();
-  }, [activeTab, profileAuthorId, focusedEntryId]);
+  }, [activeTab, profileAuthorId, focusedEntryId, routeErrorPath]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -202,6 +176,7 @@ export default function App() {
     if (!identity?.authorId) {
       setNotifications([]);
       setUnreadNotificationCount(0);
+      setNotificationsError(null);
       return;
     }
 
@@ -210,20 +185,32 @@ export default function App() {
       where("targetAuthorId", "==", identity.authorId)
     );
 
-    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      const nextNotifications = snapshot.docs
-        .map((item) => ({
-          id: item.id,
-          ...(item.data() as UserNotification),
-          createdAt: (item.data() as UserNotification).createdAt || Date.now(),
-        }))
-        .sort((left, right) => right.createdAt - left.createdAt);
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const nextNotifications = snapshot.docs
+          .map((item) => ({
+            id: item.id,
+            ...(item.data() as UserNotification),
+            createdAt: (item.data() as UserNotification).createdAt || Date.now(),
+          }))
+          .sort((left, right) => right.createdAt - left.createdAt);
 
-      const unread = nextNotifications.filter((notification) => !notification.read).length;
+        const unread = nextNotifications.filter((notification) => !notification.read).length;
 
-      setNotifications(nextNotifications);
-      setUnreadNotificationCount(unread);
-    });
+        setNotifications(nextNotifications);
+        setUnreadNotificationCount(unread);
+        setNotificationsError(null);
+      },
+      (error) => {
+        console.error("Notifications listener error:", error);
+        setNotifications([]);
+        setUnreadNotificationCount(0);
+        setNotificationsError(
+          "Realtime notifications are temporarily unavailable. Please refresh in a moment."
+        );
+      }
+    );
 
     return () => unsubscribe();
   }, [identity?.authorId]);
@@ -244,7 +231,21 @@ export default function App() {
         />
 
         <main className="mx-auto max-w-2xl px-4 pb-24 pt-20">
-          {activeTab === "knowledge" && (
+          {notificationsError && (
+            <BannerNotice
+              title="Notifications unavailable"
+              body={notificationsError}
+              tone="warning"
+            />
+          )}
+
+          {activeTab === "notFound" ? (
+            <NotFoundRoute
+              attemptedPath={routeErrorPath}
+              onGoHome={() => handleTabChange("knowledge")}
+              onOpenSmartTalk={() => handleTabChange("smarttalk")}
+            />
+          ) : activeTab === "knowledge" ? (
             <KnowledgeFeed
               identity={identity}
               onIdentityChange={setIdentity}
@@ -253,7 +254,7 @@ export default function App() {
               onOpenEntry={handleOpenEntry}
               composerOpenSignal={composerOpenSignal}
             />
-          )}
+          ) : null}
           {activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
               <SmartTalk />
@@ -278,6 +279,7 @@ export default function App() {
             identity={identity}
             notifications={notifications}
             unreadNotificationCount={unreadNotificationCount}
+            notificationsError={notificationsError}
             onClose={() => setShowNotificationsPanel(false)}
             onOpenProfile={(authorId) => {
               setShowNotificationsPanel(false);
@@ -499,6 +501,7 @@ function NotificationsPanel({
   identity,
   notifications,
   unreadNotificationCount,
+  notificationsError,
   onClose,
   onOpenProfile,
   onOpenEntry,
@@ -506,20 +509,37 @@ function NotificationsPanel({
   identity: KnowledgeIdentity | null;
   notifications: UserNotification[];
   unreadNotificationCount: number;
+  notificationsError: string | null;
   onClose: () => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
 }) {
-  const openNotification = async (notification: UserNotification) => {
-    if (!notification.read) {
-      await markNotificationAsRead(notification.id);
-    }
+  const [panelError, setPanelError] = useState<string | null>(null);
 
-    onOpenEntry(notification.entryId);
+  const openNotification = async (notification: UserNotification) => {
+    setPanelError(null);
+
+    try {
+      if (!notification.read) {
+        await markNotificationAsRead(notification.id);
+      }
+
+      onOpenEntry(notification.entryId);
+    } catch (error) {
+      console.error("Failed to open notification:", error);
+      setPanelError("Could not open that notification right now. Please try again.");
+    }
   };
 
   const markAllRead = async () => {
-    await markNotificationsAsRead(notifications.map((notification) => notification.id));
+    setPanelError(null);
+
+    try {
+      await markNotificationsAsRead(notifications.map((notification) => notification.id));
+    } catch (error) {
+      console.error("Failed to mark notifications as read:", error);
+      setPanelError("Could not mark notifications as read right now.");
+    }
   };
 
   return (
@@ -568,6 +588,12 @@ function NotificationsPanel({
         </div>
 
         <div className="max-h-[65vh] overflow-y-auto">
+          {(notificationsError || panelError) && (
+            <div className="border-b border-amber-100 bg-amber-50 px-6 py-4 text-sm text-amber-700">
+              {panelError || notificationsError}
+            </div>
+          )}
+
           {!identity ? (
             <div className="px-6 py-8 text-sm text-slate-500">
               Post, like, or comment once with your username and your realtime
@@ -707,6 +733,86 @@ function SectionSkeleton({ label }: { label: string }) {
     <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
       <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
       <p className="mt-4 text-sm text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+function BannerNotice({
+  title,
+  body,
+  tone = "warning",
+}: {
+  title: string;
+  body: string;
+  tone?: "warning" | "neutral";
+}) {
+  return (
+    <div
+      className={`mb-6 rounded-[24px] border px-5 py-4 text-sm shadow-sm ${
+        tone === "warning"
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-slate-200 bg-white text-slate-700"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 rounded-full p-2 ${
+            tone === "warning"
+              ? "bg-amber-100 text-amber-700"
+              : "bg-slate-100 text-slate-500"
+          }`}
+        >
+          <TriangleAlert className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="font-bold">{title}</p>
+          <p className="mt-1 leading-6">{body}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotFoundRoute({
+  attemptedPath,
+  onGoHome,
+  onOpenSmartTalk,
+}: {
+  attemptedPath: string | null;
+  onGoHome: () => void;
+  onOpenSmartTalk: () => void;
+}) {
+  return (
+    <div className="rounded-[32px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+        <TriangleAlert className="h-8 w-8" />
+      </div>
+      <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">
+        Error 404
+      </p>
+      <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+        This page does not exist in Readative
+      </h2>
+      <p className="mt-3 text-sm leading-6 text-slate-500">
+        {attemptedPath
+          ? `We could not match ${attemptedPath} to a valid route.`
+          : "We could not match that URL to a valid route."}
+      </p>
+
+      <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <button
+          onClick={onGoHome}
+          className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+        >
+          Go to home feed
+        </button>
+        <button
+          onClick={onOpenSmartTalk}
+          className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+        >
+          Open SmartTalk
+        </button>
+      </div>
     </div>
   );
 }

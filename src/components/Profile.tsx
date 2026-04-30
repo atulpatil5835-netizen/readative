@@ -13,6 +13,7 @@ import {
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
+import { buildAbsoluteRouteUrl } from "../utils/routes";
 
 type ProfileSection = "shared" | "liked";
 
@@ -47,6 +48,8 @@ export function Profile({
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [section, setSection] = useState<ProfileSection>("shared");
@@ -80,20 +83,33 @@ export function Profile({
     const unsubscribers: Array<() => void> = [];
 
     unsubscribers.push(
-      onSnapshot(doc(db, "userProfiles", activeAuthorId), (snapshot) => {
-        if (!snapshot.exists()) {
+      onSnapshot(
+        doc(db, "userProfiles", activeAuthorId),
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            setProfile(null);
+            setIsLoadingProfile(false);
+            setProfileLoadError(null);
+            return;
+          }
+
+          const data = snapshot.data() as UserProfile;
+          setProfile({
+            ...data,
+            id: snapshot.id,
+          });
+          setIsLoadingProfile(false);
+          setProfileLoadError(null);
+        },
+        (error) => {
+          console.error("Profile listener error:", error);
           setProfile(null);
           setIsLoadingProfile(false);
-          return;
+          setProfileLoadError(
+            "Could not load this profile right now. Please refresh in a moment."
+          );
         }
-
-        const data = snapshot.data() as UserProfile;
-        setProfile({
-          ...data,
-          id: snapshot.id,
-        });
-        setIsLoadingProfile(false);
-      })
+      )
     );
 
     unsubscribers.push(
@@ -110,6 +126,14 @@ export function Profile({
           })) as KnowledgeEntry[];
 
           setSharedEntries(sortKnowledge(data));
+          setProfileLoadError(null);
+        },
+        (error) => {
+          console.error("Shared knowledge listener error:", error);
+          setSharedEntries([]);
+          setProfileLoadError(
+            "Could not load shared posts for this profile right now."
+          );
         }
       )
     );
@@ -128,6 +152,14 @@ export function Profile({
           })) as KnowledgeEntry[];
 
           setLikedEntries(sortKnowledge(data));
+          setProfileLoadError(null);
+        },
+        (error) => {
+          console.error("Liked knowledge listener error:", error);
+          setLikedEntries([]);
+          setProfileLoadError(
+            "Could not load liked posts for this profile right now."
+          );
         }
       )
     );
@@ -138,14 +170,25 @@ export function Profile({
   }, [activeAuthorId, isOwnProfile]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "userProfiles"), (snapshot) => {
-      const data = snapshot.docs.map((item) => ({
-        ...(item.data() as UserProfile),
-        id: item.id,
-      }));
+    const unsubscribe = onSnapshot(
+      collection(db, "userProfiles"),
+      (snapshot) => {
+        const data = snapshot.docs.map((item) => ({
+          ...(item.data() as UserProfile),
+          id: item.id,
+        }));
 
-      setProfiles(data);
-    });
+        setProfiles(data);
+        setDirectoryLoadError(null);
+      },
+      (error) => {
+        console.error("User directory listener error:", error);
+        setProfiles([]);
+        setDirectoryLoadError(
+          "The profile directory is temporarily unavailable. Mentions and profile previews may be limited."
+        );
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -157,11 +200,9 @@ export function Profile({
     0
   );
   const profileUrl =
-    typeof window === "undefined"
-      ? "https://readative.com/#profile"
-      : `${window.location.origin}${window.location.pathname}${
-          profile ? `#profile/${profile.id}` : "#profile"
-        }`;
+    profile
+      ? buildAbsoluteRouteUrl("profile", { profileAuthorId: profile.id })
+      : buildAbsoluteRouteUrl("profile");
   const profileSchema = profile
     ? {
         "@context": "https://schema.org",
@@ -261,6 +302,20 @@ export function Profile({
         url={profileUrl}
         schema={profileSchema}
       />
+
+      {profileLoadError && (
+        <ProfileNotice
+          title="Profile loading issue"
+          body={profileLoadError}
+        />
+      )}
+
+      {directoryLoadError && (
+        <ProfileNotice
+          title="Profile directory issue"
+          body={directoryLoadError}
+        />
+      )}
 
       {isLoadingProfile ? (
         <div className="flex justify-center py-20">
@@ -482,6 +537,21 @@ function KnowledgeSection({
           />
         ))
       )}
+    </div>
+  );
+}
+
+function ProfileNotice({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
+      <p className="font-bold">{title}</p>
+      <p className="mt-1 leading-6">{body}</p>
     </div>
   );
 }

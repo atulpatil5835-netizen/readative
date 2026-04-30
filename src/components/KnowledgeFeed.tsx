@@ -39,6 +39,12 @@ import {
 import { getGuestName } from "../utils/guestIdentity";
 import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
+import {
+  buildAbsoluteRouteUrl,
+  navigateToRoute,
+  parseRouteFromLocation,
+  ROUTE_CHANGE_EVENT,
+} from "../utils/routes";
 import { ensureGuestProfile } from "../utils/userProfiles";
 import {
   optimizeKnowledgeImageFile,
@@ -136,24 +142,14 @@ function estimateReadMinutes(text: string) {
   return Math.max(1, Math.round(wordCount / 180) || 1);
 }
 
-function readSelectedHashtagFromHash() {
+function readSelectedHashtagFromLocation() {
   if (typeof window === "undefined") return null;
 
-  const hash = window.location.hash.replace(/^#/, "");
-  if (!hash.startsWith("knowledge")) return null;
-
-  const [, search = ""] = hash.split("?");
-  const tag = new URLSearchParams(search).get("tag");
-  const normalizedTag = tag?.replace(/^#/, "").trim().toLowerCase();
-
-  return normalizedTag || null;
+  return parseRouteFromLocation().selectedHashtag;
 }
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
-  const origin =
-    typeof window === "undefined" ? "https://readative.com" : window.location.origin;
-  const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
-  const baseUrl = `${origin}/#knowledge`;
+  const baseUrl = buildAbsoluteRouteUrl("knowledge");
 
   const collectionSchema = {
     "@context": "https://schema.org",
@@ -181,7 +177,9 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
       },
       datePublished: new Date(entry.createdAt).toISOString(),
       keywords: entry.hashtags.join(", "),
-      mainEntityOfPage: `${origin}${pathname}#knowledge/${entry.id}`,
+      mainEntityOfPage: buildAbsoluteRouteUrl("knowledge", {
+        focusedEntryId: entry.id,
+      }),
       image:
         entry.imageDataUrl && !entry.imageDataUrl.startsWith("data:")
           ? [entry.imageDataUrl]
@@ -250,6 +248,8 @@ export function KnowledgeFeed({
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [feedLoadError, setFeedLoadError] = useState<string | null>(null);
+  const [profilesLoadError, setProfilesLoadError] = useState<string | null>(null);
   const [isPosting, setIsPosting] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
   const [isPreparingImage, setIsPreparingImage] = useState(false);
@@ -264,7 +264,7 @@ export function KnowledgeFeed({
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
   const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
-    readSelectedHashtagFromHash()
+    readSelectedHashtagFromLocation()
   );
   const [aiSweepTick, setAiSweepTick] = useState(0);
 
@@ -299,10 +299,14 @@ export function KnowledgeFeed({
 
         setEntries(data);
         setIsLoading(false);
+        setFeedLoadError(null);
       },
       (error) => {
         console.error("Knowledge feed error:", error);
         setIsLoading(false);
+        setFeedLoadError(
+          "Could not load the latest posts right now. Please refresh in a moment."
+        );
       }
     );
 
@@ -315,14 +319,25 @@ export function KnowledgeFeed({
       orderBy("usernameLower", "asc")
     );
 
-    const unsubscribe = onSnapshot(profilesQuery, (snapshot) => {
-      const data = snapshot.docs.map((item) => ({
-        ...(item.data() as UserProfile),
-        id: item.id,
-      }));
+    const unsubscribe = onSnapshot(
+      profilesQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((item) => ({
+          ...(item.data() as UserProfile),
+          id: item.id,
+        }));
 
-      setProfiles(data);
-    });
+        setProfiles(data);
+        setProfilesLoadError(null);
+      },
+      (error) => {
+        console.error("Profile directory error:", error);
+        setProfiles([]);
+        setProfilesLoadError(
+          "User mentions and profile previews may be incomplete for a moment."
+        );
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -338,13 +353,19 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     const syncSelectedHashtag = () => {
-      setSelectedHashtag(readSelectedHashtagFromHash());
+      setSelectedHashtag(readSelectedHashtagFromLocation());
     };
 
     syncSelectedHashtag();
     window.addEventListener("hashchange", syncSelectedHashtag);
+    window.addEventListener("popstate", syncSelectedHashtag);
+    window.addEventListener(ROUTE_CHANGE_EVENT, syncSelectedHashtag);
 
-    return () => window.removeEventListener("hashchange", syncSelectedHashtag);
+    return () => {
+      window.removeEventListener("hashchange", syncSelectedHashtag);
+      window.removeEventListener("popstate", syncSelectedHashtag);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, syncSelectedHashtag);
+    };
   }, []);
 
   useEffect(() => {
@@ -673,13 +694,11 @@ export function KnowledgeFeed({
     const normalizedTag = tag.trim().toLowerCase();
     if (!normalizedTag) return;
 
-    setSelectedHashtag(normalizedTag);
-    window.location.hash = `knowledge?tag=${encodeURIComponent(normalizedTag)}`;
+    navigateToRoute("knowledge", { selectedHashtag: normalizedTag });
   };
 
   const clearSelectedHashtag = () => {
-    setSelectedHashtag(null);
-    window.location.hash = "knowledge";
+    navigateToRoute("knowledge");
   };
 
   const pageTitle = focusedEntry
@@ -692,16 +711,11 @@ export function KnowledgeFeed({
     : selectedHashtag
     ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
     : "Readative homepage showing only knowledge posts from the community.";
-  const pageUrl =
-    typeof window === "undefined"
-      ? "https://readative.com/#knowledge"
-      : `${window.location.origin}${window.location.pathname}${
-          focusedEntry
-            ? `#knowledge/${focusedEntry.id}`
-            : selectedHashtag
-            ? `#knowledge?tag=${encodeURIComponent(selectedHashtag)}`
-            : "#knowledge"
-        }`;
+  const pageUrl = focusedEntry
+    ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
+    : selectedHashtag
+    ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
+    : buildAbsoluteRouteUrl("knowledge");
 
   return (
     <div className="pb-20">
@@ -733,6 +747,20 @@ export function KnowledgeFeed({
         </div>
       ) : (
         <div className="space-y-6">
+          {feedLoadError && (
+            <FeedNotice
+              title="Feed loading issue"
+              body={feedLoadError}
+            />
+          )}
+
+          {profilesLoadError && (
+            <FeedNotice
+              title="Profile directory issue"
+              body={profilesLoadError}
+            />
+          )}
+
           {selectedHashtag && (
             <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 px-5 py-4 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1103,6 +1131,21 @@ function ComposerModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FeedNotice({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
+      <p className="font-bold">{title}</p>
+      <p className="mt-1 leading-6">{body}</p>
     </div>
   );
 }

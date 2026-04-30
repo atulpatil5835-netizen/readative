@@ -1,0 +1,9 @@
+/smarttalk /index.html 200
+/smarttalk/ /index.html 200
+/smarttalk/* /index.html 200
+/profile /index.html 200
+/profile/ /index.html 200
+/profile/* /index.html 200
+/knowledge /index.html 200
+/knowledge/ /index.html 200
+/knowledge/* /index.html 200
