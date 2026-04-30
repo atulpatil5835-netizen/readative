@@ -1,12 +1,9 @@
-import express from "express"
+﻿import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
 import path from "path"
 import { fileURLToPath } from "url"
-import {
-  CHATGPT_MODEL,
-  CHATGPT_VERSION_LABEL,
-} from "./src/utils/chatgpt"
+import { handleAIRequest } from "./src/server/aiGateway"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -16,11 +13,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") })
 dotenv.config()
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ""
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ""
-
-console.log("🔑 GEMINI KEY:", GEMINI_API_KEY ? `${GEMINI_API_KEY.slice(0, 8)}...` : "❌ NOT FOUND")
-
-console.log("OPENAI KEY:", OPENAI_API_KEY ? `${OPENAI_API_KEY.slice(0, 8)}...` : "NOT FOUND")
+const XAI_API_KEY = process.env.XAI_API_KEY || ""
 
 const app = express()
 app.use(cors())
@@ -70,11 +63,11 @@ const profiles = new Map<string, ProfileData>()
 
 async function callGemini(prompt: string): Promise<string> {
   if (!GEMINI_API_KEY) {
-    console.error("❌ No Gemini API key found!")
+    console.error("âŒ No Gemini API key found!")
     return ""
   }
   try {
-    console.log("🤖 Calling Gemini:", prompt.slice(0, 80) + "...")
+    console.log("ðŸ¤– Calling Gemini:", prompt.slice(0, 80) + "...")
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -88,58 +81,15 @@ async function callGemini(prompt: string): Promise<string> {
     const data = await response.json()
 
     if (data.error) {
-      console.error("❌ Gemini API error:", data.error.message)
+      console.error("âŒ Gemini API error:", data.error.message)
       return ""
     }
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
-    console.log("✅ Gemini response:", text.slice(0, 80) + "...")
+    console.log("âœ… Gemini response:", text.slice(0, 80) + "...")
     return text
   } catch (error) {
-    console.error("❌ Gemini fetch error:", error)
-    return ""
-  }
-}
-
-async function callChatGPT(prompt: string): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    console.error("No OpenAI API key found!")
-    return ""
-  }
-
-  try {
-    console.log("Calling ChatGPT:", prompt.slice(0, 80) + "...")
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: CHATGPT_MODEL,
-        input: prompt,
-      }),
-    })
-    const data = await response.json()
-
-    if (data.error) {
-      console.error("OpenAI API error:", data.error.message)
-      return ""
-    }
-
-    const text =
-      data.output_text ||
-      data.output
-        ?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content || [])
-        .map((item: { text?: string }) => item.text || "")
-        .join("")
-        .trim() ||
-      ""
-
-    console.log("ChatGPT response:", text.slice(0, 80) + "...")
-    return text
-  } catch (error) {
-    console.error("OpenAI fetch error:", error)
+    console.error("âŒ Gemini fetch error:", error)
     return ""
   }
 }
@@ -159,10 +109,10 @@ async function checkScheduledAIComments() {
     if (post.stars < 4.5) continue
     if (now < post.aiCommentScheduledAt) continue
 
-    console.log(`⏰ Posting scheduled AI comment on post ${post.id} (stars: ${post.stars})`)
+    console.log(`â° Posting scheduled AI comment on post ${post.id} (stars: ${post.stars})`)
     try {
       const categoryLabel = post.type.charAt(0).toUpperCase() + post.type.slice(1)
-      const aiPrompt = `You are a thoughtful, well-read literary critic and reader on Readative — a social reading/writing platform.
+      const aiPrompt = `You are a thoughtful, well-read literary critic and reader on Readative â€” a social reading/writing platform.
 
 This post has received high ratings from the community. Write ONE meaningful, insightful comment (3-4 sentences) that:
 - Responds specifically to the content of the post
@@ -186,10 +136,10 @@ Your comment:`
         }
         post.comments.push(aiComment)
         post.aiCommentPosted = true
-        console.log(`✅ Scheduled AI comment posted on post ${post.id}`)
+        console.log(`âœ… Scheduled AI comment posted on post ${post.id}`)
       }
     } catch (e) {
-      console.error("❌ Scheduled AI comment failed:", e)
+      console.error("âŒ Scheduled AI comment failed:", e)
     }
   }
 }
@@ -197,10 +147,10 @@ Your comment:`
 setInterval(checkScheduledAIComments, 30 * 60 * 1000)
 
 app.get("/api/test-ai", async (req, res) => {
-  console.log("🧪 Test AI route hit")
+  console.log("ðŸ§ª Test AI route hit")
   const result = await callGemini("Say hello in one sentence.")
   res.json({
-    key: GEMINI_API_KEY ? `${GEMINI_API_KEY.slice(0, 8)}...` : "❌ NOT FOUND",
+    key: GEMINI_API_KEY ? `${GEMINI_API_KEY.slice(0, 8)}...` : "âŒ NOT FOUND",
     result,
   })
 })
@@ -227,7 +177,7 @@ app.post("/api/posts", async (req, res) => {
     ...req.body,
   }
   posts.unshift(newPost)
-  console.log(`📅 Post ${newPost.id} — AI comment in ~${Math.round((scheduledAt - Date.now()) / 86400000 * 10) / 10} days if rating ≥ 4.5`)
+  console.log(`ðŸ“… Post ${newPost.id} â€” AI comment in ~${Math.round((scheduledAt - Date.now()) / 86400000 * 10) / 10} days if rating â‰¥ 4.5`)
   res.json(newPost)
 })
 
@@ -246,7 +196,7 @@ app.post("/api/posts/:id/rate", (req, res) => {
   if (!post) return res.status(404).json({ error: "Post not found" })
   post.ratingCount += 1
   post.stars = (post.stars * (post.ratingCount - 1) + stars) / post.ratingCount
-  console.log(`⭐ Post ${post.id} rated — avg: ${post.stars.toFixed(2)}`)
+  console.log(`â­ Post ${post.id} rated â€” avg: ${post.stars.toFixed(2)}`)
   res.json({ stars: post.stars, ratingCount: post.ratingCount })
 })
 
@@ -295,74 +245,20 @@ app.post("/api/profile/:id", (req, res) => {
 
 app.post("/api/ai", async (req, res) => {
   try {
-    const { type, prompt, content, topic, language } = req.body
-    let finalPrompt = ""
-    let provider: "gemini" | "chatgpt" = "gemini"
+    const result = await handleAIRequest(req.body, {
+      geminiApiKey: GEMINI_API_KEY,
+      xaiApiKey: XAI_API_KEY,
+      logger: console,
+    })
 
-    switch (type) {
-      case "answer":
-        finalPrompt = prompt || ""
-        break
-      case "chatgptSmartAnswer":
-        provider = "chatgpt"
-        finalPrompt = `You are ChatGPT (${CHATGPT_VERSION_LABEL}), helping on Readative's SmartTalk Q&A.
-Write one thoughtful answer in 2-3 short paragraphs.
-Be direct, clear, and genuinely useful without sounding robotic.
-
-Question:
-${content || ""}
-`
-        break
-      case "hashtags":
-        finalPrompt = `Generate 5-6 relevant hashtags (with # prefix, space-separated) for this content. Return only hashtags, nothing else:\n${content}`
-        break
-      case "exam":
-        finalPrompt = `Generate 5 multiple choice questions based on:\n${topic}\nFormat each as:\nQ: ...\nA) ...\nB) ...\nC) ...\nD) ...\nAnswer: ...`
-        break
-      case "translate":
-        finalPrompt = `Translate the following text to ${language}. Return only the translation, nothing else:\n${content}`
-        break
-      case "autoReply": {
-        const [author, category] = (prompt || "").split("|||")
-        finalPrompt = `You are a warm reader on Readative. Write ONE short smart comment (2-3 sentences) on this ${category || "post"} by ${author}:\n"${content}"`
-        break
-      }
-      case "chatgptKnowledgeComment": {
-        provider = "chatgpt"
-        const [author, title, existingHumanCommentCount] = (prompt || "").split("|||")
-        const commentCount = Number(existingHumanCommentCount || "0")
-        finalPrompt = `You are ChatGPT (${CHATGPT_VERSION_LABEL}) joining a quiet discussion on Readative.
-Write exactly one natural, supportive comment in 2-3 sentences.
-Sound like a thoughtful community member, not a moderator or bot disclaimer.
-The goal is to gently start discussion on a low-interaction post after 6 quiet hours.
-Do not mention low interaction, algorithms, or that you were triggered automatically.
-${commentCount > 0 ? "Build on the existing discussion without repeating it." : "Be the first helpful reply and invite reflection."}
-
-Post title: ${title || "Untitled"}
-Post author: ${author || "Unknown"}
-Post content:
-${content || ""}
-`
-        break
-      }
-      case "tts":
-        return res.json({ audio: null })
-      default:
-        finalPrompt = prompt || content || ""
-    }
-
-    const text =
-      provider === "chatgpt"
-        ? await callChatGPT(finalPrompt)
-        : await callGemini(finalPrompt)
-    res.json({ text })
+    res.status(result.error ? 400 : 200).json(result)
   } catch (error) {
-    console.error("❌ AI route error:", error)
-    res.status(500).json({ text: "" })
+    console.error("AI route error:", error)
+    res.status(500).json({ text: "", error: "Internal server error" })
   }
 })
-
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`)
+  console.log(`ðŸš€ Backend running on http://localhost:${PORT}`)
   checkScheduledAIComments()
 })
+

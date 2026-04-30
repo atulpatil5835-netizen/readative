@@ -19,6 +19,7 @@ import {
   orderBy,
   serverTimestamp,
   doc,
+  runTransaction,
   updateDoc,
   arrayUnion,
 } from "firebase/firestore";
@@ -27,11 +28,11 @@ import { geminiService } from "../services/gemini";
 import { UsernamePrompt } from "./Auth";
 import { DiscoverySearch } from "./DiscoverySearch";
 import {
-  AI_FALLBACK_DELAY_HOURS,
-  CHATGPT_AUTHOR_ID,
-  CHATGPT_AUTHOR_NAME,
-  CHATGPT_VERSION_LABEL,
-} from "../utils/chatgpt";
+  AI_RESPONSE_NOTE,
+  getAIContributorByAuthorId,
+  shouldPostSmartTalkAIAnswer,
+  SMARTTALK_AI_FALLBACK_DELAY_HOURS,
+} from "../utils/aiContributors";
 import {
   clearGuestName,
   getGuestId,
@@ -44,12 +45,14 @@ import { renderRichText } from "../utils/renderRichText";
 interface Answer {
   id: string;
   author: string;
-  authorId: string;
+  authorId?: string;
   content: string;
   likes: string[];
   dislikes: string[];
   createdAt: number;
   isAI?: boolean;
+  aiProvider?: "gemini" | "grok";
+  aiNote?: string | null;
 }
 
 interface Question {
@@ -60,6 +63,7 @@ interface Question {
   answers: Answer[];
   createdAt: number;
   aiAnswered?: boolean;
+  aiAnsweredBy?: "gemini" | "grok" | null;
 }
 
 type NamePromptState =
@@ -103,6 +107,72 @@ function matchesSmartTalkSearch(question: Question, terms: string[]) {
   });
 }
 
+function normalizeSmartTalkAnswer(
+  answer: Partial<Answer> & {
+    createdAt?: number | { toMillis?: () => number };
+  }
+): Answer {
+  const rawCreatedAt = answer.createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+
+  return {
+    id: answer.id || Math.random().toString(36).slice(2, 11),
+    author: answer.author || "Unknown",
+    authorId: answer.authorId || "",
+    content: answer.content || "",
+    likes: answer.likes || [],
+    dislikes: answer.dislikes || [],
+    createdAt:
+      rawCreatedAt &&
+      typeof rawCreatedAt === "object" &&
+      typeof rawCreatedAt.toMillis === "function"
+        ? rawCreatedAt.toMillis()
+        : typeof rawCreatedAt === "number"
+        ? rawCreatedAt
+        : Date.now(),
+    isAI: Boolean(answer.isAI),
+    aiProvider: answer.aiProvider,
+    aiNote: answer.aiNote || null,
+  };
+}
+
+function normalizeSmartTalkQuestion(
+  id: string,
+  data: Partial<Question> & {
+    createdAt?: number | { toMillis?: () => number };
+    answers?: Array<
+      Partial<Answer> & {
+        createdAt?: number | { toMillis?: () => number };
+      }
+    >;
+  }
+): Question {
+  const rawCreatedAt = data.createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+
+  return {
+    id,
+    author: data.author || "Unknown",
+    authorId: data.authorId || "",
+    content: data.content || "",
+    answers: (data.answers || []).map((answer) => normalizeSmartTalkAnswer(answer)),
+    createdAt:
+      rawCreatedAt &&
+      typeof rawCreatedAt === "object" &&
+      typeof rawCreatedAt.toMillis === "function"
+        ? rawCreatedAt.toMillis()
+        : typeof rawCreatedAt === "number"
+        ? rawCreatedAt
+        : Date.now(),
+    aiAnswered: Boolean(data.aiAnswered),
+    aiAnsweredBy: data.aiAnsweredBy || null,
+  };
+}
+
 export function SmartTalk() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,14 +203,9 @@ export function SmartTalk() {
     const unsubscribe = onSnapshot(
       smartTalkQuery,
       (snapshot) => {
-        const data = snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-          createdAt:
-            item.data().createdAt?.toMillis?.() ||
-            item.data().createdAt ||
-            Date.now(),
-        })) as Question[];
+        const data = snapshot.docs.map((item) =>
+          normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>)
+        );
 
         setQuestions(data);
         setIsLoading(false);
@@ -169,11 +234,7 @@ export function SmartTalk() {
   }, [questions, aiSweepTick]);
 
   const checkAndTriggerAIAnswer = async (question: Question) => {
-    if (question.aiAnswered) return;
-    if ((question.answers || []).length > 0) return;
-
-    const ageHours = (Date.now() - question.createdAt) / (1000 * 60 * 60);
-    if (ageHours < AI_FALLBACK_DELAY_HOURS) return;
+    if (!shouldPostSmartTalkAIAnswer(question)) return;
     if (pendingAiAnswersRef.current.has(question.id)) return;
 
     pendingAiAnswersRef.current.add(question.id);
@@ -182,25 +243,42 @@ export function SmartTalk() {
 
   const triggerAIAnswer = async (question: Question) => {
     try {
-      const text = await geminiService.generateSmartTalkFallbackAnswer(
+      const aiReply = await geminiService.generateSmartTalkFallbackAnswer(
         question.content
       );
-      if (!text.trim()) return;
+      if (!aiReply.text.trim()) return;
+
+      const questionRef = doc(db, "smarttalk", question.id);
 
       const aiAnswer: Answer = {
         id: Math.random().toString(36).slice(2, 11),
-        author: CHATGPT_AUTHOR_NAME,
-        authorId: CHATGPT_AUTHOR_ID,
-        content: text.trim(),
+        author: aiReply.authorName || "Readative AI",
+        authorId: aiReply.authorId || "",
+        content: aiReply.text.trim(),
         likes: [],
         dislikes: [],
         createdAt: Date.now(),
         isAI: true,
+        aiProvider: aiReply.provider,
+        aiNote: aiReply.note || null,
       };
 
-      await updateDoc(doc(db, "smarttalk", question.id), {
-        answers: arrayUnion(aiAnswer),
-        aiAnswered: true,
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(questionRef);
+        if (!snapshot.exists()) return;
+
+        const currentQuestion = normalizeSmartTalkQuestion(
+          snapshot.id,
+          snapshot.data() as Partial<Question>
+        );
+
+        if (!shouldPostSmartTalkAIAnswer(currentQuestion)) return;
+
+        transaction.update(questionRef, {
+          answers: [...(currentQuestion.answers || []), aiAnswer],
+          aiAnswered: true,
+          aiAnsweredBy: aiReply.provider || null,
+        });
       });
     } catch (error) {
       console.error("AI answer failed for question", question.id, error);
@@ -380,7 +458,11 @@ export function SmartTalk() {
     isTop: boolean,
     isWorst: boolean
   ) => {
-    if (answer.isAI) return "border-2 border-purple-200 bg-purple-50/40";
+    if (answer.isAI) {
+      return answer.aiProvider === "gemini"
+        ? "border-2 border-sky-200 bg-sky-50/50"
+        : "border-2 border-emerald-200 bg-emerald-50/50";
+    }
     if (isTop) {
       return "border-4 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]";
     }
@@ -432,6 +514,9 @@ export function SmartTalk() {
     const score = getAnswerScore(answer);
     const userLiked = (answer.likes || []).includes(guestId);
     const userDisliked = (answer.dislikes || []).includes(guestId);
+    const aiContributor = answer.isAI
+      ? getAIContributorByAuthorId(answer.authorId)
+      : null;
 
     return (
       <div
@@ -446,14 +531,32 @@ export function SmartTalk() {
           <div className="flex items-center gap-2 flex-wrap">
             {answer.isAI ? (
               <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                    aiContributor?.provider === "gemini"
+                      ? "bg-gradient-to-br from-sky-500 to-cyan-600"
+                      : "bg-gradient-to-br from-emerald-500 to-teal-600"
+                  }`}
+                >
                   <Sparkles className="w-3 h-3 text-white" />
                 </div>
-                <span className="text-xs font-bold text-purple-700">
-                  {CHATGPT_AUTHOR_NAME}
+                <span
+                  className={`text-xs font-bold ${
+                    aiContributor?.provider === "gemini"
+                      ? "text-sky-700"
+                      : "text-emerald-700"
+                  }`}
+                >
+                  {answer.author}
                 </span>
-                <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-bold">
-                  {CHATGPT_VERSION_LABEL}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    aiContributor?.provider === "gemini"
+                      ? "bg-sky-100 text-sky-600"
+                      : "bg-emerald-100 text-emerald-600"
+                  }`}
+                >
+                  {aiContributor?.modelLabel || "Official AI"}
                 </span>
               </div>
             ) : (
@@ -492,6 +595,11 @@ export function SmartTalk() {
         <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap mb-3">
           {renderRichText({ text: answer.content })}
         </p>
+        {answer.isAI && (
+          <p className="mb-3 text-xs font-medium text-slate-500">
+            {answer.aiNote || AI_RESPONSE_NOTE}
+          </p>
+        )}
 
         <div className="flex items-center gap-4">
           <button
@@ -696,8 +804,10 @@ export function SmartTalk() {
                 <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
                   {allSortedAnswers.length === 0 ? (
                     <p className="text-sm text-gray-400 italic py-2">
-                      No answers yet. Be the first or wait 6 hours for{" "}
-                      {CHATGPT_AUTHOR_NAME} to answer.
+                      No answers yet. Be the first or wait about{" "}
+                      {SMARTTALK_AI_FALLBACK_DELAY_HOURS} hour
+                      {SMARTTALK_AI_FALLBACK_DELAY_HOURS === 1 ? "" : "s"} for one
+                      official AI answer.
                     </p>
                   ) : (
                     <>

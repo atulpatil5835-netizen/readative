@@ -1,4 +1,5 @@
 import { ExamQuestion } from "../types"
+import type { AIProvider } from "../utils/aiContributors"
 
 type AIRequest = {
   type: string
@@ -6,11 +7,27 @@ type AIRequest = {
   content?: string
   topic?: string
   language?: string
+  metadata?: Record<string, unknown>
 }
 
 type AIResponse = {
   text?: string
   audio?: string | null
+  provider?: AIProvider
+  authorId?: string
+  authorName?: string
+  modelLabel?: string
+  note?: string
+  error?: string
+}
+
+export type AIGeneratedMessage = {
+  text: string
+  provider?: AIProvider
+  authorId?: string
+  authorName?: string
+  modelLabel?: string
+  note?: string
 }
 
 function parseExamQuestions(rawText: string): ExamQuestion[] {
@@ -60,7 +77,19 @@ async function callAI(payload: AIRequest): Promise<AIResponse> {
     })
 
     if (!res.ok) {
-      throw new Error(`AI request failed (${res.status})`)
+      const failureBody = await res.text()
+      let errorDetail = failureBody.slice(0, 200)
+
+      try {
+        const parsedBody = JSON.parse(failureBody) as { error?: string }
+        if (parsedBody.error) {
+          errorDetail = parsedBody.error
+        }
+      } catch {
+        // Ignore JSON parse issues and keep the raw preview.
+      }
+
+      throw new Error(`AI request failed (${res.status}): ${errorDetail}`)
     }
 
     const contentType = res.headers.get("content-type") || ""
@@ -72,7 +101,7 @@ async function callAI(payload: AIRequest): Promise<AIResponse> {
     return (await res.json()) as AIResponse
   } catch (error) {
     console.error("AI backend error:", error)
-    return { text: "", audio: null }
+    return { text: "", audio: null, error: "AI backend error" }
   }
 }
 
@@ -104,12 +133,24 @@ Question: ${question}`,
     return res.text || "Unable to generate an answer right now."
   },
 
-  async generateSmartTalkFallbackAnswer(question: string): Promise<string> {
+  async generateSmartTalkFallbackAnswer(
+    question: string
+  ): Promise<AIGeneratedMessage> {
     const res = await callAI({
-      type: "chatgptSmartAnswer",
+      type: "smarttalkFallbackAnswer",
       content: question,
+      metadata: {
+        seed: question,
+      },
     })
-    return res.text || ""
+    return {
+      text: res.text || "",
+      provider: res.provider,
+      authorId: res.authorId,
+      authorName: res.authorName,
+      modelLabel: res.modelLabel,
+      note: res.note,
+    }
   },
 
   async generateHashtags(content: string): Promise<string[]> {
@@ -152,13 +193,25 @@ Question: ${question}`,
     content: string,
     author: string,
     existingHumanCommentCount: number
-  ): Promise<string> {
+  ): Promise<AIGeneratedMessage> {
     const res = await callAI({
-      type: "chatgptKnowledgeComment",
+      type: "knowledgeFallbackComment",
       content,
-      prompt: `${author}|||${title}|||${existingHumanCommentCount}`,
+      metadata: {
+        author,
+        title,
+        existingHumanCommentCount,
+        seed: `${author}:${title}`,
+      },
     })
-    return res.text || ""
+    return {
+      text: res.text || "",
+      provider: res.provider,
+      authorId: res.authorId,
+      authorName: res.authorName,
+      modelLabel: res.modelLabel,
+      note: res.note,
+    }
   },
 }
 

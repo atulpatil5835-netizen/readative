@@ -26,6 +26,7 @@ import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { queueLegacyKnowledgeImageMigration } from "../utils/knowledgeImages";
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
+import { AI_RESPONSE_NOTE } from "../utils/aiContributors";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -666,6 +667,11 @@ export function KnowledgeCard({
                       onOpenProfile,
                     })}
                   </p>
+                  {comment.isAI && (
+                    <p className="mt-3 text-xs font-medium text-emerald-700/80">
+                      {comment.aiNote || AI_RESPONSE_NOTE}
+                    </p>
+                  )}
                 </div>
               ))
             )}

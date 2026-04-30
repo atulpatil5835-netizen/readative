@@ -34,10 +34,8 @@ import { KnowledgeCard } from "./KnowledgeCard";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import {
-  CHATGPT_AUTHOR_ID,
-  CHATGPT_AUTHOR_NAME,
-  shouldPostRareChatGPTComment,
-} from "../utils/chatgpt";
+  shouldPostRareAIKnowledgeComment,
+} from "../utils/aiContributors";
 import { getGuestName } from "../utils/guestIdentity";
 import { notifyTaggedUsers } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
@@ -450,7 +448,7 @@ export function KnowledgeFeed({
   }, [entries, aiSweepTick]);
 
   const checkAndTriggerAIComment = async (entry: KnowledgeEntry) => {
-    if (!shouldPostRareChatGPTComment(entry)) return;
+    if (!shouldPostRareAIKnowledgeComment(entry)) return;
     if (pendingAiCommentsRef.current.has(entry.id)) return;
 
     pendingAiCommentsRef.current.add(entry.id);
@@ -463,24 +461,26 @@ export function KnowledgeFeed({
         (comment) => !comment.isAI
       ).length;
       const { geminiService } = await import("../services/gemini");
-      const text = await geminiService.generateKnowledgeFallbackComment(
+      const aiReply = await geminiService.generateKnowledgeFallbackComment(
         entry.title,
         entry.content,
         entry.author,
         humanCommentCount
       );
 
-      if (!text.trim()) return;
+      if (!aiReply.text.trim()) return;
 
       const commentRef = doc(db, "knowledge", entry.id);
       const aiComment: KnowledgeComment = {
         id: Math.random().toString(36).slice(2, 11),
-        author: CHATGPT_AUTHOR_NAME,
-        authorId: CHATGPT_AUTHOR_ID,
-        text: text.trim(),
+        author: aiReply.authorName || "Readative AI",
+        authorId: aiReply.authorId,
+        text: aiReply.text.trim(),
         mentions: [],
         createdAt: Date.now(),
         isAI: true,
+        aiProvider: aiReply.provider,
+        aiNote: aiReply.note || null,
       };
 
       await runTransaction(db, async (transaction) => {
@@ -492,14 +492,14 @@ export function KnowledgeFeed({
           snapshot.data() as Partial<KnowledgeEntry>
         );
 
-        if (!shouldPostRareChatGPTComment(currentEntry)) return;
+        if (!shouldPostRareAIKnowledgeComment(currentEntry)) return;
 
         transaction.update(commentRef, {
           comments: [...(currentEntry.comments || []), aiComment],
         });
       });
     } catch (error) {
-      console.error("Failed to add ChatGPT comment:", error);
+      console.error("Failed to add AI knowledge comment:", error);
     } finally {
       pendingAiCommentsRef.current.delete(entry.id);
     }
