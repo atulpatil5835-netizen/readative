@@ -71,6 +71,8 @@ type NamePromptState =
   | { type: "answer"; questionId: string }
   | null;
 
+type VoteType = "like" | "dislike";
+
 function tokenizeSearch(input: string) {
   return input
     .trim()
@@ -170,6 +172,50 @@ function normalizeSmartTalkQuestion(
         : Date.now(),
     aiAnswered: Boolean(data.aiAnswered),
     aiAnsweredBy: data.aiAnsweredBy || null,
+  };
+}
+
+function serializeSmartTalkAnswer(answer: Answer) {
+  return {
+    id: answer.id,
+    author: answer.author,
+    ...(answer.authorId ? { authorId: answer.authorId } : {}),
+    content: answer.content,
+    likes: answer.likes || [],
+    dislikes: answer.dislikes || [],
+    createdAt: answer.createdAt,
+    ...(answer.isAI ? { isAI: true } : {}),
+    ...(answer.aiProvider ? { aiProvider: answer.aiProvider } : {}),
+    ...(answer.aiNote ? { aiNote: answer.aiNote } : {}),
+  };
+}
+
+function toggleSmartTalkVote(
+  answer: Answer,
+  voterId: string,
+  voteType: VoteType
+): Answer {
+  const likes = answer.likes || [];
+  const dislikes = answer.dislikes || [];
+  const alreadyLiked = likes.includes(voterId);
+  const alreadyDisliked = dislikes.includes(voterId);
+
+  if (voteType === "like") {
+    return {
+      ...answer,
+      likes: alreadyLiked
+        ? likes.filter((id) => id !== voterId)
+        : [...likes, voterId],
+      dislikes: dislikes.filter((id) => id !== voterId),
+    };
+  }
+
+  return {
+    ...answer,
+    dislikes: alreadyDisliked
+      ? dislikes.filter((id) => id !== voterId)
+      : [...dislikes, voterId],
+    likes: likes.filter((id) => id !== voterId),
   };
 }
 
@@ -275,7 +321,9 @@ export function SmartTalk() {
         if (!shouldPostSmartTalkAIAnswer(currentQuestion)) return;
 
         transaction.update(questionRef, {
-          answers: [...(currentQuestion.answers || []), aiAnswer],
+          answers: [...(currentQuestion.answers || []), aiAnswer].map(
+            serializeSmartTalkAnswer
+          ),
           aiAnswered: true,
           aiAnsweredBy: aiReply.provider || null,
         });
@@ -412,38 +460,29 @@ export function SmartTalk() {
   const handleVote = async (
     question: Question,
     answerId: string,
-    voteType: "like" | "dislike"
+    voteType: VoteType
   ) => {
-    const updatedAnswers = question.answers.map((answer) => {
-      if (answer.id !== answerId) return answer;
-
-      const likes = answer.likes || [];
-      const dislikes = answer.dislikes || [];
-      const alreadyLiked = likes.includes(guestId);
-      const alreadyDisliked = dislikes.includes(guestId);
-
-      if (voteType === "like") {
-        return {
-          ...answer,
-          likes: alreadyLiked
-            ? likes.filter((id) => id !== guestId)
-            : [...likes, guestId],
-          dislikes: dislikes.filter((id) => id !== guestId),
-        };
-      }
-
-      return {
-        ...answer,
-        dislikes: alreadyDisliked
-          ? dislikes.filter((id) => id !== guestId)
-          : [...dislikes, guestId],
-        likes: likes.filter((id) => id !== guestId),
-      };
-    });
-
     try {
-      await updateDoc(doc(db, "smarttalk", question.id), {
-        answers: updatedAnswers,
+      const questionRef = doc(db, "smarttalk", question.id);
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(questionRef);
+        if (!snapshot.exists()) return;
+
+        const currentQuestion = normalizeSmartTalkQuestion(
+          snapshot.id,
+          snapshot.data() as Partial<Question>
+        );
+
+        const updatedAnswers = (currentQuestion.answers || []).map((answer) =>
+          answer.id === answerId
+            ? toggleSmartTalkVote(answer, guestId, voteType)
+            : answer
+        );
+
+        transaction.update(questionRef, {
+          answers: updatedAnswers.map(serializeSmartTalkAnswer),
+        });
       });
     } catch (error) {
       console.error("Failed to vote:", error);
