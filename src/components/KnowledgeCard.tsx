@@ -39,6 +39,7 @@ function cn(...inputs: ClassValue[]) {
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
   profiles?: UserProfile[];
+  onVisible?: (entryId: string) => void;
   onIdentityRequired: (action: {
     type: "like" | "comment";
     entryId: string;
@@ -86,6 +87,7 @@ function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
 export function KnowledgeCard({
   entry,
   profiles = [],
+  onVisible,
   onIdentityRequired,
   onOpenProfile,
   onOpenEntry,
@@ -112,6 +114,8 @@ export function KnowledgeCard({
     getGuestName(),
   );
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const hasTrackedVisibilityRef = useRef(false);
 
   const guestId = getGuestId();
   const isLiked = localLikes.includes(guestId);
@@ -143,6 +147,38 @@ export function KnowledgeCard({
     const timeout = window.setTimeout(() => setShareCopied(false), 2200);
     return () => window.clearTimeout(timeout);
   }, [shareCopied]);
+
+  useEffect(() => {
+    if (!onVisible || typeof window === "undefined") return;
+    if (hasTrackedVisibilityRef.current) return;
+
+    const articleElement = articleRef.current;
+    if (!articleElement) return;
+    if (typeof window.IntersectionObserver !== "function") {
+      hasTrackedVisibilityRef.current = true;
+      onVisible(entry.id);
+      return;
+    }
+
+    const observer = new window.IntersectionObserver(
+      (observedEntries) => {
+        const [observedEntry] = observedEntries;
+        if (!observedEntry?.isIntersecting || hasTrackedVisibilityRef.current) {
+          return;
+        }
+
+        hasTrackedVisibilityRef.current = true;
+        onVisible(entry.id);
+        observer.disconnect();
+      },
+      {
+        threshold: 0.6,
+      },
+    );
+
+    observer.observe(articleElement);
+    return () => observer.disconnect();
+  }, [entry.id, onVisible]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -411,6 +447,7 @@ export function KnowledgeCard({
 
   return (
     <article
+      ref={articleRef}
       id={`knowledge-${entry.id}`}
       className={cn(
         "overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]",

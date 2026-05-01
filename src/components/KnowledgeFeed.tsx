@@ -48,6 +48,11 @@ import {
 } from "../utils/routes";
 import { ensureGuestProfile } from "../utils/userProfiles";
 import {
+  getKnowledgeFeedSnapshot,
+  markKnowledgeEntrySeen,
+  rankKnowledgeEntries,
+} from "../utils/feedPersonalization";
+import {
   optimizeKnowledgeImageFile,
   type OptimizedKnowledgeImage,
 } from "../utils/knowledgeImages";
@@ -315,6 +320,9 @@ export function KnowledgeFeed({
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
+  const [rankingSnapshot, setRankingSnapshot] = useState(() =>
+    getKnowledgeFeedSnapshot(),
+  );
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const guestName = getGuestName();
@@ -332,6 +340,7 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
+    setRankingSnapshot(getKnowledgeFeedSnapshot());
     setShowRefreshFeedback(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -437,8 +446,8 @@ export function KnowledgeFeed({
   );
 
   const orderedEntries = useMemo(
-    () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
-    [entries],
+    () => rankKnowledgeEntries(entries, rankingSnapshot),
+    [entries, rankingSnapshot],
   );
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
@@ -822,6 +831,7 @@ export function KnowledgeFeed({
                   key={entry.id}
                   entry={entry}
                   profiles={profiles}
+                  onVisible={markKnowledgeEntrySeen}
                   onIdentityRequired={(action) => setPendingAction(action)}
                   onOpenProfile={onOpenProfile}
                   onOpenEntry={onOpenEntry}
