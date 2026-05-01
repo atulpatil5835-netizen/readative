@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -35,6 +35,15 @@ import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const LIKE_BURST_PARTICLES = [
+  { x: -24, y: -18, rotate: -24, delay: 0, scale: 1.05, color: "#fb7185" },
+  { x: -8, y: -28, rotate: -12, delay: 35, scale: 0.9, color: "#f43f5e" },
+  { x: 14, y: -26, rotate: 18, delay: 70, scale: 1.1, color: "#f97316" },
+  { x: 26, y: -12, rotate: 28, delay: 25, scale: 0.95, color: "#fb7185" },
+  { x: 18, y: 6, rotate: 18, delay: 90, scale: 0.8, color: "#fda4af" },
+  { x: -20, y: 4, rotate: -18, delay: 55, scale: 0.85, color: "#fecdd3" },
+] as const;
 
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
@@ -113,6 +122,7 @@ export function KnowledgeCard({
   const [guestName, setGuestName] = useState<string | null>(() =>
     getGuestName(),
   );
+  const [likeAnimationVersion, setLikeAnimationVersion] = useState(0);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const hasTrackedVisibilityRef = useRef(false);
@@ -245,6 +255,10 @@ export function KnowledgeCard({
   };
 
   const updateLike = async (shouldLike: boolean, actorName?: string | null) => {
+    if (shouldLike && !localLikes.includes(guestId)) {
+      setLikeAnimationVersion((current) => current + 1);
+    }
+
     const nextLikes = shouldLike
       ? [...localLikes, guestId]
       : localLikes.filter((id) => id !== guestId);
@@ -558,13 +572,52 @@ export function KnowledgeCard({
             <button
               onClick={handleLike}
               className={cn(
-                "flex items-center gap-1.5 text-sm font-semibold transition-colors",
+                "relative overflow-visible flex items-center gap-1.5 text-sm font-semibold transition-colors",
                 isLiked
                   ? "text-rose-500"
                   : "text-slate-400 hover:text-rose-500",
               )}
             >
-              <Heart className={cn("h-5 w-5", isLiked ? "fill-current" : "")} />
+              <span className="relative inline-flex h-5 w-5 items-center justify-center">
+                <span
+                  key={`like-icon-${likeAnimationVersion}`}
+                  className={cn(
+                    "inline-flex h-5 w-5 items-center justify-center",
+                    likeAnimationVersion > 0 && "readative-like-pop",
+                  )}
+                >
+                  <Heart
+                    className={cn("h-5 w-5", isLiked ? "fill-current" : "")}
+                  />
+                </span>
+
+                {likeAnimationVersion > 0 && (
+                  <span
+                    key={`like-burst-${likeAnimationVersion}`}
+                    className="pointer-events-none absolute inset-0"
+                    aria-hidden="true"
+                  >
+                    {LIKE_BURST_PARTICLES.map((particle, index) => (
+                      <span
+                        key={`${particle.x}-${particle.y}-${index}`}
+                        className="readative-like-burst-heart"
+                        style={
+                          {
+                            "--like-x": `${particle.x}px`,
+                            "--like-y": `${particle.y}px`,
+                            "--like-rotate": `${particle.rotate}deg`,
+                            "--like-delay": `${particle.delay}ms`,
+                            "--like-scale": `${particle.scale}`,
+                            color: particle.color,
+                          } as CSSProperties
+                        }
+                      >
+                        <Heart className="h-2.5 w-2.5 fill-current" />
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
               <span>{localLikes.length}</span>
             </button>
 

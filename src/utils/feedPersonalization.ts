@@ -83,6 +83,29 @@ function sortByRecencyThenLikes(left: KnowledgeEntry, right: KnowledgeEntry) {
   return right.likes.length - left.likes.length;
 }
 
+function splitNewestEntries(entries: KnowledgeEntry[]) {
+  if (entries.length === 0) {
+    return {
+      newestEntries: [] as KnowledgeEntry[],
+      remainingEntries: [] as KnowledgeEntry[],
+    };
+  }
+
+  const newestCreatedAt = entries.reduce(
+    (latestCreatedAt, entry) => Math.max(latestCreatedAt, entry.createdAt),
+    entries[0].createdAt,
+  );
+
+  return {
+    newestEntries: entries
+      .filter((entry) => entry.createdAt === newestCreatedAt)
+      .sort(sortByRecencyThenLikes),
+    remainingEntries: entries.filter(
+      (entry) => entry.createdAt !== newestCreatedAt,
+    ),
+  };
+}
+
 export function rankKnowledgeEntries(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
@@ -90,7 +113,9 @@ export function rankKnowledgeEntries(
   const nextEntries = [...entries];
 
   if (!snapshot.isReturningUser) {
-    return nextEntries.sort(sortByLikesThenRecency);
+    const { newestEntries, remainingEntries } = splitNewestEntries(nextEntries);
+
+    return [...newestEntries, ...remainingEntries.sort(sortByLikesThenRecency)];
   }
 
   return nextEntries.sort((left, right) => {

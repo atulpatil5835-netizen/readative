@@ -320,13 +320,16 @@ export function KnowledgeFeed({
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
-  const [rankingSnapshot, setRankingSnapshot] = useState(() =>
-    getKnowledgeFeedSnapshot(),
-  );
+  const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
+  const entriesRef = useRef<KnowledgeEntry[]>([]);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -340,7 +343,12 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
-    setRankingSnapshot(getKnowledgeFeedSnapshot());
+    setFeedEntryOrder(
+      rankKnowledgeEntries(
+        entriesRef.current,
+        getKnowledgeFeedSnapshot(),
+      ).map((entry) => entry.id),
+    );
     setShowRefreshFeedback(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -440,15 +448,46 @@ export function KnowledgeFeed({
     };
   }, []);
 
+  useEffect(() => {
+    if (entries.length === 0 || feedEntryOrder.length > 0) return;
+
+    setFeedEntryOrder(
+      rankKnowledgeEntries(entries, getKnowledgeFeedSnapshot()).map(
+        (entry) => entry.id,
+      ),
+    );
+  }, [entries, feedEntryOrder.length]);
+
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId],
   );
 
-  const orderedEntries = useMemo(
-    () => rankKnowledgeEntries(entries, rankingSnapshot),
-    [entries, rankingSnapshot],
-  );
+  const orderedEntries = useMemo(() => {
+    const rankedEntryIds =
+      feedEntryOrder.length > 0
+        ? feedEntryOrder
+        : rankKnowledgeEntries(entries, getKnowledgeFeedSnapshot()).map(
+            (entry) => entry.id,
+          );
+    const entryMap = new Map(entries.map((entry) => [entry.id, entry] as const));
+    const rankedEntries = rankedEntryIds
+      .map((entryId) => entryMap.get(entryId))
+      .filter((entry): entry is KnowledgeEntry => Boolean(entry));
+
+    if (
+      focusedEntryId &&
+      entryMap.has(focusedEntryId) &&
+      !rankedEntryIds.includes(focusedEntryId)
+    ) {
+      const focusedEntry = entryMap.get(focusedEntryId);
+      if (focusedEntry) {
+        return [focusedEntry, ...rankedEntries];
+      }
+    }
+
+    return rankedEntries;
+  }, [entries, feedEntryOrder, focusedEntryId]);
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
 
