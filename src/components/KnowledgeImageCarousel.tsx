@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
+import { Logo } from "./Logo";
 
 interface KnowledgeImageCarouselProps {
   images: KnowledgeImageAsset[];
@@ -19,28 +20,6 @@ function getSlideClassName(layout: KnowledgeImageLayout, mode: "feed" | "compose
   return mode === "composer"
     ? "basis-[90%] sm:basis-[72%] aspect-video"
     : "basis-[calc(100%-0.75rem)] sm:basis-[calc(100%-1rem)] aspect-video";
-}
-
-function ReadativeWatermark() {
-  return (
-    <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-black/40 drop-shadow-[0_1px_1px_rgba(255,255,255,0.32)] select-none">
-      <svg
-        viewBox="0 0 64 64"
-        aria-hidden="true"
-        className="h-5 w-5 shrink-0 text-black/45"
-        fill="none"
-      >
-        <path
-          d="M19 18h17c6.6 0 12 5.4 12 12v16H31c-6.6 0-12-5.4-12-12V18zm12 8v12h13"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="5"
-        />
-      </svg>
-      <span>Readative</span>
-    </div>
-  );
 }
 
 export function KnowledgeImageCarousel({
@@ -75,7 +54,11 @@ export function KnowledgeImageCarousel({
               className="h-full w-full object-cover"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />
-            <ReadativeWatermark />
+
+            <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/18 px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.16em] text-white backdrop-blur-md">
+              <Logo className="h-4 w-4 opacity-90" />
+              <span className="uppercase text-white/90">Readative</span>
+            </div>
 
             {renderOverlayAction && (
               <div className="absolute right-3 top-3">
