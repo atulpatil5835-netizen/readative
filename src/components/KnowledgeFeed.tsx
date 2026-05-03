@@ -29,12 +29,15 @@ import { db } from "../firebase/firebase";
 import {
   KnowledgeComment,
   KnowledgeEntry,
+  KnowledgeImageAsset,
+  KnowledgeImageLayout,
   TaggedUser,
   UserProfile,
 } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
+import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
@@ -53,19 +56,18 @@ import {
   rankKnowledgeEntries,
 } from "../utils/feedPersonalization";
 import {
+  getKnowledgeEntryImages,
+  getKnowledgeImageLayoutSettings,
   optimizeKnowledgeImageFile,
-  type OptimizedKnowledgeImage,
 } from "../utils/knowledgeImages";
 
 type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
-interface SelectedImage {
+const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
+const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
+
+interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
-  dataUrl: string;
-  width: number;
-  height: number;
-  mimeType: string;
-  optimizedAt: number;
 }
 
 interface MentionState {
@@ -200,6 +202,7 @@ function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
   const baseUrl = buildAbsoluteRouteUrl("knowledge");
+  const primaryImage = entry ? getKnowledgeEntryImages(entry)[0] : null;
 
   const collectionSchema = {
     "@context": "https://schema.org",
@@ -231,8 +234,8 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
         focusedEntryId: entry.id,
       }),
       image:
-        entry.imageDataUrl && !entry.imageDataUrl.startsWith("data:")
-          ? [entry.imageDataUrl]
+        primaryImage?.dataUrl && !primaryImage.dataUrl.startsWith("data:")
+          ? [primaryImage.dataUrl]
           : undefined,
     },
   ];
@@ -255,7 +258,7 @@ function normalizeKnowledgeEntry(
     createdAt?: number | { toMillis?: () => number };
   },
 ): KnowledgeEntry {
-  const { comments, createdAt, likes, mentions, ...restData } = data;
+  const { comments, createdAt, likes, mentions, images, imageLayout, ...restData } = data;
   const rawCreatedAt = createdAt as
     | number
     | { toMillis?: () => number }
@@ -272,6 +275,9 @@ function normalizeKnowledgeEntry(
     id,
     likes: likes || [],
     mentions: mentions || [],
+    images: Array.isArray(images) ? images : [],
+    imageLayout:
+      imageLayout === "wide" || imageLayout === "portrait" ? imageLayout : null,
     comments: normalizeKnowledgeComments(comments || []),
     createdAt:
       rawCreatedAt &&
@@ -310,9 +316,9 @@ export function KnowledgeFeed({
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
   const [hashtagInput, setHashtagInput] = useState("");
-  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
-    null,
-  );
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [selectedImageLayout, setSelectedImageLayout] =
+    useState<KnowledgeImageLayout>(DEFAULT_IMAGE_LAYOUT);
   const [activeMention, setActiveMention] = useState<MentionState | null>(null);
   const [feedMessage, setFeedMessage] = useState<FeedMessage | null>(null);
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() =>
@@ -326,6 +332,8 @@ export function KnowledgeFeed({
   const entriesRef = useRef<KnowledgeEntry[]>([]);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
+  const selectedImageLayoutSettings =
+    getKnowledgeImageLayoutSettings(selectedImageLayout);
 
   useEffect(() => {
     entriesRef.current = entries;
@@ -462,6 +470,10 @@ export function KnowledgeFeed({
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId],
   );
+  const focusedEntryPrimaryImage = useMemo(
+    () => (focusedEntry ? getKnowledgeEntryImages(focusedEntry)[0] || null : null),
+    [focusedEntry],
+  );
 
   const orderedEntries = useMemo(() => {
     const rankedEntryIds =
@@ -534,7 +546,8 @@ export function KnowledgeFeed({
     setDraftTitle("");
     setDraftContent("");
     setHashtagInput("");
-    setSelectedImage(null);
+    setSelectedImages([]);
+    setSelectedImageLayout(DEFAULT_IMAGE_LAYOUT);
     setActiveMention(null);
     setFeedMessage(null);
   };
@@ -578,6 +591,8 @@ export function KnowledgeFeed({
       const mentions = resolveMentions(`${title}\n${content}`, profiles);
       const createdAt = Date.now();
       const reference = doc(collection(db, "knowledge"));
+      const preparedImages = selectedImages.map(({ fileName: _fileName, ...image }) => image);
+      const primaryImage = preparedImages[0] || null;
       const entryPayload = {
         author: currentIdentity.displayName,
         authorId: currentIdentity.authorId,
@@ -588,11 +603,13 @@ export function KnowledgeFeed({
         comments: [],
         likes: [],
         mentions,
-        imageDataUrl: selectedImage?.dataUrl || null,
-        imageMimeType: selectedImage?.mimeType || null,
-        imageWidth: selectedImage?.width || null,
-        imageHeight: selectedImage?.height || null,
-        imageOptimizedAt: selectedImage?.optimizedAt || null,
+        images: preparedImages,
+        imageLayout: preparedImages.length > 0 ? selectedImageLayout : null,
+        imageDataUrl: primaryImage?.dataUrl || null,
+        imageMimeType: primaryImage?.mimeType || null,
+        imageWidth: primaryImage?.width || null,
+        imageHeight: primaryImage?.height || null,
+        imageOptimizedAt: primaryImage?.optimizedAt || null,
         createdAt,
         excerpt: createExcerpt(content, 180),
         readingMinutes: estimateReadMinutes(content),
@@ -661,11 +678,29 @@ export function KnowledgeFeed({
   };
 
   const handleImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Please choose an image file.");
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length !== files.length) {
+      alert("Please choose image files only.");
+    }
+
+    const remainingSlots =
+      selectedImageLayoutSettings.maxImages - selectedImages.length;
+    if (remainingSlots <= 0) {
+      setFeedMessage({
+        tone: "warning",
+        title: "Image limit reached",
+        body: `This layout supports up to ${selectedImageLayoutSettings.maxImages} images.`,
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const filesToProcess = imageFiles.slice(0, remainingSlots);
+    if (filesToProcess.length === 0) {
+      event.target.value = "";
       return;
     }
 
@@ -673,11 +708,42 @@ export function KnowledgeFeed({
     setIsPreparingImage(true);
 
     try {
-      const optimizedImage = await optimizeKnowledgeImageFile(file);
-      setSelectedImage({
-        fileName: file.name,
-        ...optimizedImage,
-      });
+      const optimizedImages: SelectedImage[] = [];
+
+      for (const file of filesToProcess) {
+        const optimizedImage = await optimizeKnowledgeImageFile(file, {
+          targetRatio: selectedImageLayoutSettings.targetRatio,
+          maxInlineChars: selectedImageLayoutSettings.maxInlineChars,
+          maxDimension: selectedImageLayoutSettings.maxDimension,
+        });
+
+        optimizedImages.push({
+          fileName: file.name,
+          ...optimizedImage,
+        });
+      }
+
+      const nextSelectedImages = [...selectedImages, ...optimizedImages];
+      const combinedSize = nextSelectedImages.reduce(
+        (total, image) => total + image.dataUrl.length,
+        0,
+      );
+
+      if (combinedSize > MAX_TOTAL_INLINE_IMAGE_CHARS) {
+        throw new Error(
+          "These images are still too large together. Try fewer images or simpler images.",
+        );
+      }
+
+      setSelectedImages(nextSelectedImages);
+
+      if (imageFiles.length > remainingSlots) {
+        setFeedMessage({
+          tone: "warning",
+          title: "Some images were skipped",
+          body: `Only ${selectedImageLayoutSettings.maxImages} images fit in this ${selectedImageLayoutSettings.label} layout.`,
+        });
+      }
     } catch (error) {
       console.error("Image preparation failed:", error);
       alert(
@@ -687,6 +753,27 @@ export function KnowledgeFeed({
       setIsPreparingImage(false);
       event.target.value = "";
     }
+  };
+
+  const handleImageLayoutChange = (nextLayout: KnowledgeImageLayout) => {
+    if (nextLayout === selectedImageLayout) return;
+
+    setSelectedImageLayout(nextLayout);
+
+    if (selectedImages.length > 0) {
+      setSelectedImages([]);
+      setFeedMessage({
+        tone: "warning",
+        title: "Image layout changed",
+        body: "Add images again so they match the new ratio and layout.",
+      });
+    }
+  };
+
+  const handleRemoveSelectedImage = (indexToRemove: number) => {
+    setSelectedImages((current) =>
+      current.filter((_, index) => index !== indexToRemove),
+    );
   };
 
   const handleNameConfirm = async (username: string) => {
@@ -780,9 +867,9 @@ export function KnowledgeFeed({
         url={pageUrl}
         schema={buildKnowledgeSchemas(focusedEntry)}
         image={
-          focusedEntry?.imageDataUrl &&
-          !focusedEntry.imageDataUrl.startsWith("data:")
-            ? focusedEntry.imageDataUrl
+          focusedEntryPrimaryImage?.dataUrl &&
+          !focusedEntryPrimaryImage.dataUrl.startsWith("data:")
+            ? focusedEntryPrimaryImage.dataUrl
             : undefined
         }
       />
@@ -898,8 +985,10 @@ export function KnowledgeFeed({
           setDraftContent={setDraftContent}
           hashtagInput={hashtagInput}
           setHashtagInput={setHashtagInput}
-          selectedImage={selectedImage}
-          setSelectedImage={setSelectedImage}
+          selectedImages={selectedImages}
+          selectedImageLayout={selectedImageLayout}
+          onImageLayoutChange={handleImageLayoutChange}
+          onRemoveSelectedImage={handleRemoveSelectedImage}
           isPosting={isPosting}
           isModerating={isModerating}
           isPreparingImage={isPreparingImage}
@@ -951,8 +1040,10 @@ function ComposerModal({
   setDraftContent,
   hashtagInput,
   setHashtagInput,
-  selectedImage,
-  setSelectedImage,
+  selectedImages,
+  selectedImageLayout,
+  onImageLayoutChange,
+  onRemoveSelectedImage,
   isPosting,
   isModerating,
   isPreparingImage,
@@ -975,8 +1066,10 @@ function ComposerModal({
   setDraftContent: (value: string) => void;
   hashtagInput: string;
   setHashtagInput: (value: string) => void;
-  selectedImage: SelectedImage | null;
-  setSelectedImage: (value: SelectedImage | null) => void;
+  selectedImages: SelectedImage[];
+  selectedImageLayout: KnowledgeImageLayout;
+  onImageLayoutChange: (layout: KnowledgeImageLayout) => void;
+  onRemoveSelectedImage: (index: number) => void;
   isPosting: boolean;
   isModerating: boolean;
   isPreparingImage: boolean;
@@ -990,6 +1083,9 @@ function ComposerModal({
   handleContentKeyUp: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   updateMentionState: (value: string, cursorPosition: number) => void;
 }) {
+  const selectedImageLayoutSettings =
+    getKnowledgeImageLayoutSettings(selectedImageLayout);
+
   return (
     <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
       <div className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:max-h-[calc(100vh-6rem)]">
@@ -1103,45 +1199,80 @@ function ComposerModal({
                   />
                 </div>
 
-                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
-                      Image
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {selectedImage?.fileName || "Upload post image"}
-                    </p>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                        Images
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {selectedImages.length}/{selectedImageLayoutSettings.maxImages} selected
+                      </p>
+                    </div>
+
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-dashed border-emerald-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50">
+                      <ImagePlus className="h-4 w-4" />
+                      Add
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageSelected}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
-                  <ImagePlus className="h-5 w-5 text-emerald-600" />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageSelected}
-                    className="hidden"
-                  />
-                </label>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(
+                      [
+                        ["wide", "2 x 16:9"],
+                        ["portrait", "4 x 8:9"],
+                      ] as const
+                    ).map(([layout, label]) => (
+                      <button
+                        key={layout}
+                        onClick={() => onImageLayoutChange(layout)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] transition-colors ${
+                          selectedImageLayout === layout
+                            ? "bg-emerald-600 text-white"
+                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-emerald-50 hover:text-emerald-700"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    {selectedImageLayoutSettings.description}. Images are auto-cropped to this ratio.
+                  </p>
+                </div>
               </div>
 
-              {selectedImage && (
-                <div className="overflow-hidden rounded-[28px] border border-slate-200">
-                  <img
-                    src={selectedImage.dataUrl}
-                    alt={selectedImage.fileName}
-                    decoding="async"
-                    width={selectedImage.width}
-                    height={selectedImage.height}
-                    className="h-64 w-full object-cover"
+              {selectedImages.length > 0 && (
+                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white">
+                  <KnowledgeImageCarousel
+                    images={selectedImages}
+                    layout={selectedImageLayout}
+                    altBase="Selected post image"
+                    mode="composer"
+                    renderOverlayAction={(_, index) => (
+                      <button
+                        onClick={() => onRemoveSelectedImage(index)}
+                        className="rounded-full bg-slate-950/55 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-md transition-colors hover:bg-rose-500"
+                      >
+                        Remove
+                      </button>
+                    )}
                   />
-                  <div className="flex items-center justify-between bg-white px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
                     <p className="text-sm text-slate-500">
-                      {selectedImage.fileName}
+                      Swipe to preview. Add up to {selectedImageLayoutSettings.maxImages} images in this layout.
                     </p>
-                    <button
-                      onClick={() => setSelectedImage(null)}
-                      className="text-xs font-bold uppercase tracking-[0.18em] text-rose-500"
-                    >
-                      Remove
-                    </button>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                      {selectedImages.length} ready
+                    </span>
                   </div>
                 </div>
               )}

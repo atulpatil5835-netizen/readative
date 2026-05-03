@@ -68,6 +68,15 @@
   transform-origin: center;
 }
 
+.readative-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.readative-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .readative-like-pop,
   .readative-like-burst-heart {

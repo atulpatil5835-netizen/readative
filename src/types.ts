@@ -12,6 +12,16 @@ export interface KnowledgeComment {
   createdAt: number;
 }
 
+export type KnowledgeImageLayout = "wide" | "portrait";
+
+export interface KnowledgeImageAsset {
+  dataUrl: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  optimizedAt: number;
+}
+
 export interface KnowledgeEntry {
   id: string;
   author: string;
@@ -24,6 +34,8 @@ export interface KnowledgeEntry {
   comments: KnowledgeComment[];
   mentions: TaggedUser[];
   createdAt: number;
+  images?: KnowledgeImageAsset[];
+  imageLayout?: KnowledgeImageLayout | null;
   imageDataUrl?: string | null;
   imageMimeType?: string | null;
   imageWidth?: number | null;

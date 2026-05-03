@@ -8,7 +8,6 @@ import {
 import {
   BookOpenText,
   Heart,
-  ImageIcon,
   MessageCircle,
   Share2,
 } from "lucide-react";
@@ -29,8 +28,13 @@ import {
 } from "../utils/notifications";
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
-import { queueLegacyKnowledgeImageMigration } from "../utils/knowledgeImages";
+import {
+  getKnowledgeEntryImageLayout,
+  getKnowledgeEntryImages,
+  queueLegacyKnowledgeImageMigration,
+} from "../utils/knowledgeImages";
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
+import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -130,6 +134,8 @@ export function KnowledgeCard({
   const guestId = getGuestId();
   const isLiked = localLikes.includes(guestId);
   const mentions = entry.mentions || [];
+  const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
+  const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
   const readingMinutes = estimateReadMinutes(entry.content);
   const filteredCommentMentionProfiles = useMemo(() => {
     if (!activeCommentMention) return [];
@@ -469,24 +475,12 @@ export function KnowledgeCard({
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]",
       )}
     >
-      {entry.imageDataUrl && (
-        <div className="relative h-64 overflow-hidden bg-slate-100">
-          <img
-            src={entry.imageDataUrl}
-            alt={entry.title}
-            loading="lazy"
-            decoding="async"
-            width={entry.imageWidth || undefined}
-            height={entry.imageHeight || undefined}
-            sizes="(max-width: 768px) 100vw, 768px"
-            className="h-full w-full object-cover"
-          />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/50 via-transparent to-transparent" />
-          <div className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-700 backdrop-blur">
-            <ImageIcon className="h-3.5 w-3.5" />
-            Visual Insight
-          </div>
-        </div>
+      {entryImages.length > 0 && (
+        <KnowledgeImageCarousel
+          images={entryImages}
+          layout={imageLayout}
+          altBase={entry.title}
+        />
       )}
 
       <div className="p-6">
