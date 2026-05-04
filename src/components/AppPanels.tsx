@@ -102,9 +102,19 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
                   Creator
                 </p>
-                <p className="mt-3 text-2xl font-black tracking-tight text-slate-950">
-                  Atul Hinge
-                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <p className="text-2xl font-black tracking-tight text-slate-950">
+                    Atul Hinge
+                  </p>
+                  <a
+                    href="https://razorpay.me/@atulsadanandhinge"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-full border border-amber-300 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-950 transition-colors hover:border-amber-400 hover:bg-amber-400"
+                  >
+                    Buy Me a Coffee ☕
+                  </a>
+                </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   Founder and creator of Readative.
                 </p>
