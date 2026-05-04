@@ -41,15 +41,12 @@ import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
-import { notifyTaggedUsers } from "../utils/notifications";
-import { moderateContent } from "../utils/contentModeration";
 import {
   buildAbsoluteRouteUrl,
   navigateToRoute,
   parseRouteFromLocation,
   ROUTE_CHANGE_EVENT,
 } from "../utils/routes";
-import { ensureGuestProfile } from "../utils/userProfiles";
 import {
   getKnowledgeFeedSnapshot,
   markKnowledgeEntrySeen,
@@ -58,7 +55,6 @@ import {
 import {
   getKnowledgeEntryImages,
   getKnowledgeImageLayoutSettings,
-  optimizeKnowledgeImageFile,
 } from "../utils/knowledgeImages";
 
 type PendingAction = { type: "like" | "comment"; entryId: string } | null;
@@ -565,6 +561,7 @@ export function KnowledgeFeed({
     setFeedMessage(null);
     setIsModerating(true);
 
+    const { moderateContent } = await import("../utils/contentModeration");
     const moderation = await moderateContent("knowledge-post", {
       title,
       content,
@@ -618,6 +615,7 @@ export function KnowledgeFeed({
 
       await setDoc(reference, entryPayload);
 
+      const { notifyTaggedUsers } = await import("../utils/notifications");
       await notifyTaggedUsers(
         {
           id: reference.id,
@@ -659,6 +657,7 @@ export function KnowledgeFeed({
   };
 
   const handleIdentityConfirm = async (username: string) => {
+    const { ensureGuestProfile } = await import("../utils/userProfiles");
     const profile = await ensureGuestProfile(username);
     const nextIdentity: KnowledgeIdentity = {
       displayName: profile.username,
@@ -708,6 +707,9 @@ export function KnowledgeFeed({
     setIsPreparingImage(true);
 
     try {
+      const { optimizeKnowledgeImageFile } = await import(
+        "../utils/knowledgeImageOptimizer"
+      );
       const optimizedImages: SelectedImage[] = [];
 
       for (const file of filesToProcess) {
@@ -779,6 +781,7 @@ export function KnowledgeFeed({
   const handleNameConfirm = async (username: string) => {
     if (!pendingAction) return;
 
+    const { ensureGuestProfile } = await import("../utils/userProfiles");
     const profile = await ensureGuestProfile(username);
     onIdentityChange({
       displayName: profile.username,

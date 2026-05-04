@@ -11,8 +11,6 @@ import {
   MessageCircle,
   Share2,
 } from "lucide-react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
 import { arrayRemove, arrayUnion, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
@@ -20,13 +18,6 @@ import {
   getGuestName,
   saveGuestName,
 } from "../utils/guestIdentity";
-import {
-  notifyCommentOnKnowledge,
-  notifyLikeOnKnowledge,
-  notifyTaggedUsersOnComment,
-  removeLikeNotification,
-} from "../utils/notifications";
-import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import {
   getKnowledgeEntryImageLayout,
@@ -36,8 +27,8 @@ import {
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+function cn(...inputs: Array<string | false | null | undefined>) {
+  return inputs.filter(Boolean).join(" ");
 }
 
 const LIKE_BURST_PARTICLES = [
@@ -277,6 +268,10 @@ export function KnowledgeCard({
         likes: shouldLike ? arrayUnion(guestId) : arrayRemove(guestId),
       });
 
+      const { notifyLikeOnKnowledge, removeLikeNotification } = await import(
+        "../utils/notifications"
+      );
+
       if (shouldLike && actorName) {
         await notifyLikeOnKnowledge(entry, {
           authorId: guestId,
@@ -320,6 +315,7 @@ export function KnowledgeCard({
     setInteractionMessage(null);
     setIsModeratingComment(true);
 
+    const { moderateContent } = await import("../utils/contentModeration");
     const moderation = await moderateContent("knowledge-comment", {
       content,
     });
@@ -362,6 +358,8 @@ export function KnowledgeCard({
         comments: arrayUnion(savedComment),
       });
 
+      const { notifyCommentOnKnowledge, notifyTaggedUsersOnComment } =
+        await import("../utils/notifications");
       await notifyCommentOnKnowledge(
         entry,
         {

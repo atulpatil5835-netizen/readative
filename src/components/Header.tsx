@@ -32,7 +32,7 @@ export function Header({
             className="relative flex h-9 w-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.02] md:h-10 md:w-10"
             aria-label="Open homepage"
           >
-            <Logo className="h-full w-full" />
+            <Logo className="h-full w-full" loading="eager" fetchPriority="high" />
           </button>
           <div className="flex flex-col justify-center">
             <button

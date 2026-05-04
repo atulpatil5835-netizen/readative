@@ -13,6 +13,8 @@ type ProfileData = {
 }
 
 const profiles = new Map<string, ProfileData>()
+const READ_API_CACHE_CONTROL =
+  "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
 
 function getIdFromQuery(id: string | string[] | undefined): string {
   if (Array.isArray(id)) return id[0] ?? ""
@@ -23,6 +25,10 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+  res.setHeader(
+    "Cache-Control",
+    req.method === "GET" ? READ_API_CACHE_CONTROL : "no-store"
+  )
 
   if (req.method === "OPTIONS") {
     return res.status(200).end()
