@@ -19,6 +19,7 @@ import {
   saveGuestName,
 } from "../utils/guestIdentity";
 import { renderRichText } from "../utils/renderRichText";
+import { recordKnowledgeFeedActivity } from "../utils/feedPersonalization";
 import {
   getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
@@ -43,7 +44,7 @@ const LIKE_BURST_PARTICLES = [
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
   profiles?: UserProfile[];
-  onVisible?: (entryId: string) => void;
+  onVisible?: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: {
     type: "like" | "comment";
     entryId: string;
@@ -163,7 +164,7 @@ export function KnowledgeCard({
     if (!articleElement) return;
     if (typeof window.IntersectionObserver !== "function") {
       hasTrackedVisibilityRef.current = true;
-      onVisible(entry.id);
+      onVisible(entry);
       return;
     }
 
@@ -175,7 +176,7 @@ export function KnowledgeCard({
         }
 
         hasTrackedVisibilityRef.current = true;
-        onVisible(entry.id);
+        onVisible(entry);
         observer.disconnect();
       },
       {
@@ -185,7 +186,24 @@ export function KnowledgeCard({
 
     observer.observe(articleElement);
     return () => observer.disconnect();
-  }, [entry.id, onVisible]);
+  }, [entry, onVisible]);
+
+  const handleOpenAuthorProfile = (authorId: string) => {
+    recordKnowledgeFeedActivity({
+      type: "author",
+      entry,
+      authorId,
+    });
+    onOpenProfile(authorId);
+  };
+
+  const handleOpenEntryDetails = () => {
+    recordKnowledgeFeedActivity({
+      type: "open",
+      entry,
+    });
+    onOpenEntry(entry.id);
+  };
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -276,6 +294,10 @@ export function KnowledgeCard({
         await notifyLikeOnKnowledge(entry, {
           authorId: guestId,
           username: actorName,
+        });
+        recordKnowledgeFeedActivity({
+          type: "like",
+          entry,
         });
       }
 
@@ -382,6 +404,10 @@ export function KnowledgeCard({
         },
         commentMentions,
       );
+      recordKnowledgeFeedActivity({
+        type: "comment",
+        entry,
+      });
 
       setLocalComments((current) =>
         current.map((comment) =>
@@ -422,7 +448,7 @@ export function KnowledgeCard({
       entry.content.length > 160 ? "..." : ""
     }`;
 
-    onOpenEntry(entry.id);
+    handleOpenEntryDetails();
     setInteractionMessage(null);
 
     if (navigator.share) {
@@ -431,6 +457,10 @@ export function KnowledgeCard({
           title: entry.title,
           text,
           url: shareUrl,
+        });
+        recordKnowledgeFeedActivity({
+          type: "share",
+          entry,
         });
         setShareCopied(true);
         return;
@@ -441,6 +471,10 @@ export function KnowledgeCard({
 
     try {
       await navigator.clipboard.writeText(`${text}\n\n${shareUrl}`);
+      recordKnowledgeFeedActivity({
+        type: "share",
+        entry,
+      });
       setShareCopied(true);
     } catch (error) {
       console.error("Clipboard share failed:", error);
@@ -451,6 +485,12 @@ export function KnowledgeCard({
   };
 
   const handleSelectHashtag = (tag: string) => {
+    recordKnowledgeFeedActivity({
+      type: "hashtag",
+      entry,
+      hashtags: [tag],
+    });
+
     if (onSelectHashtag) {
       onSelectHashtag(tag);
       return;
@@ -485,14 +525,14 @@ export function KnowledgeCard({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => onOpenProfile(entry.authorId)}
+              onClick={() => handleOpenAuthorProfile(entry.authorId)}
               className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-100 text-lg font-black text-emerald-700"
             >
               {entry.author[0]?.toUpperCase() || "K"}
             </button>
             <div>
               <button
-                onClick={() => onOpenProfile(entry.authorId)}
+                onClick={() => handleOpenAuthorProfile(entry.authorId)}
                 className="text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
               >
                 @{entry.author}
@@ -516,7 +556,7 @@ export function KnowledgeCard({
         </div>
 
         <button
-          onClick={() => onOpenEntry(entry.id)}
+          onClick={handleOpenEntryDetails}
           className="text-left transition-colors hover:text-emerald-700"
         >
           <h3 className="text-2xl font-black leading-tight tracking-tight text-slate-950">
@@ -527,7 +567,7 @@ export function KnowledgeCard({
           {renderRichText({
             text: entry.content,
             mentions,
-            onOpenProfile,
+            onOpenProfile: handleOpenAuthorProfile,
           })}
         </p>
 
@@ -550,7 +590,7 @@ export function KnowledgeCard({
             {mentions.map((mention) => (
               <button
                 key={`${mention.authorId}-${mention.username}`}
-                onClick={() => onOpenProfile(mention.authorId)}
+                onClick={() => handleOpenAuthorProfile(mention.authorId)}
                 className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
               >
                 @{mention.username}
@@ -741,7 +781,7 @@ export function KnowledgeCard({
                   <div className="mb-1 flex items-center gap-2">
                     {comment.authorId ? (
                       <button
-                        onClick={() => onOpenProfile(comment.authorId)}
+                        onClick={() => handleOpenAuthorProfile(comment.authorId)}
                         className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                       >
                         @{comment.author}
@@ -759,7 +799,7 @@ export function KnowledgeCard({
                     {renderRichText({
                       text: comment.text,
                       mentions: comment.mentions || [],
-                      onOpenProfile,
+                      onOpenProfile: handleOpenAuthorProfile,
                     })}
                   </p>
                 </div>

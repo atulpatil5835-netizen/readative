@@ -322,18 +322,12 @@ export function KnowledgeFeed({
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
-  const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
-  const entriesRef = useRef<KnowledgeEntry[]>([]);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
-
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -347,12 +341,6 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
-    setFeedEntryOrder(
-      rankKnowledgeEntries(
-        entriesRef.current,
-        getKnowledgeFeedSnapshot(),
-      ).map((entry) => entry.id),
-    );
     setShowRefreshFeedback(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -452,16 +440,6 @@ export function KnowledgeFeed({
     };
   }, []);
 
-  useEffect(() => {
-    if (entries.length === 0 || feedEntryOrder.length > 0) return;
-
-    setFeedEntryOrder(
-      rankKnowledgeEntries(entries, getKnowledgeFeedSnapshot()).map(
-        (entry) => entry.id,
-      ),
-    );
-  }, [entries, feedEntryOrder.length]);
-
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId],
@@ -470,32 +448,24 @@ export function KnowledgeFeed({
     () => (focusedEntry ? getKnowledgeEntryImages(focusedEntry)[0] || null : null),
     [focusedEntry],
   );
+  const rankedEntries = useMemo(
+    () => rankKnowledgeEntries(entries, getKnowledgeFeedSnapshot()),
+    [entries, refreshSignal],
+  );
 
   const orderedEntries = useMemo(() => {
-    const rankedEntryIds =
-      feedEntryOrder.length > 0
-        ? feedEntryOrder
-        : rankKnowledgeEntries(entries, getKnowledgeFeedSnapshot()).map(
-            (entry) => entry.id,
-          );
-    const entryMap = new Map(entries.map((entry) => [entry.id, entry] as const));
-    const rankedEntries = rankedEntryIds
-      .map((entryId) => entryMap.get(entryId))
-      .filter((entry): entry is KnowledgeEntry => Boolean(entry));
+    const rankedEntryIds = new Set(rankedEntries.map((entry) => entry.id));
 
     if (
       focusedEntryId &&
-      entryMap.has(focusedEntryId) &&
-      !rankedEntryIds.includes(focusedEntryId)
+      focusedEntry &&
+      !rankedEntryIds.has(focusedEntryId)
     ) {
-      const focusedEntry = entryMap.get(focusedEntryId);
-      if (focusedEntry) {
-        return [focusedEntry, ...rankedEntries];
-      }
+      return [focusedEntry, ...rankedEntries];
     }
 
     return rankedEntries;
-  }, [entries, feedEntryOrder, focusedEntryId]);
+  }, [focusedEntry, focusedEntryId, rankedEntries]);
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
 
@@ -960,7 +930,7 @@ export function KnowledgeFeed({
                   key={entry.id}
                   entry={entry}
                   profiles={profiles}
-                  onVisible={markKnowledgeEntrySeen}
+                  onVisible={(visibleEntry) => markKnowledgeEntrySeen(visibleEntry)}
                   onIdentityRequired={(action) => setPendingAction(action)}
                   onOpenProfile={onOpenProfile}
                   onOpenEntry={onOpenEntry}

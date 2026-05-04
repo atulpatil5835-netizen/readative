@@ -41,6 +41,9 @@ export interface KnowledgeEntry {
   imageWidth?: number | null;
   imageHeight?: number | null;
   imageOptimizedAt?: number | null;
+  excerpt?: string | null;
+  readingMinutes?: number | null;
+  qualityScore?: number | null;
 }
 
 export interface UserProfile {
