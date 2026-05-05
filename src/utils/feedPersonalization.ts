@@ -4,8 +4,10 @@ import { getGuestId } from "./guestIdentity";
 const HOUR_MS = 60 * 60 * 1000;
 const KNOWLEDGE_SEEN_ENTRY_LIMIT = 1500;
 const KNOWLEDGE_ACTIVITY_LIMIT = 260;
-const KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2";
+const KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v3";
+const LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2";
 const KNOWLEDGE_ACTIVITY_KEY_PREFIX = "readativeKnowledgeFeedActivity:v2";
+const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 18;
 const DUPLICATE_ACTIVITY_WINDOWS_MS = {
   view: 6 * HOUR_MS,
   open: 30 * 60 * 1000,
@@ -36,7 +38,15 @@ type KnowledgeActivityType =
 
 type KnowledgeEntrySignal = Pick<
   KnowledgeEntry,
-  "id" | "authorId" | "hashtags" | "likes" | "comments" | "mentions" | "createdAt" | "title" | "content"
+  | "id"
+  | "authorId"
+  | "hashtags"
+  | "likes"
+  | "comments"
+  | "mentions"
+  | "createdAt"
+  | "title"
+  | "content"
 > &
   Partial<Pick<KnowledgeEntry, "images" | "qualityScore" | "readingMinutes">>;
 
@@ -48,9 +58,15 @@ interface KnowledgeActivityRecord {
   createdAt: number;
 }
 
+interface SeenKnowledgeEntryRecord {
+  entryId: string;
+  seenAt: number;
+}
+
 export interface KnowledgeFeedSnapshot {
   isReturningUser: boolean;
   seenEntryIds: Set<string>;
+  seenEntryTimestamps: Map<string, number>;
   authorAffinity: Map<string, number>;
   hashtagAffinity: Map<string, number>;
   entryAffinity: Map<string, number>;
@@ -69,6 +85,7 @@ interface ScoredKnowledgeEntry {
   score: number;
   ageHours: number;
   seen: boolean;
+  hoursSinceSeen: number | null;
   primaryHashtag: string | null;
 }
 
@@ -78,6 +95,10 @@ function clamp(value: number, min: number, max: number) {
 
 function getKnowledgeSeenEntryKey() {
   return `${KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX}:${getGuestId()}`;
+}
+
+function getLegacyKnowledgeSeenEntryKey() {
+  return `${LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX}:${getGuestId()}`;
 }
 
 function getKnowledgeActivityKey() {
@@ -95,6 +116,60 @@ function normalizeSeenEntryIds(value: unknown): string[] {
     .filter((entryId): entryId is string => typeof entryId === "string")
     .map((entryId) => entryId.trim())
     .filter(Boolean)
+    .slice(-KNOWLEDGE_SEEN_ENTRY_LIMIT);
+}
+
+function normalizeSeenEntryRecord(value: unknown): SeenKnowledgeEntryRecord | null {
+  if (typeof value === "string") {
+    const entryId = value.trim();
+    if (!entryId) {
+      return null;
+    }
+
+    return {
+      entryId,
+      seenAt: 0,
+    };
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<SeenKnowledgeEntryRecord>;
+  const entryId = typeof candidate.entryId === "string" ? candidate.entryId.trim() : "";
+  if (!entryId) {
+    return null;
+  }
+
+  return {
+    entryId,
+    seenAt:
+      typeof candidate.seenAt === "number" && Number.isFinite(candidate.seenAt)
+        ? candidate.seenAt
+        : 0,
+  };
+}
+
+function normalizeSeenEntryRecords(value: unknown): SeenKnowledgeEntryRecord[] {
+  if (!Array.isArray(value)) return [];
+
+  const dedupedEntries = new Map<string, number>();
+  value.forEach((candidate) => {
+    const record = normalizeSeenEntryRecord(candidate);
+    if (!record) {
+      return;
+    }
+
+    dedupedEntries.set(
+      record.entryId,
+      Math.max(record.seenAt, dedupedEntries.get(record.entryId) || 0),
+    );
+  });
+
+  return [...dedupedEntries.entries()]
+    .map(([entryId, seenAt]) => ({ entryId, seenAt }))
+    .sort((left, right) => left.seenAt - right.seenAt)
     .slice(-KNOWLEDGE_SEEN_ENTRY_LIMIT);
 }
 
@@ -173,6 +248,47 @@ function writeKnowledgeActivities(activities: KnowledgeActivityRecord[]) {
   }
 }
 
+function readKnowledgeSeenEntries() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getKnowledgeSeenEntryKey());
+    if (raw) {
+      return normalizeSeenEntryRecords(JSON.parse(raw));
+    }
+
+    const legacyRaw = window.localStorage.getItem(getLegacyKnowledgeSeenEntryKey());
+    if (!legacyRaw) {
+      return [];
+    }
+
+    return normalizeSeenEntryIds(JSON.parse(legacyRaw)).map((entryId) => ({
+      entryId,
+      seenAt: 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function writeKnowledgeSeenEntries(records: SeenKnowledgeEntryRecord[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getKnowledgeSeenEntryKey(),
+      JSON.stringify(records.slice(-KNOWLEDGE_SEEN_ENTRY_LIMIT)),
+    );
+    window.localStorage.removeItem(getLegacyKnowledgeSeenEntryKey());
+  } catch {
+    // Ignore local storage failures and gracefully fall back to a simpler feed.
+  }
+}
+
 function buildActivityRecord(input: KnowledgeActivityInput): KnowledgeActivityRecord {
   const entryHashtags = input.entry?.hashtags || [];
   const directHashtags = input.hashtags || [];
@@ -235,6 +351,39 @@ function getFreshnessScore(ageHours: number, isReturningUser: boolean) {
   return freshness + sparkBoost;
 }
 
+function getWeightedHashtagMatchScore(
+  entry: KnowledgeEntry,
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  return [...new Set(entry.hashtags.map(normalizeTag))].reduce((sum, tag) => {
+    const affinity = snapshot.hashtagAffinity.get(tag) || 0;
+    return sum + Math.min(1.6, affinity / 2.2);
+  }, 0);
+}
+
+function getWeightedRecencyScore(ageHours: number) {
+  if (ageHours <= 2) return 1.35;
+  if (ageHours <= 12) return 1.05;
+  return clamp(Math.exp(-ageHours / 72), 0, 1);
+}
+
+function getWeightedLikesScore(entry: KnowledgeEntry) {
+  const engagement = entry.likes.length + entry.comments.length * 1.4;
+  return clamp(Math.log1p(engagement), 0, 3);
+}
+
+function getWeightedRankingScore(
+  entry: KnowledgeEntry,
+  snapshot: KnowledgeFeedSnapshot,
+  ageHours: number,
+) {
+  const hashtagMatch = getWeightedHashtagMatchScore(entry, snapshot);
+  const recency = getWeightedRecencyScore(ageHours);
+  const likes = getWeightedLikesScore(entry);
+
+  return hashtagMatch * 5 + recency * 3 + likes * 2;
+}
+
 function getMomentumScore(entry: KnowledgeEntry, ageHours: number) {
   const imageCount = entry.images?.length || 0;
   const rawMomentum =
@@ -292,9 +441,9 @@ function getNoveltyScore(
   entry: KnowledgeEntry,
   snapshot: KnowledgeFeedSnapshot,
   ageHours: number,
+  hoursSinceSeen: number | null,
 ) {
-  const hasSeenEntry = snapshot.seenEntryIds.has(entry.id);
-  if (!hasSeenEntry) {
+  if (hoursSinceSeen === null) {
     return snapshot.isReturningUser ? 8.5 : 4;
   }
 
@@ -302,10 +451,11 @@ function getNoveltyScore(
     5,
     Math.log1p(entry.comments.length * 2 + entry.likes.length),
   );
+  const cooledDownRevisitBoost = hoursSinceSeen >= 48 ? 2 : hoursSinceSeen >= 24 ? 1 : 0;
   const staleRevisitPenalty = ageHours > 48 ? 1.8 : 0;
   const weakInterestPenalty = (snapshot.entryAffinity.get(entry.id) || 0) < 1 ? 1.5 : 0;
 
-  return revisitMomentum - 7.5 - staleRevisitPenalty - weakInterestPenalty;
+  return revisitMomentum + cooledDownRevisitBoost - 7.5 - staleRevisitPenalty - weakInterestPenalty;
 }
 
 function getExplorationScore(
@@ -340,33 +490,67 @@ function getStalePenalty(
   return 0;
 }
 
+function getHoursSinceSeen(
+  entryId: string,
+  snapshot: KnowledgeFeedSnapshot,
+  now: number,
+) {
+  const seenAt = snapshot.seenEntryTimestamps.get(entryId);
+  if (typeof seenAt !== "number" || seenAt <= 0) {
+    return null;
+  }
+
+  return Math.max(0, (now - seenAt) / HOUR_MS);
+}
+
+function getRepeatPenalty(hoursSinceSeen: number | null, ageHours: number) {
+  if (hoursSinceSeen === null) {
+    return 0;
+  }
+
+  const cooldownHours =
+    ageHours <= 12 ? 6 : ageHours <= 48 ? 12 : KNOWLEDGE_REPEAT_COOLDOWN_HOURS;
+  if (hoursSinceSeen >= cooldownHours) {
+    return 0;
+  }
+
+  const penaltyScale = 1 - hoursSinceSeen / cooldownHours;
+  return 10 + penaltyScale * 16;
+}
+
 function scoreKnowledgeEntry(
   entry: KnowledgeEntry,
   snapshot: KnowledgeFeedSnapshot,
   now: number,
 ) {
   const ageHours = Math.max(0, (now - entry.createdAt) / HOUR_MS);
+  const hoursSinceSeen = getHoursSinceSeen(entry.id, snapshot, now);
   const freshnessScore = getFreshnessScore(ageHours, snapshot.isReturningUser);
+  const weightedRankingScore = getWeightedRankingScore(entry, snapshot, ageHours);
   const momentumScore = getMomentumScore(entry, ageHours);
   const qualityScore = getQualityScore(entry);
   const personalizationScore = getPersonalizationScore(entry, snapshot);
-  const noveltyScore = getNoveltyScore(entry, snapshot, ageHours);
+  const noveltyScore = getNoveltyScore(entry, snapshot, ageHours, hoursSinceSeen);
   const explorationScore = getExplorationScore(entry, snapshot);
   const stalePenalty = getStalePenalty(ageHours, momentumScore, qualityScore);
+  const repeatPenalty = getRepeatPenalty(hoursSinceSeen, ageHours);
 
   return {
     entry,
     ageHours,
     seen: snapshot.seenEntryIds.has(entry.id),
+    hoursSinceSeen,
     primaryHashtag: getPrimaryHashtag(entry),
     score:
+      weightedRankingScore +
       freshnessScore +
       momentumScore +
       qualityScore +
       personalizationScore +
       noveltyScore +
       explorationScore -
-      stalePenalty,
+      stalePenalty -
+      repeatPenalty,
   };
 }
 
@@ -427,11 +611,37 @@ function diversifyRankedEntries(scoredEntries: ScoredKnowledgeEntry[]) {
   return rankedEntries;
 }
 
+function isPrimaryFeedCandidate(candidate: ScoredKnowledgeEntry) {
+  if (!candidate.seen || candidate.hoursSinceSeen === null) {
+    return true;
+  }
+
+  if (candidate.hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS) {
+    return true;
+  }
+
+  return candidate.ageHours <= 6 && candidate.score >= 28;
+}
+
+function buildLatestEntriesFallback(scoredEntries: ScoredKnowledgeEntry[]) {
+  return [...scoredEntries]
+    .sort((left, right) => {
+      const createdAtDelta = right.entry.createdAt - left.entry.createdAt;
+      if (createdAtDelta !== 0) {
+        return createdAtDelta;
+      }
+
+      return right.entry.likes.length - left.entry.likes.length;
+    })
+    .map((candidate) => candidate.entry);
+}
+
 export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
   if (typeof window === "undefined") {
     return {
       isReturningUser: false,
       seenEntryIds: new Set<string>(),
+      seenEntryTimestamps: new Map<string, number>(),
       authorAffinity: new Map<string, number>(),
       hashtagAffinity: new Map<string, number>(),
       entryAffinity: new Map<string, number>(),
@@ -440,15 +650,15 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
   }
 
   try {
-    const rawSeenEntries = window.localStorage.getItem(getKnowledgeSeenEntryKey());
-    const seenEntryIds = normalizeSeenEntryIds(
-      rawSeenEntries ? JSON.parse(rawSeenEntries) : [],
-    );
+    const seenEntries = readKnowledgeSeenEntries();
     const activities = readKnowledgeActivities();
     const now = Date.now();
     const authorAffinity = new Map<string, number>();
     const hashtagAffinity = new Map<string, number>();
     const entryAffinity = new Map<string, number>();
+    const seenEntryTimestamps = new Map(
+      seenEntries.map((entry) => [entry.entryId, entry.seenAt] as const),
+    );
     let lastActiveAt: number | null = null;
 
     activities.forEach((activity) => {
@@ -460,8 +670,8 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
       addWeightedScore(entryAffinity, activity.entryId, weight * 0.7);
 
       if ((activity.hashtags || []).length > 0) {
-        const perTagWeight = weight / Math.max(1, activity.hashtags!.length * 0.85);
-        activity.hashtags?.forEach((tag) => {
+        const perTagWeight = weight / Math.max(1, activity.hashtags.length * 0.85);
+        activity.hashtags.forEach((tag) => {
           addWeightedScore(hashtagAffinity, normalizeTag(tag), perTagWeight);
         });
       }
@@ -470,8 +680,9 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
     });
 
     return {
-      isReturningUser: seenEntryIds.length > 0 || activities.length > 0,
-      seenEntryIds: new Set(seenEntryIds),
+      isReturningUser: seenEntries.length > 0 || activities.length > 0,
+      seenEntryIds: new Set(seenEntries.map((entry) => entry.entryId)),
+      seenEntryTimestamps,
       authorAffinity,
       hashtagAffinity,
       entryAffinity,
@@ -481,6 +692,7 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
     return {
       isReturningUser: false,
       seenEntryIds: new Set<string>(),
+      seenEntryTimestamps: new Map<string, number>(),
       authorAffinity: new Map<string, number>(),
       hashtagAffinity: new Map<string, number>(),
       entryAffinity: new Map<string, number>(),
@@ -524,18 +736,24 @@ export function markKnowledgeEntrySeen(
   if (!normalizedEntryId || typeof window === "undefined") return;
 
   try {
-    const storageKey = getKnowledgeSeenEntryKey();
-    const raw = window.localStorage.getItem(storageKey);
-    const seenEntryIds = normalizeSeenEntryIds(raw ? JSON.parse(raw) : []);
+    const seenEntries = readKnowledgeSeenEntries();
+    const seenEntriesById = new Map(
+      seenEntries.map((entry) => [entry.entryId, entry] as const),
+    );
+    const existingEntry = seenEntriesById.get(normalizedEntryId);
+    const nextSeenAt = Date.now();
 
-    if (seenEntryIds.includes(normalizedEntryId)) {
+    if (existingEntry && nextSeenAt - existingEntry.seenAt < 30 * 60 * 1000) {
       return;
     }
 
-    const nextSeenEntryIds = [...seenEntryIds, normalizedEntryId].slice(
-      -KNOWLEDGE_SEEN_ENTRY_LIMIT,
+    seenEntriesById.set(normalizedEntryId, {
+      entryId: normalizedEntryId,
+      seenAt: nextSeenAt,
+    });
+    writeKnowledgeSeenEntries(
+      [...seenEntriesById.values()].sort((left, right) => left.seenAt - right.seenAt),
     );
-    window.localStorage.setItem(storageKey, JSON.stringify(nextSeenEntryIds));
 
     if (typeof entryOrEntryId !== "string") {
       recordKnowledgeFeedActivity({
@@ -569,5 +787,44 @@ export function rankKnowledgeEntries(
       return right.entry.likes.length - left.entry.likes.length;
     });
 
-  return diversifyRankedEntries(scoredEntries);
+  const primaryPool = scoredEntries.filter(isPrimaryFeedCandidate);
+  if (primaryPool.length === 0) {
+    return buildLatestEntriesFallback(scoredEntries);
+  }
+
+  const primaryEntries = diversifyRankedEntries(primaryPool);
+  const primaryEntryIds = new Set(primaryEntries.map((entry) => entry.id));
+  const secondaryEntries = diversifyRankedEntries(
+    scoredEntries.filter((candidate) => !primaryEntryIds.has(candidate.entry.id)),
+  );
+  const rankedEntries = [...primaryEntries, ...secondaryEntries];
+
+  return rankedEntries.length > 0 ? rankedEntries : buildLatestEntriesFallback(scoredEntries);
+}
+
+function areEntryOrdersEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((entryId, index) => entryId === right[index]);
+}
+
+export function reconcileKnowledgeFeedOrder(
+  entries: KnowledgeEntry[],
+  currentOrder: string[],
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  const rankedEntryIds = rankKnowledgeEntries(entries, snapshot).map((entry) => entry.id);
+  if (currentOrder.length === 0) {
+    return rankedEntryIds;
+  }
+
+  const availableEntryIds = new Set(entries.map((entry) => entry.id));
+  const preservedOrder = currentOrder.filter((entryId) => availableEntryIds.has(entryId));
+  const preservedEntryIds = new Set(preservedOrder);
+  const appendedEntries = rankedEntryIds.filter((entryId) => !preservedEntryIds.has(entryId));
+  const nextOrder = [...preservedOrder, ...appendedEntries];
+
+  return areEntryOrdersEqual(currentOrder, nextOrder) ? currentOrder : nextOrder;
 }

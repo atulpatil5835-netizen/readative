@@ -50,6 +50,7 @@ import {
 import {
   getKnowledgeFeedSnapshot,
   markKnowledgeEntrySeen,
+  reconcileKnowledgeFeedOrder,
   rankKnowledgeEntries,
 } from "../utils/feedPersonalization";
 import {
@@ -326,7 +327,6 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
-  const hasCapturedInitialOrderRef = useRef(false);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -373,26 +373,21 @@ export function KnowledgeFeed({
     const unsubscribe = onSnapshot(
       knowledgeQuery,
       (snapshot) => {
-        const data = snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-          createdAt:
-            item.data().createdAt?.toMillis?.() ||
-            item.data().createdAt ||
-            Date.now(),
-        })) as KnowledgeEntry[];
+        const data = snapshot.docs.map((item) =>
+          normalizeKnowledgeEntry(
+            item.id,
+            item.data() as Partial<KnowledgeEntry> & {
+              comments?: KnowledgeComment[];
+              createdAt?: number | { toMillis?: () => number };
+            },
+          ),
+        );
 
         setEntries(data);
         entriesRef.current = data;
-
-        if (!hasCapturedInitialOrderRef.current && data.length > 0) {
-          setFeedEntryOrder(
-            rankKnowledgeEntries(data, getKnowledgeFeedSnapshot()).map(
-              (entry) => entry.id,
-            ),
-          );
-          hasCapturedInitialOrderRef.current = true;
-        }
+        setFeedEntryOrder((currentOrder) =>
+          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot()),
+        );
 
         setIsLoading(false);
         setFeedLoadError(null);
@@ -481,16 +476,21 @@ export function KnowledgeFeed({
             .filter((entry): entry is KnowledgeEntry => Boolean(entry))
         : entries;
     const rankedEntryIds = new Set(frozenEntries.map((entry) => entry.id));
+    const missingEntries = entries.filter((entry) => !rankedEntryIds.has(entry.id));
+    const baseEntries = [...frozenEntries, ...missingEntries];
 
     if (
       focusedEntryId &&
       focusedEntry &&
       !rankedEntryIds.has(focusedEntryId)
     ) {
-      return [focusedEntry, ...frozenEntries];
+      return [
+        focusedEntry,
+        ...baseEntries.filter((entry) => entry.id !== focusedEntryId),
+      ];
     }
 
-    return frozenEntries;
+    return baseEntries;
   }, [entries, feedEntryOrder, focusedEntry, focusedEntryId]);
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
@@ -956,7 +956,7 @@ export function KnowledgeFeed({
                   key={entry.id}
                   entry={entry}
                   profiles={profiles}
-                  onVisible={(visibleEntry) => markKnowledgeEntrySeen(visibleEntry)}
+                  onVisible={markKnowledgeEntrySeen}
                   onIdentityRequired={(action) => setPendingAction(action)}
                   onOpenProfile={onOpenProfile}
                   onOpenEntry={onOpenEntry}

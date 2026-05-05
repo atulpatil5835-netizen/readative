@@ -11,7 +11,7 @@ import {
   MessageCircle,
   Share2,
 } from "lucide-react";
-import { arrayRemove, arrayUnion, doc, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
   getGuestId,
@@ -20,6 +20,7 @@ import {
 } from "../utils/guestIdentity";
 import { renderRichText } from "../utils/renderRichText";
 import { recordKnowledgeFeedActivity } from "../utils/feedPersonalization";
+import { toggleKnowledgeEntryLike } from "../utils/knowledgeFeedData";
 import {
   getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
@@ -40,6 +41,63 @@ const LIKE_BURST_PARTICLES = [
   { x: 18, y: 6, rotate: 18, delay: 90, scale: 0.8, color: "#fda4af" },
   { x: -20, y: 4, rotate: -18, delay: 55, scale: 0.85, color: "#fecdd3" },
 ] as const;
+const SEEN_VISIBILITY_THRESHOLD = 0.6;
+const SEEN_DWELL_MS = 450;
+
+function observeEntryVisibilityOnce(target: Element, onVisible: () => void) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  if (typeof window.IntersectionObserver !== "function") {
+    onVisible();
+    return () => undefined;
+  }
+
+  let timeoutId: number | null = null;
+  const clearVisibilityTimeout = () => {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+  const observer = new window.IntersectionObserver(
+    (observedEntries) => {
+      const [observedEntry] = observedEntries;
+      if (!observedEntry) {
+        return;
+      }
+
+      if (
+        observedEntry.isIntersecting &&
+        observedEntry.intersectionRatio >= SEEN_VISIBILITY_THRESHOLD
+      ) {
+        if (timeoutId !== null) {
+          return;
+        }
+
+        timeoutId = window.setTimeout(() => {
+          clearVisibilityTimeout();
+          observer.disconnect();
+          onVisible();
+        }, SEEN_DWELL_MS);
+        return;
+      }
+
+      clearVisibilityTimeout();
+    },
+    {
+      threshold: [0.3, SEEN_VISIBILITY_THRESHOLD, 0.9],
+    },
+  );
+
+  observer.observe(target);
+
+  return () => {
+    clearVisibilityTimeout();
+    observer.disconnect();
+  };
+}
 
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
@@ -119,6 +177,7 @@ export function KnowledgeCard({
     getGuestName(),
   );
   const [likeAnimationVersion, setLikeAnimationVersion] = useState(0);
+  const [isUpdatingLike, setIsUpdatingLike] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const hasTrackedVisibilityRef = useRef(false);
@@ -162,30 +221,15 @@ export function KnowledgeCard({
 
     const articleElement = articleRef.current;
     if (!articleElement) return;
-    if (typeof window.IntersectionObserver !== "function") {
+
+    return observeEntryVisibilityOnce(articleElement, () => {
+      if (hasTrackedVisibilityRef.current) {
+        return;
+      }
+
       hasTrackedVisibilityRef.current = true;
       onVisible(entry);
-      return;
-    }
-
-    const observer = new window.IntersectionObserver(
-      (observedEntries) => {
-        const [observedEntry] = observedEntries;
-        if (!observedEntry?.isIntersecting || hasTrackedVisibilityRef.current) {
-          return;
-        }
-
-        hasTrackedVisibilityRef.current = true;
-        onVisible(entry);
-        observer.disconnect();
-      },
-      {
-        threshold: 0.6,
-      },
-    );
-
-    observer.observe(articleElement);
-    return () => observer.disconnect();
+    });
   }, [entry, onVisible]);
 
   const handleOpenAuthorProfile = (authorId: string) => {
@@ -270,6 +314,10 @@ export function KnowledgeCard({
   };
 
   const updateLike = async (shouldLike: boolean, actorName?: string | null) => {
+    if (isUpdatingLike) {
+      return;
+    }
+
     if (shouldLike && !localLikes.includes(guestId)) {
       setLikeAnimationVersion((current) => current + 1);
     }
@@ -280,36 +328,23 @@ export function KnowledgeCard({
 
     setLocalLikes(nextLikes);
     setInteractionMessage(null);
+    setIsUpdatingLike(true);
 
     try {
-      await updateDoc(doc(db, "knowledge", entry.id), {
-        likes: shouldLike ? arrayUnion(guestId) : arrayRemove(guestId),
+      await toggleKnowledgeEntryLike({
+        entry,
+        actorId: guestId,
+        actorName,
+        shouldLike,
       });
-
-      const { notifyLikeOnKnowledge, removeLikeNotification } = await import(
-        "../utils/notifications"
-      );
-
-      if (shouldLike && actorName) {
-        await notifyLikeOnKnowledge(entry, {
-          authorId: guestId,
-          username: actorName,
-        });
-        recordKnowledgeFeedActivity({
-          type: "like",
-          entry,
-        });
-      }
-
-      if (!shouldLike) {
-        await removeLikeNotification(entry.id, guestId);
-      }
     } catch (error) {
       console.error("Failed to update like:", error);
       setLocalLikes(entry.likes || []);
       setInteractionMessage(
         "Could not update the like right now. Please try again.",
       );
+    } finally {
+      setIsUpdatingLike(false);
     }
   };
 
@@ -603,8 +638,9 @@ export function KnowledgeCard({
           <div className="flex items-center gap-5">
             <button
               onClick={handleLike}
+              disabled={isUpdatingLike}
               className={cn(
-                "relative overflow-visible flex items-center gap-1.5 text-sm font-semibold transition-colors",
+                "relative overflow-visible flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70",
                 isLiked
                   ? "text-rose-500"
                   : "text-slate-400 hover:text-rose-500",
