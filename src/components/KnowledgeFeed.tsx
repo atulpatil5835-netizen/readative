@@ -458,6 +458,16 @@ export function KnowledgeFeed({
     };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.classList.add("readative-knowledge-feed");
+    document.body.classList.add("readative-knowledge-feed");
+
+    return () => {
+      document.documentElement.classList.remove("readative-knowledge-feed");
+      document.body.classList.remove("readative-knowledge-feed");
+    };
+  }, []);
+
   const focusedEntry = useMemo(
     () => entries.find((entry) => entry.id === focusedEntryId) || null,
     [entries, focusedEntryId],

@@ -77,6 +77,17 @@
   display: none;
 }
 
+html.readative-knowledge-feed,
+body.readative-knowledge-feed {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.readative-knowledge-feed::-webkit-scrollbar,
+body.readative-knowledge-feed::-webkit-scrollbar {
+  display: none;
+}
+
 .readative-watermark-wordmark {
   -webkit-text-stroke: 0.9px rgba(0, 0, 0, 0.95);
   paint-order: stroke fill;
