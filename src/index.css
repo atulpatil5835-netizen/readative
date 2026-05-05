@@ -77,6 +77,14 @@
   display: none;
 }
 
+.readative-watermark-wordmark {
+  -webkit-text-stroke: 0.9px rgba(0, 0, 0, 0.95);
+  paint-order: stroke fill;
+  text-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.45),
+    0 0 1px rgba(0, 0, 0, 0.85);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .readative-like-pop,
   .readative-like-burst-heart {
