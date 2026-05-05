@@ -6,7 +6,10 @@ import { KnowledgeEntry, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
+import { ProfileAvatar } from "./ProfileAvatar";
+import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
 import {
+  changeProfileAvatar,
   changeProfileUsername,
   ensureGuestProfile,
   getUsernameChangeRemaining,
@@ -14,6 +17,7 @@ import {
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
 import { buildAbsoluteRouteUrl } from "../utils/routes";
+import { resolveProfileVisualPreset } from "../utils/profileVisuals";
 
 type ProfileSection = "shared" | "liked";
 
@@ -52,6 +56,9 @@ export function Profile({
   const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const [avatarSaveError, setAvatarSaveError] = useState<string | null>(null);
   const [section, setSection] = useState<ProfileSection>("shared");
   const [pendingAction, setPendingAction] = useState<
     { type: "like" | "comment"; entryId: string } | null
@@ -235,6 +242,28 @@ export function Profile({
     setShowUsernamePrompt(false);
   };
 
+  const handleChangeAvatar = async (nextAvatarId: string) => {
+    if (!profile || !isOwnProfile) return;
+
+    setAvatarSaveError(null);
+    setIsSavingAvatar(true);
+
+    try {
+      const updatedProfile = await changeProfileAvatar(profile, nextAvatarId);
+      setProfile(updatedProfile);
+      setShowAvatarPicker(false);
+    } catch (error) {
+      console.error("Failed to save avatar:", error);
+      setAvatarSaveError(
+        error instanceof Error
+          ? error.message
+          : "Could not save your profile picture right now."
+      );
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
   const handleNameConfirm = async (username: string) => {
     if (!pendingAction) return;
 
@@ -336,9 +365,13 @@ export function Profile({
           <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               <div>
-                <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white/15 text-3xl font-black">
-                  {profile.username[0]?.toUpperCase() || "U"}
-                </div>
+                <ProfileAvatar
+                  authorId={profile.id}
+                  avatarId={profile.avatarId}
+                  username={profile.username}
+                  size="xl"
+                  className="mb-4 border-white/20 bg-white/10"
+                />
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-200">
                   {isOwnProfile ? "Your Profile" : "Community Profile"}
                 </p>
@@ -351,6 +384,19 @@ export function Profile({
                 <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
                   Joined {new Date(profile.createdAt).toLocaleDateString()}
                 </p>
+                {isOwnProfile && !profile.avatarId && (
+                  <div className="mt-4 inline-flex max-w-xl items-start gap-2 rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm leading-6 text-emerald-50">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      Legacy account detected. You are currently using the
+                      default tech sticker{" "}
+                      <span className="font-semibold">
+                        {resolveProfileVisualPreset(profile.id, profile.avatarId).label}
+                      </span>
+                      . Choose a professional avatar or keep a sticker anytime.
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3 md:min-w-[320px]">
@@ -362,6 +408,15 @@ export function Profile({
 
             {isOwnProfile && (
               <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setAvatarSaveError(null);
+                    setShowAvatarPicker(true);
+                  }}
+                  className="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                >
+                  Change photo
+                </button>
                 <button
                   onClick={() => setShowUsernamePrompt(true)}
                   className="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
@@ -439,6 +494,22 @@ export function Profile({
           initialValue={profile.username}
           onConfirm={handleChangeUsername}
           onClose={() => setShowUsernamePrompt(false)}
+        />
+      )}
+
+      {showAvatarPicker && profile && (
+        <ProfileAvatarPicker
+          authorId={profile.id}
+          avatarId={profile.avatarId}
+          username={profile.username}
+          isSaving={isSavingAvatar}
+          errorMessage={avatarSaveError}
+          onSave={handleChangeAvatar}
+          onClose={() => {
+            if (isSavingAvatar) return;
+            setAvatarSaveError(null);
+            setShowAvatarPicker(false);
+          }}
         />
       )}
 

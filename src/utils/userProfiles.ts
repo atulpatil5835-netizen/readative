@@ -14,6 +14,10 @@ import { db } from "../firebase/firebase";
 import { type KnowledgeEntry, type UserProfile } from "../types";
 import { getGuestId, saveGuestName } from "./guestIdentity";
 import { saveKnowledgeIdentity } from "./knowledgeIdentity";
+import {
+  getDefaultProfileVisualId,
+  isValidProfileVisualId,
+} from "./profileVisuals";
 
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
@@ -26,6 +30,10 @@ function mapProfile(data: Partial<UserProfile>, id: string): UserProfile {
     username: data.username || "",
     usernameLower: data.usernameLower || "",
     bio: data.bio || "",
+    avatarId:
+      typeof data.avatarId === "string" && isValidProfileVisualId(data.avatarId)
+        ? data.avatarId
+        : null,
     createdAt: data.createdAt || Date.now(),
     updatedAt: data.updatedAt || Date.now(),
     lastUsernameChangedAt: data.lastUsernameChangedAt ?? null,
@@ -194,6 +202,7 @@ export async function ensureGuestProfile(
     username,
     usernameLower: username,
     bio: "",
+    avatarId: getDefaultProfileVisualId(authorId),
     createdAt: now,
     updatedAt: now,
     lastUsernameChangedAt: null,
@@ -248,5 +257,31 @@ export async function changeProfileUsername(
 
   await syncUsernameAcrossContent(profile.id, updated.username);
   syncLocalProfileIdentity(updated);
+  return updated;
+}
+
+export async function changeProfileAvatar(
+  profile: UserProfile,
+  nextAvatarId: string
+): Promise<UserProfile> {
+  if (!isValidProfileVisualId(nextAvatarId)) {
+    throw new Error("That profile picture is not available.");
+  }
+
+  if (profile.avatarId === nextAvatarId) {
+    return profile;
+  }
+
+  const updated: UserProfile = {
+    ...profile,
+    avatarId: nextAvatarId,
+    updatedAt: Date.now(),
+  };
+
+  await updateDoc(doc(db, "userProfiles", profile.id), {
+    avatarId: updated.avatarId,
+    updatedAt: updated.updatedAt,
+  });
+
   return updated;
 }

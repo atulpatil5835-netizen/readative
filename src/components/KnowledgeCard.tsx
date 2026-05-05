@@ -28,6 +28,7 @@ import {
 } from "../utils/knowledgeImages";
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
+import { ProfileAvatar } from "./ProfileAvatar";
 
 function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(" ");
@@ -188,6 +189,11 @@ export function KnowledgeCard({
   const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
   const readingMinutes = estimateReadMinutes(entry.content);
+  const profileMap = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    [profiles],
+  );
+  const authorProfile = profileMap.get(entry.authorId);
   const filteredCommentMentionProfiles = useMemo(() => {
     if (!activeCommentMention) return [];
 
@@ -561,9 +567,16 @@ export function KnowledgeCard({
           <div className="flex items-center gap-3">
             <button
               onClick={() => handleOpenAuthorProfile(entry.authorId)}
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-100 text-lg font-black text-emerald-700"
+              className="rounded-full transition-transform hover:scale-[1.02]"
+              aria-label={`Open @${entry.author}'s profile`}
             >
-              {entry.author[0]?.toUpperCase() || "K"}
+              <ProfileAvatar
+                authorId={entry.authorId}
+                avatarId={authorProfile?.avatarId}
+                username={entry.author}
+                size="sm"
+                className="border-slate-200"
+              />
             </button>
             <div>
               <button
@@ -814,30 +827,45 @@ export function KnowledgeCard({
                   key={comment.id}
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
-                  <div className="mb-1 flex items-center gap-2">
-                    {comment.authorId ? (
-                      <button
-                        onClick={() => handleOpenAuthorProfile(comment.authorId)}
-                        className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
-                      >
-                        @{comment.author}
-                      </button>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-800">
-                        @{comment.author}
-                      </span>
-                    )}
-                    <span className="text-[11px] text-slate-400">
-                      {new Date(comment.createdAt).toLocaleString()}
-                    </span>
+                  <div className="mb-1 flex items-start gap-3">
+                    <ProfileAvatar
+                      authorId={comment.authorId || comment.id}
+                      avatarId={
+                        comment.authorId
+                          ? profileMap.get(comment.authorId)?.avatarId
+                          : undefined
+                      }
+                      username={comment.author}
+                      size="xs"
+                      className="border-slate-200"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {comment.authorId ? (
+                          <button
+                            onClick={() => handleOpenAuthorProfile(comment.authorId)}
+                            className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
+                          >
+                            @{comment.author}
+                          </button>
+                        ) : (
+                          <span className="text-xs font-bold text-slate-800">
+                            @{comment.author}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-400">
+                          {new Date(comment.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm leading-6 text-slate-600">
+                        {renderRichText({
+                          text: comment.text,
+                          mentions: comment.mentions || [],
+                          onOpenProfile: handleOpenAuthorProfile,
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm leading-6 text-slate-600">
-                    {renderRichText({
-                      text: comment.text,
-                      mentions: comment.mentions || [],
-                      onOpenProfile: handleOpenAuthorProfile,
-                    })}
-                  </p>
                 </div>
               ))
             )}

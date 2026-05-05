@@ -52,6 +52,7 @@ export interface UserProfile {
   username: string;
   usernameLower: string;
   bio: string;
+  avatarId?: string | null;
   createdAt: number;
   updatedAt: number;
   lastUsernameChangedAt: number | null;
