@@ -78,6 +78,12 @@ interface FeedMessage {
   body: string;
 }
 
+function getFeedRankingOptions(currentAuthorId?: string | null) {
+  return {
+    currentAuthorId: currentAuthorId?.trim() || null,
+  };
+}
+
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
@@ -327,6 +333,7 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
+  const currentAuthorIdRef = useRef<string | null>(identity?.authorId ?? null);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -335,6 +342,22 @@ export function KnowledgeFeed({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
+
+  useEffect(() => {
+    currentAuthorIdRef.current = identity?.authorId ?? null;
+
+    if (entriesRef.current.length === 0) {
+      return;
+    }
+
+    setFeedEntryOrder(
+      rankKnowledgeEntries(
+        entriesRef.current,
+        getKnowledgeFeedSnapshot(),
+        getFeedRankingOptions(currentAuthorIdRef.current),
+      ).map((entry) => entry.id),
+    );
+  }, [identity?.authorId]);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -352,6 +375,7 @@ export function KnowledgeFeed({
       rankKnowledgeEntries(
         entriesRef.current,
         getKnowledgeFeedSnapshot(),
+        getFeedRankingOptions(currentAuthorIdRef.current),
       ).map((entry) => entry.id),
     );
     setShowRefreshFeedback(true);
@@ -386,7 +410,12 @@ export function KnowledgeFeed({
         setEntries(data);
         entriesRef.current = data;
         setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot()),
+          reconcileKnowledgeFeedOrder(
+            data,
+            currentOrder,
+            getKnowledgeFeedSnapshot(),
+            getFeedRankingOptions(currentAuthorIdRef.current),
+          ),
         );
 
         setIsLoading(false);
@@ -625,6 +654,10 @@ export function KnowledgeFeed({
         mentions,
       );
 
+      setFeedEntryOrder((currentOrder) => [
+        reference.id,
+        ...currentOrder.filter((entryId) => entryId !== reference.id),
+      ]);
       resetComposer();
       setShowComposer(false);
       onOpenEntry(reference.id);
