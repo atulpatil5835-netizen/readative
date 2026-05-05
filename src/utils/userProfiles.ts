@@ -1,6 +1,7 @@
 import {
   type DocumentReference,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -11,34 +12,18 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { type KnowledgeEntry, type UserProfile } from "../types";
+import {
+  type KnowledgeEntry,
+  type KnowledgeImageAsset,
+  type UserProfile,
+} from "../types";
 import { getGuestId, saveGuestName } from "./guestIdentity";
 import { saveKnowledgeIdentity } from "./knowledgeIdentity";
-import {
-  getDefaultProfileVisualId,
-  isValidProfileVisualId,
-} from "./profileVisuals";
+import { hydrateUserProfile } from "./profileData";
 
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
   USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
-
-function mapProfile(data: Partial<UserProfile>, id: string): UserProfile {
-  return {
-    id,
-    email: data.email || "",
-    username: data.username || "",
-    usernameLower: data.usernameLower || "",
-    bio: data.bio || "",
-    avatarId:
-      typeof data.avatarId === "string" && isValidProfileVisualId(data.avatarId)
-        ? data.avatarId
-        : null,
-    createdAt: data.createdAt || Date.now(),
-    updatedAt: data.updatedAt || Date.now(),
-    lastUsernameChangedAt: data.lastUsernameChangedAt ?? null,
-  };
-}
 
 function syncLocalProfileIdentity(profile: UserProfile) {
   saveGuestName(profile.username);
@@ -174,7 +159,7 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
 export async function getUserProfile(authorId: string): Promise<UserProfile | null> {
   const snapshot = await getDoc(doc(db, "userProfiles", authorId));
   if (!snapshot.exists()) return null;
-  return mapProfile(snapshot.data() as Partial<UserProfile>, snapshot.id);
+  return hydrateUserProfile(snapshot.data() as Partial<UserProfile>, snapshot.id);
 }
 
 export async function ensureGuestProfile(
@@ -185,7 +170,10 @@ export async function ensureGuestProfile(
   const existing = await getDoc(reference);
 
   if (existing.exists()) {
-    const profile = mapProfile(existing.data() as Partial<UserProfile>, existing.id);
+    const profile = hydrateUserProfile(
+      existing.data() as Partial<UserProfile>,
+      existing.id,
+    );
     syncLocalProfileIdentity(profile);
     return profile;
   }
@@ -202,7 +190,7 @@ export async function ensureGuestProfile(
     username,
     usernameLower: username,
     bio: "",
-    avatarId: getDefaultProfileVisualId(authorId),
+    profileImage: null,
     createdAt: now,
     updatedAt: now,
     lastUsernameChangedAt: null,
@@ -260,27 +248,24 @@ export async function changeProfileUsername(
   return updated;
 }
 
-export async function changeProfileAvatar(
+export async function changeProfilePhoto(
   profile: UserProfile,
-  nextAvatarId: string
+  nextProfileImage: KnowledgeImageAsset,
 ): Promise<UserProfile> {
-  if (!isValidProfileVisualId(nextAvatarId)) {
-    throw new Error("That profile picture is not available.");
-  }
-
-  if (profile.avatarId === nextAvatarId) {
+  if (profile.profileImage?.dataUrl === nextProfileImage.dataUrl) {
     return profile;
   }
 
   const updated: UserProfile = {
     ...profile,
-    avatarId: nextAvatarId,
+    profileImage: nextProfileImage,
     updatedAt: Date.now(),
   };
 
   await updateDoc(doc(db, "userProfiles", profile.id), {
-    avatarId: updated.avatarId,
+    profileImage: updated.profileImage,
     updatedAt: updated.updatedAt,
+    avatarId: deleteField(),
   });
 
   return updated;

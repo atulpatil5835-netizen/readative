@@ -572,7 +572,7 @@ export function KnowledgeCard({
             >
               <ProfileAvatar
                 authorId={entry.authorId}
-                avatarId={authorProfile?.avatarId}
+                image={authorProfile?.profileImage}
                 username={entry.author}
                 size="sm"
                 className="border-slate-200"
@@ -830,9 +830,9 @@ export function KnowledgeCard({
                   <div className="mb-1 flex items-start gap-3">
                     <ProfileAvatar
                       authorId={comment.authorId || comment.id}
-                      avatarId={
+                      image={
                         comment.authorId
-                          ? profileMap.get(comment.authorId)?.avatarId
+                          ? profileMap.get(comment.authorId)?.profileImage
                           : undefined
                       }
                       username={comment.author}

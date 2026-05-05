@@ -41,6 +41,7 @@ import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
+import { hydrateUserProfile } from "../utils/profileData";
 import {
   buildAbsoluteRouteUrl,
   navigateToRoute,
@@ -412,10 +413,9 @@ export function KnowledgeFeed({
     const unsubscribe = onSnapshot(
       profilesQuery,
       (snapshot) => {
-        const data = snapshot.docs.map((item) => ({
-          ...(item.data() as UserProfile),
-          id: item.id,
-        }));
+        const data = snapshot.docs.map((item) =>
+          hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
+        );
 
         setProfiles(data);
         setProfilesLoadError(null);

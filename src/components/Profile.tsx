@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { BookOpenText, Clock3, Heart, Sparkles, User } from "lucide-react";
+import { BookOpenText, Clock3, Heart, ImagePlus, Sparkles, User } from "lucide-react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, UserProfile } from "../types";
+import { KnowledgeEntry, KnowledgeImageAsset, UserProfile } from "../types";
 import { SEO } from "./SEO";
 import { IdentityPrompt, UsernamePrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
 import {
-  changeProfileAvatar,
+  changeProfilePhoto,
   changeProfileUsername,
   ensureGuestProfile,
   getUsernameChangeRemaining,
@@ -17,7 +17,7 @@ import {
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { getGuestName } from "../utils/guestIdentity";
 import { buildAbsoluteRouteUrl } from "../utils/routes";
-import { resolveProfileVisualPreset } from "../utils/profileVisuals";
+import { hydrateUserProfile } from "../utils/profileData";
 
 type ProfileSection = "shared" | "liked";
 
@@ -100,11 +100,12 @@ export function Profile({
             return;
           }
 
-          const data = snapshot.data() as UserProfile;
-          setProfile({
-            ...data,
-            id: snapshot.id,
-          });
+          setProfile(
+            hydrateUserProfile(
+              snapshot.data() as Partial<UserProfile>,
+              snapshot.id,
+            ),
+          );
           setIsLoadingProfile(false);
           setProfileLoadError(null);
         },
@@ -180,10 +181,9 @@ export function Profile({
     const unsubscribe = onSnapshot(
       collection(db, "userProfiles"),
       (snapshot) => {
-        const data = snapshot.docs.map((item) => ({
-          ...(item.data() as UserProfile),
-          id: item.id,
-        }));
+        const data = snapshot.docs.map((item) =>
+          hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
+        );
 
         setProfiles(data);
         setDirectoryLoadError(null);
@@ -242,14 +242,14 @@ export function Profile({
     setShowUsernamePrompt(false);
   };
 
-  const handleChangeAvatar = async (nextAvatarId: string) => {
+  const handleChangeAvatar = async (nextProfileImage: KnowledgeImageAsset) => {
     if (!profile || !isOwnProfile) return;
 
     setAvatarSaveError(null);
     setIsSavingAvatar(true);
 
     try {
-      const updatedProfile = await changeProfileAvatar(profile, nextAvatarId);
+      const updatedProfile = await changeProfilePhoto(profile, nextProfileImage);
       setProfile(updatedProfile);
       setShowAvatarPicker(false);
     } catch (error) {
@@ -367,7 +367,7 @@ export function Profile({
               <div>
                 <ProfileAvatar
                   authorId={profile.id}
-                  avatarId={profile.avatarId}
+                  image={profile.profileImage}
                   username={profile.username}
                   size="xl"
                   className="mb-4 border-white/20 bg-white/10"
@@ -384,16 +384,13 @@ export function Profile({
                 <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
                   Joined {new Date(profile.createdAt).toLocaleDateString()}
                 </p>
-                {isOwnProfile && !profile.avatarId && (
+                {isOwnProfile && !profile.profileImage && (
                   <div className="mt-4 inline-flex max-w-xl items-start gap-2 rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm leading-6 text-emerald-50">
-                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+                    <ImagePlus className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>
-                      Legacy account detected. You are currently using the
-                      default tech sticker{" "}
-                      <span className="font-semibold">
-                        {resolveProfileVisualPreset(profile.id, profile.avatarId).label}
-                      </span>
-                      . Choose a professional avatar or keep a sticker anytime.
+                      Upload a square profile photo to personalize your account.
+                      We crop and optimize it before saving so avatars stay sharp
+                      and lightweight throughout the app.
                     </span>
                   </div>
                 )}
@@ -499,8 +496,7 @@ export function Profile({
 
       {showAvatarPicker && profile && (
         <ProfileAvatarPicker
-          authorId={profile.id}
-          avatarId={profile.avatarId}
+          currentImage={profile.profileImage}
           username={profile.username}
           isSaving={isSavingAvatar}
           errorMessage={avatarSaveError}
