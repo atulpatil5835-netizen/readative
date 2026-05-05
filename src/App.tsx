@@ -235,7 +235,10 @@ export default function App() {
   return (
     <HelmetProvider>
       <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
-        <Header
+        <p style={{ display: "none" }}>
+        Impact-Site-Verification: 65d553b4-721d-437c-b0cc-d0b7b2d38655
+        </p>
+         <Header
           activeTab={activeTab}
           setActiveTab={(tab) => handleTabChange(tab)}
           onHomeAction={handleHomeAction}

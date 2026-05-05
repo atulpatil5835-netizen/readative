@@ -62,6 +62,8 @@ type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
+const IMPACT_SITE_VERIFICATION =
+  "Impact-Site-Verification: 65d553b4-721d-437c-b0cc-d0b7b2d38655";
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -899,6 +901,10 @@ export function KnowledgeFeed({
         </div>
       ) : (
         <div className="space-y-6">
+          <p className="text-center text-xs text-slate-500">
+            {IMPACT_SITE_VERIFICATION}
+          </p>
+
           {feedLoadError && (
             <FeedNotice title="Feed loading issue" body={feedLoadError} />
           )}
