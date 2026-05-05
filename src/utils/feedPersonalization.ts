@@ -89,10 +89,6 @@ interface ScoredKnowledgeEntry {
   primaryHashtag: string | null;
 }
 
-interface KnowledgeFeedRankingOptions {
-  currentAuthorId?: string | null;
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -111,11 +107,6 @@ function getKnowledgeActivityKey() {
 
 function normalizeTag(tag: string) {
   return tag.trim().toLowerCase();
-}
-
-function normalizeAuthorId(authorId?: string | null) {
-  const normalizedAuthorId = authorId?.trim() || "";
-  return normalizedAuthorId || null;
 }
 
 function normalizeSeenEntryIds(value: unknown): string[] {
@@ -645,62 +636,6 @@ function buildLatestEntriesFallback(scoredEntries: ScoredKnowledgeEntry[]) {
     .map((candidate) => candidate.entry);
 }
 
-function prioritizeCurrentAuthorEntryIds(
-  entryIds: string[],
-  entryLookup: Map<string, KnowledgeEntry>,
-  currentAuthorId?: string | null,
-) {
-  const normalizedAuthorId = normalizeAuthorId(currentAuthorId);
-  if (!normalizedAuthorId) {
-    return entryIds;
-  }
-
-  const ownEntryIds: string[] = [];
-  const otherEntryIds: string[] = [];
-
-  entryIds.forEach((entryId) => {
-    const entry = entryLookup.get(entryId);
-    if (entry?.authorId === normalizedAuthorId) {
-      ownEntryIds.push(entryId);
-      return;
-    }
-
-    otherEntryIds.push(entryId);
-  });
-
-  ownEntryIds.sort((leftEntryId, rightEntryId) => {
-    const leftEntry = entryLookup.get(leftEntryId);
-    const rightEntry = entryLookup.get(rightEntryId);
-    if (!leftEntry || !rightEntry) {
-      return 0;
-    }
-
-    const createdAtDelta = rightEntry.createdAt - leftEntry.createdAt;
-    if (createdAtDelta !== 0) {
-      return createdAtDelta;
-    }
-
-    return rightEntry.likes.length - leftEntry.likes.length;
-  });
-
-  const prioritizedEntryIds = [...ownEntryIds, ...otherEntryIds];
-  return areEntryOrdersEqual(entryIds, prioritizedEntryIds) ? entryIds : prioritizedEntryIds;
-}
-
-function prioritizeCurrentAuthorEntries(
-  entries: KnowledgeEntry[],
-  currentAuthorId?: string | null,
-) {
-  const entryLookup = new Map(entries.map((entry) => [entry.id, entry] as const));
-  return prioritizeCurrentAuthorEntryIds(
-    entries.map((entry) => entry.id),
-    entryLookup,
-    currentAuthorId,
-  )
-    .map((entryId) => entryLookup.get(entryId))
-    .filter((entry): entry is KnowledgeEntry => Boolean(entry));
-}
-
 export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
   if (typeof window === "undefined") {
     return {
@@ -834,7 +769,6 @@ export function markKnowledgeEntrySeen(
 export function rankKnowledgeEntries(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
-  options: KnowledgeFeedRankingOptions = {},
 ) {
   const now = Date.now();
   const scoredEntries = [...entries]
@@ -869,7 +803,7 @@ export function rankKnowledgeEntries(
 
   const fallbackEntries =
     rankedEntries.length > 0 ? rankedEntries : buildLatestEntriesFallback(scoredEntries);
-  return prioritizeCurrentAuthorEntries(fallbackEntries, options.currentAuthorId);
+  return fallbackEntries;
 }
 
 function areEntryOrdersEqual(left: string[], right: string[]) {
@@ -884,26 +818,17 @@ export function reconcileKnowledgeFeedOrder(
   entries: KnowledgeEntry[],
   currentOrder: string[],
   snapshot: KnowledgeFeedSnapshot,
-  options: KnowledgeFeedRankingOptions = {},
 ) {
-  const rankedEntryIds = rankKnowledgeEntries(entries, snapshot, options).map(
-    (entry) => entry.id,
-  );
+  const rankedEntryIds = rankKnowledgeEntries(entries, snapshot).map((entry) => entry.id);
   if (currentOrder.length === 0) {
     return rankedEntryIds;
   }
 
-  const entryLookup = new Map(entries.map((entry) => [entry.id, entry] as const));
   const availableEntryIds = new Set(entries.map((entry) => entry.id));
   const preservedOrder = currentOrder.filter((entryId) => availableEntryIds.has(entryId));
   const preservedEntryIds = new Set(preservedOrder);
   const appendedEntries = rankedEntryIds.filter((entryId) => !preservedEntryIds.has(entryId));
   const nextOrder = [...preservedOrder, ...appendedEntries];
-  const prioritizedOrder = prioritizeCurrentAuthorEntryIds(
-    nextOrder,
-    entryLookup,
-    options.currentAuthorId,
-  );
 
-  return areEntryOrdersEqual(currentOrder, prioritizedOrder) ? currentOrder : prioritizedOrder;
+  return areEntryOrdersEqual(currentOrder, nextOrder) ? currentOrder : nextOrder;
 }

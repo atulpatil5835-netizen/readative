@@ -78,12 +78,6 @@ interface FeedMessage {
   body: string;
 }
 
-function getFeedRankingOptions(currentAuthorId?: string | null) {
-  return {
-    currentAuthorId: currentAuthorId?.trim() || null,
-  };
-}
-
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
@@ -333,7 +327,6 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
-  const currentAuthorIdRef = useRef<string | null>(identity?.authorId ?? null);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -342,22 +335,6 @@ export function KnowledgeFeed({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
-
-  useEffect(() => {
-    currentAuthorIdRef.current = identity?.authorId ?? null;
-
-    if (entriesRef.current.length === 0) {
-      return;
-    }
-
-    setFeedEntryOrder(
-      rankKnowledgeEntries(
-        entriesRef.current,
-        getKnowledgeFeedSnapshot(),
-        getFeedRankingOptions(currentAuthorIdRef.current),
-      ).map((entry) => entry.id),
-    );
-  }, [identity?.authorId]);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -372,11 +349,9 @@ export function KnowledgeFeed({
     setFeedSearchQuery("");
     setFeedMessage(null);
     setFeedEntryOrder(
-      rankKnowledgeEntries(
-        entriesRef.current,
-        getKnowledgeFeedSnapshot(),
-        getFeedRankingOptions(currentAuthorIdRef.current),
-      ).map((entry) => entry.id),
+      rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
+        (entry) => entry.id,
+      ),
     );
     setShowRefreshFeedback(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -410,12 +385,7 @@ export function KnowledgeFeed({
         setEntries(data);
         entriesRef.current = data;
         setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(
-            data,
-            currentOrder,
-            getKnowledgeFeedSnapshot(),
-            getFeedRankingOptions(currentAuthorIdRef.current),
-          ),
+          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot()),
         );
 
         setIsLoading(false);
@@ -639,6 +609,7 @@ export function KnowledgeFeed({
       };
 
       await setDoc(reference, entryPayload);
+      const createdEntry = normalizeKnowledgeEntry(reference.id, entryPayload);
 
       const { notifyTaggedUsers } = await import("../utils/notifications");
       await notifyTaggedUsers(
@@ -654,6 +625,11 @@ export function KnowledgeFeed({
         mentions,
       );
 
+      entriesRef.current = [
+        createdEntry,
+        ...entriesRef.current.filter((entry) => entry.id !== createdEntry.id),
+      ];
+      setEntries(entriesRef.current);
       setFeedEntryOrder((currentOrder) => [
         reference.id,
         ...currentOrder.filter((entryId) => entryId !== reference.id),
