@@ -235,9 +235,9 @@ export default function App() {
   return (
     <HelmetProvider>
       <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
-        <p style={{ display: "none" }}>
-        Impact-Site-Verification: 65d553b4-721d-437c-b0cc-d0b7b2d38655
-        </p>
+        <div style={{ position: "absolute", left: "-9999px" }}>
+  Impact-Site-Verification: 65d553b4-721d-437c-b0cc-d0b7b2d38655
+</div>
          <Header
           activeTab={activeTab}
           setActiveTab={(tab) => handleTabChange(tab)}
