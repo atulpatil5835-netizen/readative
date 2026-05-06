@@ -4,16 +4,13 @@ import {
   MessageSquareMore,
   TriangleAlert,
 } from "lucide-react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "./firebase/firebase";
 import { Header } from "./components/Header";
-import { KnowledgeFeed } from "./components/KnowledgeFeed";
 import {
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
   type KnowledgeIdentity,
 } from "./utils/knowledgeIdentity";
-import { UserNotification } from "./types";
+import type { UserNotification } from "./types";
 import {
   navigateToRoute,
   parseRouteFromLocation,
@@ -21,6 +18,12 @@ import {
   type AppTab,
 } from "./utils/routes";
 import { trackPageView } from "./utils/analytics";
+
+const KnowledgeFeed = lazy(() =>
+  import("./components/KnowledgeFeed").then((module) => ({
+    default: module.KnowledgeFeed,
+  }))
+);
 
 const SmartTalk = lazy(() =>
   import("./components/SmartTalk").then((module) => ({
@@ -197,39 +200,69 @@ export default function App() {
       return;
     }
 
-    const notificationsQuery = query(
-      collection(db, "notifications"),
-      where("targetAuthorId", "==", identity.authorId)
-    );
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
 
-    const unsubscribe = onSnapshot(
-      notificationsQuery,
-      (snapshot) => {
-        const nextNotifications = snapshot.docs
-          .map((item) => ({
-            id: item.id,
-            ...(item.data() as UserNotification),
-            createdAt: (item.data() as UserNotification).createdAt || Date.now(),
-          }))
-          .sort((left, right) => right.createdAt - left.createdAt);
+    void Promise.all([import("firebase/firestore"), import("./firebase/firebase")])
+      .then(([firestore, firebase]) => {
+        if (cancelled) {
+          return;
+        }
 
-        const unread = nextNotifications.filter((notification) => !notification.read).length;
+        const notificationsQuery = firestore.query(
+          firestore.collection(firebase.db, "notifications"),
+          firestore.where("targetAuthorId", "==", identity.authorId)
+        );
 
-        setNotifications(nextNotifications);
-        setUnreadNotificationCount(unread);
-        setNotificationsError(null);
-      },
-      (error) => {
-        console.error("Notifications listener error:", error);
+        unsubscribe = firestore.onSnapshot(
+          notificationsQuery,
+          (snapshot) => {
+            const nextNotifications = snapshot.docs
+              .map((item) => {
+                const data = item.data() as UserNotification;
+                return {
+                  id: item.id,
+                  ...data,
+                  createdAt: data.createdAt || Date.now(),
+                };
+              })
+              .sort((left, right) => right.createdAt - left.createdAt);
+
+            const unread = nextNotifications.filter(
+              (notification) => !notification.read
+            ).length;
+
+            setNotifications(nextNotifications);
+            setUnreadNotificationCount(unread);
+            setNotificationsError(null);
+          },
+          (error) => {
+            console.error("Notifications listener error:", error);
+            setNotifications([]);
+            setUnreadNotificationCount(0);
+            setNotificationsError(
+              "Realtime notifications are temporarily unavailable. Please refresh in a moment."
+            );
+          }
+        );
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error("Notifications setup error:", error);
         setNotifications([]);
         setUnreadNotificationCount(0);
         setNotificationsError(
           "Realtime notifications are temporarily unavailable. Please refresh in a moment."
         );
-      }
-    );
+      });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [identity?.authorId]);
 
   return (
@@ -264,15 +297,17 @@ export default function App() {
               onOpenSmartTalk={() => handleTabChange("smarttalk")}
             />
           ) : activeTab === "knowledge" ? (
-            <KnowledgeFeed
-              identity={identity}
-              onIdentityChange={setIdentity}
-              onOpenProfile={handleOpenProfile}
-              focusedEntryId={focusedEntryId}
-              onOpenEntry={handleOpenEntry}
-              composerOpenSignal={composerOpenSignal}
-              refreshSignal={homeRefreshSignal}
-            />
+            <Suspense fallback={<SectionSkeleton label="Loading home feed..." />}>
+              <KnowledgeFeed
+                identity={identity}
+                onIdentityChange={setIdentity}
+                onOpenProfile={handleOpenProfile}
+                focusedEntryId={focusedEntryId}
+                onOpenEntry={handleOpenEntry}
+                composerOpenSignal={composerOpenSignal}
+                refreshSignal={homeRefreshSignal}
+              />
+            </Suspense>
           ) : null}
           {activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>

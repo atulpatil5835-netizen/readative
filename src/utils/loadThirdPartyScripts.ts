@@ -2,8 +2,12 @@ const READATIVE_GA_MEASUREMENT_ID = "G-09CXBVC580";
 const GOOGLE_ANALYTICS_SRC = `https://www.googletagmanager.com/gtag/js?id=${READATIVE_GA_MEASUREMENT_ID}`;
 const GOOGLE_ADS_SRC =
   "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8482951627272767";
+const ADS_IDLE_DELAY_MS = 4500;
+const ADS_INTERACTION_EVENTS = ["pointerdown", "keydown", "scroll"] as const;
 
 let thirdPartyScriptsScheduled = false;
+let analyticsConfigured = false;
+let adsScriptScheduled = false;
 
 function appendScript(
   source: string,
@@ -51,6 +55,20 @@ function ensureAnalyticsStub() {
     });
 }
 
+function configureAnalytics() {
+  ensureAnalyticsStub();
+
+  if (analyticsConfigured) {
+    return;
+  }
+
+  analyticsConfigured = true;
+  window.gtag?.("js", new Date());
+  window.gtag?.("config", READATIVE_GA_MEASUREMENT_ID, {
+    send_page_view: false,
+  });
+}
+
 function runWhenBrowserIsIdle(callback: () => void) {
   if (typeof window === "undefined") {
     return;
@@ -64,20 +82,42 @@ function runWhenBrowserIsIdle(callback: () => void) {
   window.setTimeout(callback, 1200);
 }
 
-function loadThirdPartyScripts() {
-  ensureAnalyticsStub();
+function scheduleAdsScript() {
+  if (typeof window === "undefined" || adsScriptScheduled) {
+    return;
+  }
 
-  runWhenBrowserIsIdle(() => {
-    window.gtag?.("js", new Date());
-    window.gtag?.("config", READATIVE_GA_MEASUREMENT_ID, {
-      send_page_view: false,
+  adsScriptScheduled = true;
+  let timeoutId: number | null = null;
+
+  const loadAds = () => {
+    ADS_INTERACTION_EVENTS.forEach((eventName) => {
+      window.removeEventListener(eventName, loadAds);
     });
 
-    appendScript(GOOGLE_ANALYTICS_SRC, { async: true });
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
     appendScript(GOOGLE_ADS_SRC, {
       async: true,
       crossorigin: "anonymous",
     });
+  };
+
+  ADS_INTERACTION_EVENTS.forEach((eventName) => {
+    window.addEventListener(eventName, loadAds, { once: true, passive: true });
+  });
+  timeoutId = window.setTimeout(loadAds, ADS_IDLE_DELAY_MS);
+}
+
+function loadThirdPartyScripts() {
+  configureAnalytics();
+
+  runWhenBrowserIsIdle(() => {
+    appendScript(GOOGLE_ANALYTICS_SRC, { async: true });
+    scheduleAdsScript();
   });
 }
 
@@ -87,7 +127,7 @@ export function scheduleThirdPartyScripts() {
   }
 
   thirdPartyScriptsScheduled = true;
-  ensureAnalyticsStub();
+  configureAnalytics();
 
   if (document.readyState === "complete") {
     loadThirdPartyScripts();

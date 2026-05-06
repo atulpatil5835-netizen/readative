@@ -63,6 +63,9 @@ type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
+const INITIAL_RENDERED_ENTRY_LIMIT = 12;
+const RENDERED_ENTRY_BATCH_SIZE = 8;
+const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -325,9 +328,13 @@ export function KnowledgeFeed({
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
+  const [renderedEntryLimit, setRenderedEntryLimit] = useState(
+    INITIAL_RENDERED_ENTRY_LIMIT,
+  );
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -349,6 +356,7 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
+    setRenderedEntryLimit(INITIAL_RENDERED_ENTRY_LIMIT);
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
         (entry) => entry.id,
@@ -405,31 +413,61 @@ export function KnowledgeFeed({
   }, []);
 
   useEffect(() => {
-    const profilesQuery = query(
-      collection(db, "userProfiles"),
-      orderBy("usernameLower", "asc"),
-    );
+    if (typeof window === "undefined") return;
 
-    const unsubscribe = onSnapshot(
-      profilesQuery,
-      (snapshot) => {
-        const data = snapshot.docs.map((item) =>
-          hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
-        );
+    let unsubscribe: (() => void) | null = null;
+    let timeoutId: number | null = null;
+    let idleCallbackId: number | null = null;
 
-        setProfiles(data);
-        setProfilesLoadError(null);
-      },
-      (error) => {
-        console.error("Profile directory error:", error);
-        setProfiles([]);
-        setProfilesLoadError(
-          "User mentions and profile previews may be incomplete for a moment.",
-        );
-      },
-    );
+    const startProfilesListener = () => {
+      if (unsubscribe) {
+        return;
+      }
 
-    return () => unsubscribe();
+      const profilesQuery = query(
+        collection(db, "userProfiles"),
+        orderBy("usernameLower", "asc"),
+      );
+
+      unsubscribe = onSnapshot(
+        profilesQuery,
+        (snapshot) => {
+          const data = snapshot.docs.map((item) =>
+            hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
+          );
+
+          setProfiles(data);
+          setProfilesLoadError(null);
+        },
+        (error) => {
+          console.error("Profile directory error:", error);
+          setProfiles([]);
+          setProfilesLoadError(
+            "User mentions and profile previews may be incomplete for a moment.",
+          );
+        },
+      );
+    };
+
+    if ("requestIdleCallback" in window) {
+      idleCallbackId = window.requestIdleCallback(startProfilesListener, {
+        timeout: PROFILE_DIRECTORY_IDLE_TIMEOUT_MS,
+      });
+    } else {
+      timeoutId = window.setTimeout(startProfilesListener, 1200);
+    }
+
+    return () => {
+      if (idleCallbackId !== null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleCallbackId);
+      }
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -516,6 +554,48 @@ export function KnowledgeFeed({
       matchesKnowledgeSearch(entry, searchTerms),
     );
   }, [deferredFeedSearchQuery, visibleEntries]);
+  const renderedEntries = useMemo(() => {
+    if (focusedEntryId) return filteredEntries;
+    return filteredEntries.slice(0, renderedEntryLimit);
+  }, [filteredEntries, focusedEntryId, renderedEntryLimit]);
+  const hasMoreEntries =
+    !focusedEntryId && renderedEntries.length < filteredEntries.length;
+
+  useEffect(() => {
+    setRenderedEntryLimit(INITIAL_RENDERED_ENTRY_LIMIT);
+  }, [deferredFeedSearchQuery, selectedHashtag, focusedEntryId]);
+
+  useEffect(() => {
+    if (!hasMoreEntries || typeof window === "undefined") return;
+
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel) return;
+
+    if (typeof window.IntersectionObserver !== "function") {
+      setRenderedEntryLimit((currentLimit) =>
+        Math.min(filteredEntries.length, currentLimit + RENDERED_ENTRY_BATCH_SIZE),
+      );
+      return;
+    }
+
+    const observer = new window.IntersectionObserver(
+      (observedEntries) => {
+        if (!observedEntries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+
+        setRenderedEntryLimit((currentLimit) =>
+          Math.min(filteredEntries.length, currentLimit + RENDERED_ENTRY_BATCH_SIZE),
+        );
+      },
+      {
+        rootMargin: "600px 0px",
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [filteredEntries.length, hasMoreEntries]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -970,7 +1050,7 @@ export function KnowledgeFeed({
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredEntries.map((entry) => (
+              {renderedEntries.map((entry) => (
                 <KnowledgeCard
                   key={entry.id}
                   entry={entry}
@@ -983,6 +1063,14 @@ export function KnowledgeFeed({
                   highlighted={entry.id === focusedEntryId}
                 />
               ))}
+              {hasMoreEntries && (
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="py-4 text-center text-xs font-medium text-slate-400"
+                >
+                  Loading more posts...
+                </div>
+              )}
             </div>
           )}
         </div>

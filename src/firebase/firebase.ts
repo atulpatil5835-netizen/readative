@@ -8,7 +8,7 @@ const firebaseConfig = {
   storageBucket: "readative-803b0.firebasestorage.app",
   messagingSenderId: "1015140409360",
   appId: "1:1015140409360:web:198a83bd1d31eb424eea95",
-  measurementId: "G-97DRT1B7SN"
+  measurementId: "G-09CXBVC580"
 }
 
 const app = initializeApp(firebaseConfig)
