@@ -24,11 +24,64 @@ googleProvider.setCustomParameters({
   prompt: "select_account",
 });
 
+function collectErrorText(error: unknown, depth = 0, seen = new WeakSet<object>()): string {
+  if (depth > 4 || error == null) {
+    return "";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (typeof error === "number" || typeof error === "boolean") {
+    return String(error);
+  }
+
+  if (typeof error !== "object") {
+    return "";
+  }
+
+  if (seen.has(error)) {
+    return "";
+  }
+  seen.add(error);
+
+  const parts: string[] = [];
+  if (error instanceof Error) {
+    parts.push(error.name, error.message);
+  }
+
+  for (const key of Object.getOwnPropertyNames(error)) {
+    try {
+      parts.push(
+        key,
+        collectErrorText(
+          (error as Record<string, unknown>)[key],
+          depth + 1,
+          seen,
+        ),
+      );
+    } catch {
+      // Ignore unreadable properties on Firebase's internal error objects.
+    }
+  }
+
+  return parts.filter(Boolean).join(" ");
+}
+
 function getFirebaseAuthErrorMessage(error: unknown) {
   const code =
     typeof error === "object" && error && "code" in error
       ? String((error as { code?: unknown }).code)
       : "";
+  const details = collectErrorText(error).toLowerCase();
+
+  if (
+    details.includes("api_key_service_blocked") ||
+    (details.includes("identitytoolkit") && details.includes("blocked"))
+  ) {
+    return "Google sign-in is blocked by the Firebase API key settings. Allow the Identity Toolkit API for this web API key, then try again.";
+  }
 
   if (code === "auth/popup-closed-by-user") {
     return "Google sign-in was closed before it finished.";
@@ -42,6 +95,14 @@ function getFirebaseAuthErrorMessage(error: unknown) {
     const host =
       typeof window !== "undefined" ? window.location.hostname : "this domain";
     return `This site is not added to Firebase Auth authorized domains. Add ${host} for ${firebaseAuthDomain}.`;
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Google sign-in is not enabled in Firebase Authentication. Enable the Google provider and try again.";
+  }
+
+  if (code === "auth/api-key-not-valid" || code === "auth/invalid-api-key") {
+    return "The Firebase web API key is not valid for this app. Check the Firebase web app configuration.";
   }
 
   if (code === "auth/network-request-failed") {
@@ -64,6 +125,7 @@ export async function signInWithGoogleAccount(): Promise<KnowledgeIdentity> {
     const result = await signInWithPopup(auth, googleProvider);
     return resolveGoogleUserIdentity(result.user);
   } catch (error) {
+    console.error("Google sign-in failed:", error);
     throw new Error(getFirebaseAuthErrorMessage(error));
   }
 }

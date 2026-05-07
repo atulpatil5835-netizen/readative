@@ -7,7 +7,7 @@ import {
 import { getFirestore } from "firebase/firestore"
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDgVfYlVr1N4GdW-CgamNBsXNMn1P4SqXo",
+  apiKey: "AIzaSyBu4g_KPnJcUIA4RCHw_fLeu2jjnxA8yuw",
   authDomain: "readative-803b0.firebaseapp.com",
   projectId: "readative-803b0",
   storageBucket: "readative-803b0.firebasestorage.app",
