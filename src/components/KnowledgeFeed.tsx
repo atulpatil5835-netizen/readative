@@ -225,7 +225,7 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
     name: "Readative Knowledge Feed",
     url: baseUrl,
     description:
-      "A clean homepage showing knowledge posts shared by the Readative community.",
+      "Readative's knowledge feed helps people discover practical insights, visual explainers, AI tools, study notes, and SmartTalk ideas from creators.",
   };
 
   if (!entry) {
@@ -990,7 +990,7 @@ export function KnowledgeFeed({
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
       ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
-      : "Readative homepage showing only knowledge posts from the community.";
+      : "Discover practical insights, visual explainers, AI tools, study notes, and SmartTalk ideas from creators on Readative.";
   const pageUrl = focusedEntry
     ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
     : selectedHashtag

@@ -40,6 +40,37 @@ function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(" ");
 }
 
+function isShareAbortError(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
+}
+
+async function copyShareTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard copy was not accepted.");
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 const LIKE_BURST_PARTICLES = [
   { x: -24, y: -18, rotate: -24, delay: 0, scale: 1.05, color: "#fb7185" },
   { x: -8, y: -28, rotate: -12, delay: 35, scale: 0.9, color: "#f43f5e" },
@@ -558,17 +589,20 @@ export function KnowledgeCard({
     const text = `${entry.title}\n\n${entry.content.slice(0, 160)}${
       entry.content.length > 160 ? "..." : ""
     }`;
+    const sharePayload = {
+      title: entry.title,
+      text,
+      url: shareUrl,
+    };
 
-    handleOpenEntryDetails();
     setInteractionMessage(null);
 
-    if (navigator.share) {
+    if (
+      navigator.share &&
+      (typeof navigator.canShare !== "function" || navigator.canShare(sharePayload))
+    ) {
       try {
-        await navigator.share({
-          title: entry.title,
-          text,
-          url: shareUrl,
-        });
+        await navigator.share(sharePayload);
         recordKnowledgeFeedActivity({
           type: "share",
           entry,
@@ -576,12 +610,16 @@ export function KnowledgeCard({
         setShareCopied(true);
         return;
       } catch (error) {
-        console.error("Share cancelled or failed:", error);
+        if (isShareAbortError(error)) {
+          return;
+        }
+
+        console.warn("Native share failed, falling back to clipboard:", error);
       }
     }
 
     try {
-      await navigator.clipboard.writeText(`${text}\n\n${shareUrl}`);
+      await copyShareTextToClipboard(`${text}\n\n${shareUrl}`);
       recordKnowledgeFeedActivity({
         type: "share",
         entry,
