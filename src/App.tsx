@@ -208,7 +208,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!identity?.authorId) {
+    if (!firebaseConfigReady || !identity?.authorId) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       setNotificationsError(null);
@@ -326,15 +326,9 @@ export default function App() {
             />
           )}
 
-          {!firebaseConfigReady && (
-            <BannerNotice
-              title="Firebase setup needed"
-              body={`Missing ${firebaseConfigMissingKeys.join(", ")}. Add the VITE_FIREBASE values in the hosting environment and redeploy so sign-in, posts, likes, comments, and profiles can connect.`}
-              tone="warning"
-            />
-          )}
-
-          {activeTab === "notFound" ? (
+          {!firebaseConfigReady ? (
+            <FirebaseSetupRoute missingKeys={firebaseConfigMissingKeys} />
+          ) : activeTab === "notFound" ? (
             <NotFoundRoute
               attemptedPath={routeErrorPath}
               onGoHome={() => handleTabChange("knowledge")}
@@ -353,7 +347,7 @@ export default function App() {
               />
             </Suspense>
           ) : null}
-          {activeTab === "smarttalk" && (
+          {firebaseConfigReady && activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
               <SmartTalk
                 currentIdentity={identity}
@@ -361,7 +355,7 @@ export default function App() {
               />
             </Suspense>
           )}
-          {activeTab === "profile" && (
+          {firebaseConfigReady && activeTab === "profile" && (
             <Suspense fallback={<SectionSkeleton label="Loading profile..." />}>
               <Profile
                 currentIdentity={identity}
@@ -527,6 +521,27 @@ function NotFoundRoute({
           Open SmartTalk
         </button>
       </div>
+    </div>
+  );
+}
+
+function FirebaseSetupRoute({ missingKeys }: { missingKeys: string[] }) {
+  return (
+    <div className="rounded-[32px] border border-amber-200 bg-white px-6 py-14 text-center shadow-sm">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+        <TriangleAlert className="h-8 w-8" />
+      </div>
+      <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">
+        Setup needed
+      </p>
+      <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+        Readative is missing Firebase access
+      </h2>
+      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
+        Add a valid {missingKeys.join(", ")} value in the hosting environment
+        and redeploy. The app is paused here so posts, likes, comments, and
+        profiles do not load with a broken connection.
+      </p>
     </div>
   );
 }

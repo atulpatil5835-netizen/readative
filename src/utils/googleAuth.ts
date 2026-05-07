@@ -79,7 +79,7 @@ function getFirebaseAuthErrorMessage(error: unknown) {
   const details = collectErrorText(error).toLowerCase();
 
   if (details.includes("firebase is missing required environment variables")) {
-    return `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}. Add them in your hosting environment and redeploy.`;
+    return `Firebase is missing or has invalid environment variables: ${firebaseConfigMissingKeys.join(", ")}. Add valid values in your hosting environment and redeploy.`;
   }
 
   if (
@@ -150,7 +150,7 @@ export function subscribeToGoogleIdentity(
     clearKnowledgeIdentity();
     onChange(null);
     onError?.(
-      `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
+      `Firebase is missing or has invalid environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
     );
     return () => undefined;
   }
@@ -183,6 +183,8 @@ export function subscribeToGoogleIdentity(
 }
 
 export async function signOutGoogleAccount() {
-  await signOut(auth);
+  if (firebaseConfigReady) {
+    await signOut(auth);
+  }
   clearKnowledgeIdentity();
 }

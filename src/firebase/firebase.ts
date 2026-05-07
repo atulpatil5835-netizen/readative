@@ -1,10 +1,11 @@
-import { getApp, getApps, initializeApp } from "firebase/app"
+import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app"
 import {
   browserLocalPersistence,
   getAuth,
   setPersistence,
+  type Auth,
 } from "firebase/auth"
-import { getFirestore } from "firebase/firestore"
+import { getFirestore, type Firestore } from "firebase/firestore"
 
 const FALLBACK_FIREBASE_CONFIG = {
   authDomain: "readative-803b0.firebaseapp.com",
@@ -25,9 +26,16 @@ function hasFirebaseEnvValue(key: string) {
   return typeof value === "string" && Boolean(value.trim())
 }
 
+function hasUsableFirebaseApiKey() {
+  const value = readFirebaseEnvValue("VITE_FIREBASE_API_KEY")
+  return /^AIza[0-9A-Za-z_-]{20,}$/.test(value)
+}
+
 export const firebaseConfigMissingKeys = [
-  "VITE_FIREBASE_API_KEY",
-].filter((key) => !hasFirebaseEnvValue(key))
+  hasFirebaseEnvValue("VITE_FIREBASE_API_KEY") && hasUsableFirebaseApiKey()
+    ? null
+    : "VITE_FIREBASE_API_KEY",
+].filter((key): key is string => Boolean(key))
 
 export const firebaseConfigReady = firebaseConfigMissingKeys.length === 0
 
@@ -59,14 +67,20 @@ const firebaseConfig = {
   ),
 }
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
-export const db = getFirestore(app)
-export const auth = getAuth(app)
+const app: FirebaseApp | null = firebaseConfigReady
+  ? getApps().length > 0
+    ? getApp()
+    : initializeApp(firebaseConfig)
+  : null
+const maybeDb = app ? getFirestore(app) : null
+const maybeAuth = app ? getAuth(app) : null
+
+export const db = maybeDb as Firestore
+export const auth = maybeAuth as Auth
 export const firebaseAuthDomain = firebaseConfig.authDomain
 
-export const authPersistenceReady = setPersistence(
-  auth,
-  browserLocalPersistence,
-).catch((error) => {
-  console.error("Firebase auth persistence setup failed:", error)
-})
+export const authPersistenceReady = maybeAuth
+  ? setPersistence(maybeAuth, browserLocalPersistence).catch((error) => {
+      console.error("Firebase auth persistence setup failed:", error)
+    })
+  : Promise.resolve()
