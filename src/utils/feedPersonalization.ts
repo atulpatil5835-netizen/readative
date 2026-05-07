@@ -8,7 +8,6 @@ const KNOWLEDGE_ACTIVITY_LIMIT = 260;
 const KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v3";
 const LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2";
 const KNOWLEDGE_ACTIVITY_KEY_PREFIX = "readativeKnowledgeFeedActivity:v2";
-export const KNOWLEDGE_FEED_ACTIVITY_EVENT = "knowledge-feed-activity";
 const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 18;
 const KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS = 72;
 const DUPLICATE_ACTIVITY_WINDOWS_MS = {
@@ -23,7 +22,7 @@ const DUPLICATE_ACTIVITY_WINDOWS_MS = {
 const ACTIVITY_WEIGHTS = {
   view: 0.9,
   open: 2.6,
-  like: 4.2,
+  like: 6.8,
   comment: 5.4,
   share: 4.8,
   author: 2.1,
@@ -95,11 +94,31 @@ interface ScoredKnowledgeEntry {
   primaryHashtag: string | null;
 }
 
+interface KnowledgeRankOptions {
+  refreshSeed?: number;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getStableRefreshNoise(value: string, refreshSeed = 0) {
+  let hash = 2166136261;
+  const input = `${refreshSeed}:${value}`;
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0) / 4294967295;
+}
+
 function getKnowledgeSeenEntryKey() {
+  return `${KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX}:${getKnowledgePersonalizationId()}`;
+}
+
+function getGuestKnowledgeSeenEntryKey() {
   return `${KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX}:${getGuestId()}`;
 }
 
@@ -108,7 +127,19 @@ function getLegacyKnowledgeSeenEntryKey() {
 }
 
 function getKnowledgeActivityKey() {
+  return `${KNOWLEDGE_ACTIVITY_KEY_PREFIX}:${getKnowledgePersonalizationId()}`;
+}
+
+function getGuestKnowledgeActivityKey() {
   return `${KNOWLEDGE_ACTIVITY_KEY_PREFIX}:${getGuestId()}`;
+}
+
+function getKnowledgePersonalizationId() {
+  if (typeof window === "undefined") {
+    return "server";
+  }
+
+  return getKnowledgeIdentity()?.authorId || getGuestId();
 }
 
 function getCurrentKnowledgeUserId() {
@@ -116,19 +147,7 @@ function getCurrentKnowledgeUserId() {
     return null;
   }
 
-  return getKnowledgeIdentity()?.authorId || getGuestId();
-}
-
-function emitKnowledgeFeedActivity(record: KnowledgeActivityRecord) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.dispatchEvent(
-    new CustomEvent(KNOWLEDGE_FEED_ACTIVITY_EVENT, {
-      detail: record,
-    }),
-  );
+  return getKnowledgePersonalizationId();
 }
 
 function normalizeTag(tag: string) {
@@ -253,7 +272,20 @@ function readKnowledgeActivities() {
 
   try {
     const raw = window.localStorage.getItem(getKnowledgeActivityKey());
-    return normalizeActivityRecords(raw ? JSON.parse(raw) : []);
+    if (raw) {
+      return normalizeActivityRecords(JSON.parse(raw));
+    }
+
+    const guestKey = getGuestKnowledgeActivityKey();
+    const primaryKey = getKnowledgeActivityKey();
+    if (guestKey !== primaryKey) {
+      const guestRaw = window.localStorage.getItem(guestKey);
+      if (guestRaw) {
+        return normalizeActivityRecords(JSON.parse(guestRaw));
+      }
+    }
+
+    return [];
   } catch {
     return [];
   }
@@ -283,6 +315,15 @@ function readKnowledgeSeenEntries() {
     const raw = window.localStorage.getItem(getKnowledgeSeenEntryKey());
     if (raw) {
       return normalizeSeenEntryRecords(JSON.parse(raw));
+    }
+
+    const guestKey = getGuestKnowledgeSeenEntryKey();
+    const primaryKey = getKnowledgeSeenEntryKey();
+    if (guestKey !== primaryKey) {
+      const guestRaw = window.localStorage.getItem(guestKey);
+      if (guestRaw) {
+        return normalizeSeenEntryRecords(JSON.parse(guestRaw));
+      }
     }
 
     const legacyRaw = window.localStorage.getItem(getLegacyKnowledgeSeenEntryKey());
@@ -394,8 +435,27 @@ function getLikedHashtagSimilarityScore(
 ) {
   return [...new Set(entry.hashtags.map(normalizeTag))].reduce((sum, tag) => {
     const likedAffinity = snapshot.likedHashtagAffinity.get(tag) || 0;
-    return sum + Math.min(5.5, likedAffinity * 1.25);
+    return sum + Math.min(9.5, likedAffinity * 2.1);
   }, 0);
+}
+
+function getRepeatedLikedTopicBoost(
+  entry: KnowledgeEntry,
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  const matchedLikedTags = [...new Set(entry.hashtags.map(normalizeTag))]
+    .map((tag) => snapshot.likedHashtagAffinity.get(tag) || 0)
+    .filter((affinity) => affinity >= 2.4)
+    .sort((left, right) => right - left);
+
+  if (matchedLikedTags.length === 0) {
+    return 0;
+  }
+
+  const topAffinity = matchedLikedTags[0];
+  const secondAffinity = matchedLikedTags[1] || 0;
+
+  return clamp(topAffinity * 2.8 + secondAffinity * 1.2, 0, 22);
 }
 
 function getWeightedRecencyScore(ageHours: number) {
@@ -470,13 +530,15 @@ function getPersonalizationScore(
     0,
   );
   const likedHashtagInterest = getLikedHashtagSimilarityScore(entry, snapshot);
+  const repeatedLikedTopicBoost = getRepeatedLikedTopicBoost(entry, snapshot);
   const entryInterest = snapshot.entryAffinity.get(entry.id) || 0;
 
   return Math.min(
-    30,
+    42,
     authorInterest +
       hashtagInterest * 1.05 +
-      likedHashtagInterest * 1.35 +
+      likedHashtagInterest * 1.6 +
+      repeatedLikedTopicBoost +
       entryInterest * 1.15,
   );
 }
@@ -531,6 +593,37 @@ function getExplorationScore(
   }
 
   return 0;
+}
+
+function getRefreshDiscoveryScore(
+  entry: KnowledgeEntry,
+  snapshot: KnowledgeFeedSnapshot,
+  ageHours: number,
+  hoursSinceSeen: number | null,
+  refreshSeed?: number,
+) {
+  if (typeof refreshSeed !== "number" || !Number.isFinite(refreshSeed)) {
+    return 0;
+  }
+
+  const noise = getStableRefreshNoise(entry.id, refreshSeed);
+  const freshUnseenWeight =
+    hoursSinceSeen === null
+      ? ageHours <= 12
+        ? 10
+        : ageHours <= 48
+          ? 7
+          : 4
+      : hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS
+        ? 2.5
+        : 0;
+  const likedTopicBoost = getRepeatedLikedTopicBoost(entry, snapshot);
+  const relatedDiscoveryBoost =
+    likedTopicBoost > 0 && hoursSinceSeen === null
+      ? clamp(likedTopicBoost / 3, 2, 8)
+      : 0;
+
+  return noise * freshUnseenWeight + relatedDiscoveryBoost;
 }
 
 function getStalePenalty(
@@ -601,6 +694,7 @@ function scoreKnowledgeEntry(
   entry: KnowledgeEntry,
   snapshot: KnowledgeFeedSnapshot,
   now: number,
+  options: KnowledgeRankOptions = {},
 ) {
   const ageHours = Math.max(0, (now - entry.createdAt) / HOUR_MS);
   const hoursSinceSeen = getHoursSinceSeen(entry.id, snapshot, now);
@@ -615,6 +709,13 @@ function scoreKnowledgeEntry(
   const personalizationScore = getPersonalizationScore(entry, snapshot);
   const noveltyScore = getNoveltyScore(entry, snapshot, ageHours, hoursSinceSeen);
   const explorationScore = getExplorationScore(entry, snapshot);
+  const refreshDiscoveryScore = getRefreshDiscoveryScore(
+    entry,
+    snapshot,
+    ageHours,
+    hoursSinceSeen,
+    options.refreshSeed,
+  );
   const newUnseenPostBoost = getNewUnseenPostBoost(ageHours, seen, likedByCurrentUser);
   const stalePenalty = getStalePenalty(ageHours, momentumScore, qualityScore);
   const repeatPenalty = getRepeatPenalty(hoursSinceSeen, ageHours);
@@ -635,6 +736,7 @@ function scoreKnowledgeEntry(
       personalizationScore +
       noveltyScore +
       explorationScore +
+      refreshDiscoveryScore +
       newUnseenPostBoost -
       stalePenalty -
       repeatPenalty -
@@ -782,7 +884,7 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
           const normalizedTag = normalizeTag(tag);
           addWeightedScore(hashtagAffinity, normalizedTag, perTagWeight);
           if (activity.type === "like") {
-            addWeightedScore(likedHashtagAffinity, normalizedTag, perTagWeight * 1.6);
+            addWeightedScore(likedHashtagAffinity, normalizedTag, perTagWeight * 2.4);
           }
         });
       }
@@ -836,7 +938,6 @@ export function recordKnowledgeFeedActivity(input: KnowledgeActivityInput) {
     }
 
     writeKnowledgeActivities([...activities, nextRecord]);
-    emitKnowledgeFeedActivity(nextRecord);
   } catch {
     // Engagement tracking is best-effort only.
   }
@@ -885,10 +986,11 @@ export function markKnowledgeEntrySeen(
 export function rankKnowledgeEntries(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
+  options: KnowledgeRankOptions = {},
 ) {
   const now = Date.now();
   const scoredEntries = [...entries]
-    .map((entry) => scoreKnowledgeEntry(entry, snapshot, now))
+    .map((entry) => scoreKnowledgeEntry(entry, snapshot, now, options))
     .sort((left, right) => {
       const scoreDelta = right.score - left.score;
       if (Math.abs(scoreDelta) > 0.01) {
@@ -934,8 +1036,11 @@ export function reconcileKnowledgeFeedOrder(
   entries: KnowledgeEntry[],
   currentOrder: string[],
   snapshot: KnowledgeFeedSnapshot,
+  options: KnowledgeRankOptions = {},
 ) {
-  const rankedEntryIds = rankKnowledgeEntries(entries, snapshot).map((entry) => entry.id);
+  const rankedEntryIds = rankKnowledgeEntries(entries, snapshot, options).map(
+    (entry) => entry.id,
+  );
   if (currentOrder.length === 0) {
     return rankedEntryIds;
   }
@@ -943,15 +1048,10 @@ export function reconcileKnowledgeFeedOrder(
   const availableEntryIds = new Set(entries.map((entry) => entry.id));
   const preservedOrder = currentOrder.filter((entryId) => availableEntryIds.has(entryId));
   const preservedEntryIds = new Set(preservedOrder);
-  const liveNewEntries = entries
-    .filter((entry) => !preservedEntryIds.has(entry.id))
-    .sort((left, right) => right.createdAt - left.createdAt)
-    .map((entry) => entry.id);
-  const liveNewEntryIds = new Set(liveNewEntries);
   const appendedEntries = rankedEntryIds.filter(
-    (entryId) => !preservedEntryIds.has(entryId) && !liveNewEntryIds.has(entryId),
+    (entryId) => !preservedEntryIds.has(entryId),
   );
-  const nextOrder = [...liveNewEntries, ...preservedOrder, ...appendedEntries];
+  const nextOrder = [...preservedOrder, ...appendedEntries];
 
   return areEntryOrdersEqual(currentOrder, nextOrder) ? currentOrder : nextOrder;
 }

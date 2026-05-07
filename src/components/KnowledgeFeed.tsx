@@ -51,7 +51,6 @@ import {
   ROUTE_CHANGE_EVENT,
 } from "../utils/routes";
 import {
-  KNOWLEDGE_FEED_ACTIVITY_EVENT,
   getKnowledgeFeedSnapshot,
   markKnowledgeEntrySeen,
   reconcileKnowledgeFeedOrder,
@@ -73,7 +72,6 @@ const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const INITIAL_RENDERED_ENTRY_LIMIT = 12;
 const RENDERED_ENTRY_BATCH_SIZE = 8;
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
-const FEED_INTERACTION_RERANK_DELAY_MS = 220;
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -376,6 +374,7 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
+  const feedRefreshSeedRef = useRef(Date.now());
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -384,57 +383,6 @@ export function KnowledgeFeed({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
-
-  useEffect(() => {
-    if (entriesRef.current.length === 0) return;
-
-    setFeedEntryOrder(
-      rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
-        (entry) => entry.id,
-      ),
-    );
-  }, [identity?.authorId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    let timeoutId: number | null = null;
-
-    const rerankFeed = () => {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-
-      timeoutId = window.setTimeout(() => {
-        timeoutId = null;
-        setFeedEntryOrder(
-          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
-            (entry) => entry.id,
-          ),
-        );
-      }, FEED_INTERACTION_RERANK_DELAY_MS);
-    };
-
-    const handleFeedActivity = (event: Event) => {
-      const activity = (event as CustomEvent<{ type?: string }>).detail;
-
-      if (activity?.type === "view") {
-        return;
-      }
-
-      rerankFeed();
-    };
-
-    window.addEventListener(KNOWLEDGE_FEED_ACTIVITY_EVENT, handleFeedActivity);
-
-    return () => {
-      window.removeEventListener(KNOWLEDGE_FEED_ACTIVITY_EVENT, handleFeedActivity);
-
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -449,10 +397,11 @@ export function KnowledgeFeed({
     setFeedSearchQuery("");
     setFeedMessage(null);
     setRenderedEntryLimit(INITIAL_RENDERED_ENTRY_LIMIT);
+    feedRefreshSeedRef.current = Date.now();
     setFeedEntryOrder(
-      rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
-        (entry) => entry.id,
-      ),
+      rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
+        refreshSeed: feedRefreshSeedRef.current,
+      }).map((entry) => entry.id),
     );
     setShowRefreshFeedback(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -486,7 +435,9 @@ export function KnowledgeFeed({
         setEntries(data);
         entriesRef.current = data;
         setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot()),
+          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot(), {
+            refreshSeed: feedRefreshSeedRef.current,
+          }),
         );
 
         setIsLoading(false);
