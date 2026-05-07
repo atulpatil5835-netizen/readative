@@ -51,6 +51,7 @@ import {
   ROUTE_CHANGE_EVENT,
 } from "../utils/routes";
 import {
+  KNOWLEDGE_FEED_ACTIVITY_EVENT,
   getKnowledgeFeedSnapshot,
   markKnowledgeEntrySeen,
   reconcileKnowledgeFeedOrder,
@@ -72,6 +73,7 @@ const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const INITIAL_RENDERED_ENTRY_LIMIT = 12;
 const RENDERED_ENTRY_BATCH_SIZE = 8;
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
+const FEED_INTERACTION_RERANK_DELAY_MS = 220;
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -86,6 +88,14 @@ interface FeedMessage {
   tone: "success" | "warning";
   title: string;
   body: string;
+}
+
+interface BrowserIdleCallbacks {
+  requestIdleCallback?: (
+    callback: IdleRequestCallback,
+    options?: IdleRequestOptions,
+  ) => number;
+  cancelIdleCallback?: (handle: number) => void;
 }
 
 interface KnowledgeFeedProps {
@@ -376,6 +386,57 @@ export function KnowledgeFeed({
   }, [entries]);
 
   useEffect(() => {
+    if (entriesRef.current.length === 0) return;
+
+    setFeedEntryOrder(
+      rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
+        (entry) => entry.id,
+      ),
+    );
+  }, [identity?.authorId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let timeoutId: number | null = null;
+
+    const rerankFeed = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null;
+        setFeedEntryOrder(
+          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
+            (entry) => entry.id,
+          ),
+        );
+      }, FEED_INTERACTION_RERANK_DELAY_MS);
+    };
+
+    const handleFeedActivity = (event: Event) => {
+      const activity = (event as CustomEvent<{ type?: string }>).detail;
+
+      if (activity?.type === "view") {
+        return;
+      }
+
+      rerankFeed();
+    };
+
+    window.addEventListener(KNOWLEDGE_FEED_ACTIVITY_EVENT, handleFeedActivity);
+
+    return () => {
+      window.removeEventListener(KNOWLEDGE_FEED_ACTIVITY_EVENT, handleFeedActivity);
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (composerOpenSignal > 0) {
       setShowComposer(true);
       setFeedMessage(null);
@@ -449,6 +510,7 @@ export function KnowledgeFeed({
     let unsubscribe: (() => void) | null = null;
     let timeoutId: number | null = null;
     let idleCallbackId: number | null = null;
+    const browserIdle = window as unknown as BrowserIdleCallbacks;
 
     const startProfilesListener = () => {
       if (unsubscribe) {
@@ -480,8 +542,8 @@ export function KnowledgeFeed({
       );
     };
 
-    if ("requestIdleCallback" in window) {
-      idleCallbackId = window.requestIdleCallback(startProfilesListener, {
+    if (browserIdle.requestIdleCallback) {
+      idleCallbackId = browserIdle.requestIdleCallback(startProfilesListener, {
         timeout: PROFILE_DIRECTORY_IDLE_TIMEOUT_MS,
       });
     } else {
@@ -489,8 +551,8 @@ export function KnowledgeFeed({
     }
 
     return () => {
-      if (idleCallbackId !== null && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleCallbackId);
+      if (idleCallbackId !== null && browserIdle.cancelIdleCallback) {
+        browserIdle.cancelIdleCallback(idleCallbackId);
       }
 
       if (timeoutId !== null) {

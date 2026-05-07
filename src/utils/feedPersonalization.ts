@@ -1,5 +1,6 @@
 import type { KnowledgeEntry } from "../types";
 import { getGuestId } from "./guestIdentity";
+import { getKnowledgeIdentity } from "./knowledgeIdentity";
 
 const HOUR_MS = 60 * 60 * 1000;
 const KNOWLEDGE_SEEN_ENTRY_LIMIT = 1500;
@@ -7,6 +8,7 @@ const KNOWLEDGE_ACTIVITY_LIMIT = 260;
 const KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v3";
 const LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2";
 const KNOWLEDGE_ACTIVITY_KEY_PREFIX = "readativeKnowledgeFeedActivity:v2";
+export const KNOWLEDGE_FEED_ACTIVITY_EVENT = "knowledge-feed-activity";
 const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 18;
 const KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS = 72;
 const DUPLICATE_ACTIVITY_WINDOWS_MS = {
@@ -107,6 +109,26 @@ function getLegacyKnowledgeSeenEntryKey() {
 
 function getKnowledgeActivityKey() {
   return `${KNOWLEDGE_ACTIVITY_KEY_PREFIX}:${getGuestId()}`;
+}
+
+function getCurrentKnowledgeUserId() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return getKnowledgeIdentity()?.authorId || getGuestId();
+}
+
+function emitKnowledgeFeedActivity(record: KnowledgeActivityRecord) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(KNOWLEDGE_FEED_ACTIVITY_EVENT, {
+      detail: record,
+    }),
+  );
 }
 
 function normalizeTag(tag: string) {
@@ -736,7 +758,7 @@ export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
     const seenEntries = readKnowledgeSeenEntries();
     const activities = readKnowledgeActivities();
     const now = Date.now();
-    const currentUserId = getGuestId();
+    const currentUserId = getCurrentKnowledgeUserId();
     const authorAffinity = new Map<string, number>();
     const hashtagAffinity = new Map<string, number>();
     const likedHashtagAffinity = new Map<string, number>();
@@ -814,6 +836,7 @@ export function recordKnowledgeFeedActivity(input: KnowledgeActivityInput) {
     }
 
     writeKnowledgeActivities([...activities, nextRecord]);
+    emitKnowledgeFeedActivity(nextRecord);
   } catch {
     // Engagement tracking is best-effort only.
   }

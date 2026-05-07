@@ -9,6 +9,13 @@ let thirdPartyScriptsScheduled = false;
 let analyticsConfigured = false;
 let adsScriptScheduled = false;
 
+interface BrowserIdleCallbacks {
+  requestIdleCallback?: (
+    callback: IdleRequestCallback,
+    options?: IdleRequestOptions,
+  ) => number;
+}
+
 function appendScript(
   source: string,
   attributes: Record<string, string | boolean> = {},
@@ -74,8 +81,10 @@ function runWhenBrowserIsIdle(callback: () => void) {
     return;
   }
 
-  if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(callback, { timeout: 3000 });
+  const browserIdle = window as unknown as BrowserIdleCallbacks;
+
+  if (browserIdle.requestIdleCallback) {
+    browserIdle.requestIdleCallback(callback, { timeout: 3000 });
     return;
   }
 
