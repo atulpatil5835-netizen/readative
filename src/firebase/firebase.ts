@@ -16,6 +16,8 @@ const FALLBACK_FIREBASE_CONFIG = {
   measurementId: "G-09CXBVC580",
 } as const
 
+const BRANDED_AUTH_DOMAIN = "readative.com"
+
 function readFirebaseEnvValue(key: string, fallback = "") {
   const value = import.meta.env[key]
   return typeof value === "string" && value.trim() ? value.trim() : fallback
@@ -31,6 +33,43 @@ function hasUsableFirebaseApiKey() {
   return /^AIza[0-9A-Za-z_-]{20,}$/.test(value)
 }
 
+function normalizeAuthDomain(value: string) {
+  return value
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .trim()
+}
+
+function isDefaultFirebaseAuthDomain(value: string) {
+  const normalized = normalizeAuthDomain(value)
+  return (
+    normalized === FALLBACK_FIREBASE_CONFIG.authDomain ||
+    normalized.endsWith(".firebaseapp.com")
+  )
+}
+
+function resolveFirebaseAuthDomain() {
+  const configuredAuthDomain = normalizeAuthDomain(
+    readFirebaseEnvValue("VITE_FIREBASE_AUTH_DOMAIN"),
+  )
+  const brandedAuthDomain = normalizeAuthDomain(
+    readFirebaseEnvValue("VITE_FIREBASE_BRANDED_AUTH_DOMAIN", BRANDED_AUTH_DOMAIN),
+  )
+  const forceProjectAuthDomain =
+    readFirebaseEnvValue("VITE_FIREBASE_USE_PROJECT_AUTH_DOMAIN").toLowerCase() ===
+    "true"
+
+  if (forceProjectAuthDomain) {
+    return configuredAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
+  }
+
+  if (!configuredAuthDomain || isDefaultFirebaseAuthDomain(configuredAuthDomain)) {
+    return brandedAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
+  }
+
+  return configuredAuthDomain
+}
+
 export const firebaseConfigMissingKeys = [
   hasFirebaseEnvValue("VITE_FIREBASE_API_KEY") && hasUsableFirebaseApiKey()
     ? null
@@ -41,10 +80,7 @@ export const firebaseConfigReady = firebaseConfigMissingKeys.length === 0
 
 const firebaseConfig = {
   apiKey: readFirebaseEnvValue("VITE_FIREBASE_API_KEY"),
-  authDomain: readFirebaseEnvValue(
-    "VITE_FIREBASE_AUTH_DOMAIN",
-    FALLBACK_FIREBASE_CONFIG.authDomain,
-  ),
+  authDomain: resolveFirebaseAuthDomain(),
   projectId: readFirebaseEnvValue(
     "VITE_FIREBASE_PROJECT_ID",
     FALLBACK_FIREBASE_CONFIG.projectId,

@@ -18,5 +18,13 @@ View your app in AI Studio: https://ai.studio/apps/9284e864-ea53-486c-b150-f2122
 2. Set the AI keys in `.env.local`:
    `GEMINI_API_KEY` for the existing Gemini-powered tools
    `OPENAI_API_KEY` for the new ChatGPT SmartTalk and low-interaction comment fallbacks
+   `VITE_FIREBASE_AUTH_DOMAIN=readative.com` for the branded Google sign-in helper URL
 3. Run the app:
    `npm run dev`
+
+## Branded Firebase Auth URL
+
+Readative uses `readative.com` as the Firebase Auth domain so the Google sign-in
+window opens on a branded URL instead of `readative-803b0.firebaseapp.com`.
+Keep the `/__/auth/*` rewrite enabled in production and add `readative.com` in
+Firebase Authentication authorized domains.

@@ -1,3 +1,4 @@
+/__/auth/* https://readative-803b0.firebaseapp.com/__/auth/:splat 200
 /smarttalk /index.html 200
 /smarttalk/ /index.html 200
 /smarttalk/* /index.html 200
@@ -7,3 +8,19 @@
 /knowledge /index.html 200
 /knowledge/ /index.html 200
 /knowledge/* /index.html 200
+/about /index.html 200
+/about/ /index.html 200
+/contact /index.html 200
+/contact/ /index.html 200
+/privacy /index.html 200
+/privacy/ /index.html 200
+/privacy-policy /index.html 200
+/privacy-policy/ /index.html 200
+/terms /index.html 200
+/terms/ /index.html 200
+/terms-and-conditions /index.html 200
+/terms-and-conditions/ /index.html 200
+/author /index.html 200
+/author/ /index.html 200
+/author-identity /index.html 200
+/author-identity/ /index.html 200

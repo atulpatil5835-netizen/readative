@@ -1,24 +1,40 @@
 import { type ReactNode, useState } from "react";
 import {
   AtSign,
+  BookOpenText,
+  FileText,
   Heart,
   Linkedin,
   Mail,
   MessageCircle,
+  Scale,
   ShieldCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import { type UserNotification } from "../types";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import { buildPublicPath, type AppTab } from "../utils/routes";
 import {
   markNotificationAsRead,
   markNotificationsAsRead,
 } from "../utils/notifications";
 
-type InfoSection = "about" | "contact" | "privacy";
+type InfoSection = "about" | "contact" | "privacy" | "terms" | "author";
 
-export function InfoPanel({ onClose }: { onClose: () => void }) {
+export function InfoPanel({
+  onClose,
+  onNavigate,
+}: {
+  onClose: () => void;
+  onNavigate: (tab: AppTab) => void;
+}) {
   const [activeSection, setActiveSection] = useState<InfoSection>("about");
+
+  const openPage = (tab: AppTab) => {
+    onClose();
+    onNavigate(tab);
+  };
 
   return (
     <div
@@ -36,10 +52,10 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                 Readative Info
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-tight">
-                About, contact, and privacy
+                About, contact, and policies
               </h2>
               <p className="mt-2 text-sm text-emerald-50">
-                Open the section you need from the buttons below.
+                Open a quick summary or jump to the full public page.
               </p>
             </div>
             <button
@@ -50,21 +66,31 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
             <InfoSectionButton
               active={activeSection === "about"}
-              label="About Us"
+              label="About"
               onClick={() => setActiveSection("about")}
             />
             <InfoSectionButton
               active={activeSection === "contact"}
-              label="Contact Us"
+              label="Contact"
               onClick={() => setActiveSection("contact")}
             />
             <InfoSectionButton
               active={activeSection === "privacy"}
-              label="Privacy Policy"
+              label="Privacy"
               onClick={() => setActiveSection("privacy")}
+            />
+            <InfoSectionButton
+              active={activeSection === "terms"}
+              label="Terms"
+              onClick={() => setActiveSection("terms")}
+            />
+            <InfoSectionButton
+              active={activeSection === "author"}
+              label="Author"
+              onClick={() => setActiveSection("author")}
             />
           </div>
         </div>
@@ -73,9 +99,14 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
           {activeSection === "about" && (
             <div className="space-y-6">
               <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 px-5 py-5">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-                  About Us
-                </p>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-white p-2 text-emerald-700">
+                    <BookOpenText className="h-4 w-4" />
+                  </span>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
+                    About Readative
+                  </p>
+                </div>
                 <p className="mt-3 text-sm leading-6 text-slate-700">
                   Readative is a knowledge-first community designed for useful
                   ideas, thoughtful learning posts, and SmartTalk discussions that
@@ -106,14 +137,6 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                   <p className="text-2xl font-black tracking-tight text-slate-950">
                     Atul Hinge
                   </p>
-                  <a
-                    href="https://razorpay.me/@atulsadanandhinge"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center rounded-full border border-amber-300 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-950 transition-colors hover:border-amber-400 hover:bg-amber-400"
-                  >
-                    Buy Me a Coffee ☕
-                  </a>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   Founder and creator of Readative.
@@ -126,6 +149,11 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                   />
                 </div>
               </div>
+              <InfoPageLink
+                tab="about"
+                label="Open full About page"
+                onClick={openPage}
+              />
             </div>
           )}
 
@@ -147,6 +175,11 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                 Use this email for support, business questions, creator contact,
                 or privacy requests.
               </p>
+              <InfoPageLink
+                tab="contact"
+                label="Open full Contact page"
+                onClick={openPage}
+              />
             </div>
           )}
 
@@ -188,6 +221,84 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                   body="These policies may be updated as Readative grows. For privacy or policy questions, contact reader@readative.com."
                 />
               </div>
+              <InfoPageLink
+                tab="privacy"
+                label="Open full Privacy Policy"
+                onClick={openPage}
+              />
+            </div>
+          )}
+
+          {activeSection === "terms" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <Scale className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Terms & Conditions
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Community rules and usage standards
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+                <PolicyBlock
+                  title="Use Readative responsibly"
+                  body="Posts and comments should be lawful, respectful, useful, and safe for a broad learning community."
+                />
+                <PolicyBlock
+                  title="User content"
+                  body="Users remain responsible for what they publish and should only post content they own or have permission to share."
+                />
+                <PolicyBlock
+                  title="Moderation"
+                  body="Readative may remove spam, abusive content, copied material, unsafe posts, or activity that damages community trust."
+                />
+              </div>
+              <InfoPageLink
+                tab="terms"
+                label="Open full Terms & Conditions"
+                onClick={openPage}
+              />
+            </div>
+          )}
+
+          {activeSection === "author" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <UserRound className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Author Identity
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Creator and maintenance transparency
+                  </p>
+                </div>
+              </div>
+              <p className="mt-5 text-sm leading-6 text-slate-700">
+                Readative is created and maintained by Atul Hinge. The product
+                focuses on practical knowledge sharing, original learning posts,
+                and respectful discussion.
+              </p>
+              <div className="mt-4">
+                <IconOnlyLink
+                  href="https://www.linkedin.com/in/atul-hinge-304aab155/"
+                  label="Open creator LinkedIn profile"
+                  icon={<Linkedin className="h-4 w-4" />}
+                />
+              </div>
+              <InfoPageLink
+                tab="author"
+                label="Open full Author Identity page"
+                onClick={openPage}
+              />
             </div>
           )}
         </div>
@@ -413,6 +524,30 @@ function IconOnlyLink({
       className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
     >
       {icon}
+    </a>
+  );
+}
+
+function InfoPageLink({
+  tab,
+  label,
+  onClick,
+}: {
+  tab: AppTab;
+  label: string;
+  onClick: (tab: AppTab) => void;
+}) {
+  return (
+    <a
+      href={buildPublicPath(tab)}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick(tab);
+      }}
+      className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+    >
+      <FileText className="h-4 w-4" />
+      {label}
     </a>
   );
 }

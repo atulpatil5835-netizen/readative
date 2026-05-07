@@ -100,7 +100,7 @@ function getFirebaseAuthErrorMessage(error: unknown) {
   if (code === "auth/unauthorized-domain") {
     const host =
       typeof window !== "undefined" ? window.location.hostname : "this domain";
-    return `This site is not added to Firebase Auth authorized domains. Add ${host} for ${firebaseAuthDomain}.`;
+    return `This site is not added to Firebase Auth authorized domains. Add ${host} and ${firebaseAuthDomain} in Firebase Authentication authorized domains, then try again.`;
   }
 
   if (code === "auth/operation-not-allowed") {

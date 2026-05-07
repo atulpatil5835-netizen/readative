@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, CirclePlus, Info, LogIn, LogOut, MoreVertical } from "lucide-react";
 import { Logo } from "./Logo";
-import { type AppTab } from "../utils/routes";
+import { buildPublicPath, type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
 interface HeaderProps {
@@ -29,7 +29,7 @@ export function Header({
   onOpenSignIn,
   onSignOut,
 }: HeaderProps) {
-  const tabs: AppTab[] = ["knowledge", "smarttalk", "profile"];
+  const tabs: AppTab[] = ["knowledge", "smarttalk", "profile", "about", "contact"];
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,19 +90,33 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-3">
-          <nav className="hidden items-center gap-6 md:flex">
+          <nav className="hidden items-center gap-4 md:flex">
             {tabs.map((tab) => {
               const label =
                 tab === "smarttalk"
                   ? "SmartTalk"
                   : tab === "knowledge"
                   ? "Home"
-                  : "Profile";
+                  : tab === "profile"
+                  ? "Profile"
+                  : tab === "about"
+                  ? "About"
+                  : "Contact";
 
               return (
-                <button
+                <a
                   key={tab}
-                  onClick={tab === "knowledge" ? onHomeAction : () => setActiveTab(tab)}
+                  href={buildPublicPath(tab)}
+                  onClick={(event) => {
+                    event.preventDefault();
+
+                    if (tab === "knowledge") {
+                      onHomeAction();
+                      return;
+                    }
+
+                    setActiveTab(tab);
+                  }}
                   className={`relative text-sm font-medium transition-colors ${
                     activeTab === tab
                       ? "text-emerald-600"
@@ -115,7 +129,7 @@ export function Header({
                       {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
                     </span>
                   )}
-                </button>
+                </a>
               );
             })}
           </nav>

@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { firebaseAuthDomain } from "../firebase/firebase";
 
 interface IdentityPromptProps {
   title?: string;
@@ -240,6 +241,7 @@ export function GoogleSignInPrompt({
 }: GoogleSignInPromptProps) {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const signInDomain = firebaseAuthDomain.replace(/^www\./, "");
 
   const handleSignIn = async () => {
     setIsSigningIn(true);
@@ -278,6 +280,13 @@ export function GoogleSignInPrompt({
           <p className="mt-2 text-sm leading-6 text-slate-500">
             {description}
           </p>
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">
+              Secure sign-in opens from{" "}
+              <span className="font-black">{signInDomain}</span>
+            </span>
+          </div>
         </div>
 
         <div className="mt-5 space-y-4">

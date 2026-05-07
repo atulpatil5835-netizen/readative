@@ -1,4 +1,6 @@
-export type AppTab = "knowledge" | "smarttalk" | "profile";
+export type StaticAppTab = "about" | "contact" | "privacy" | "terms" | "author";
+
+export type AppTab = "knowledge" | "smarttalk" | "profile" | StaticAppTab;
 
 export interface RouteOptions {
   focusedEntryId?: string | null;
@@ -16,6 +18,45 @@ export interface ParsedAppRoute {
 }
 
 export const ROUTE_CHANGE_EVENT = "readative:routechange";
+
+export const STATIC_APP_TABS: StaticAppTab[] = [
+  "about",
+  "contact",
+  "privacy",
+  "terms",
+  "author",
+];
+
+const staticRoutePaths: Record<StaticAppTab, string> = {
+  about: "/about",
+  contact: "/contact",
+  privacy: "/privacy-policy",
+  terms: "/terms-and-conditions",
+  author: "/author",
+};
+
+const staticRouteAliases: Record<string, StaticAppTab> = {
+  about: "about",
+  "/about": "about",
+  contact: "contact",
+  "/contact": "contact",
+  privacy: "privacy",
+  "/privacy": "privacy",
+  "privacy-policy": "privacy",
+  "/privacy-policy": "privacy",
+  terms: "terms",
+  "/terms": "terms",
+  "terms-and-conditions": "terms",
+  "/terms-and-conditions": "terms",
+  author: "author",
+  "/author": "author",
+  "author-identity": "author",
+  "/author-identity": "author",
+};
+
+export function isStaticAppTab(tab: AppTab | "notFound"): tab is StaticAppTab {
+  return STATIC_APP_TABS.includes(tab as StaticAppTab);
+}
 
 function safeDecode(value: string) {
   try {
@@ -106,6 +147,20 @@ function parseProfileRoute(
   return null;
 }
 
+function parseStaticRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string
+) {
+  const tab = staticRouteAliases[routePart];
+
+  if (!tab) {
+    return null;
+  }
+
+  return createRoute(tab, source, attemptedLocation);
+}
+
 function parseHashRoute(hash: string) {
   const cleanedHash = hash.replace(/^#/, "").trim();
   const attemptedLocation = cleanedHash ? `#${cleanedHash}` : "#";
@@ -121,6 +176,7 @@ function parseHashRoute(hash: string) {
   }
 
   return (
+    parseStaticRoute(routePart, "hash", attemptedLocation) ||
     parseKnowledgeRoute(routePart, search, "hash", attemptedLocation) ||
     parseProfileRoute(routePart, "hash", attemptedLocation) ||
     createRoute("notFound", "hash", attemptedLocation)
@@ -142,6 +198,7 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   return (
+    parseStaticRoute(normalizedPathname, "path", attemptedLocation) ||
     parseKnowledgeRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseProfileRoute(normalizedPathname, "path", attemptedLocation) ||
     createRoute("notFound", "path", attemptedLocation)
@@ -181,6 +238,10 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
     return "/smarttalk";
   }
 
+  if (isStaticAppTab(tab)) {
+    return staticRoutePaths[tab];
+  }
+
   return "/";
 }
 
@@ -214,6 +275,10 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
 
   if (tab === "smarttalk") {
     return "#smarttalk";
+  }
+
+  if (isStaticAppTab(tab)) {
+    return `#${staticRoutePaths[tab].replace(/^\//, "")}`;
   }
 
   return "#knowledge";
