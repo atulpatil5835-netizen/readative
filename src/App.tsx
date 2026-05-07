@@ -4,10 +4,8 @@ import {
   MessageSquareMore,
   TriangleAlert,
 } from "lucide-react";
-import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { GoogleSignInPrompt } from "./components/Auth";
-import { StaticPage } from "./components/StaticPages";
 import {
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
@@ -27,7 +25,6 @@ import {
   navigateToRoute,
   parseRouteFromLocation,
   ROUTE_CHANGE_EVENT,
-  isStaticAppTab,
   type AppTab,
 } from "./utils/routes";
 import { trackPageView } from "./utils/analytics";
@@ -293,9 +290,6 @@ export default function App() {
     );
   }, []);
 
-  const isStaticRoute = isStaticAppTab(activeTab);
-  const mainWidthClass = isStaticRoute ? "max-w-3xl" : "max-w-2xl";
-
   return (
     <HelmetProvider>
       <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
@@ -315,7 +309,7 @@ export default function App() {
           onSignOut={() => void handleGoogleSignOut()}
         />
 
-        <main className={`mx-auto ${mainWidthClass} px-4 pb-24 pt-20`}>
+        <main className="mx-auto max-w-2xl px-4 pb-24 pt-20">
           {notificationsError && (
             <BannerNotice
               title="Notifications unavailable"
@@ -332,16 +326,14 @@ export default function App() {
             />
           )}
 
-          {activeTab === "notFound" ? (
+          {!firebaseConfigReady ? (
+            <FirebaseSetupRoute missingKeys={firebaseConfigMissingKeys} />
+          ) : activeTab === "notFound" ? (
             <NotFoundRoute
               attemptedPath={routeErrorPath}
               onGoHome={() => handleTabChange("knowledge")}
               onOpenSmartTalk={() => handleTabChange("smarttalk")}
             />
-          ) : isStaticRoute ? (
-            <StaticPage page={activeTab} onNavigate={handleTabChange} />
-          ) : !firebaseConfigReady ? (
-            <FirebaseSetupRoute missingKeys={firebaseConfigMissingKeys} />
           ) : activeTab === "knowledge" ? (
             <Suspense fallback={<SectionSkeleton label="Loading home feed..." />}>
               <KnowledgeFeed
@@ -374,16 +366,11 @@ export default function App() {
               />
             </Suspense>
           )}
-
-          <Footer activeTab={activeTab} onNavigate={handleTabChange} />
         </main>
 
         {showInfoPanel && (
           <Suspense fallback={null}>
-            <InfoPanel
-              onClose={() => setShowInfoPanel(false)}
-              onNavigate={handleTabChange}
-            />
+            <InfoPanel onClose={() => setShowInfoPanel(false)} />
           </Suspense>
         )}
         {showNotificationsPanel && (

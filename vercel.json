@@ -15,20 +15,6 @@
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
     { "source": "/api/posts/:id/comments", "destination": "/api/posts?id=:id&action=comments" },
-    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" },
-    { "source": "/smarttalk", "destination": "/index.html" },
-    { "source": "/smarttalk/:path*", "destination": "/index.html" },
-    { "source": "/profile", "destination": "/index.html" },
-    { "source": "/profile/:path*", "destination": "/index.html" },
-    { "source": "/knowledge", "destination": "/index.html" },
-    { "source": "/knowledge/:path*", "destination": "/index.html" },
-    { "source": "/about", "destination": "/index.html" },
-    { "source": "/contact", "destination": "/index.html" },
-    { "source": "/privacy", "destination": "/index.html" },
-    { "source": "/privacy-policy", "destination": "/index.html" },
-    { "source": "/terms", "destination": "/index.html" },
-    { "source": "/terms-and-conditions", "destination": "/index.html" },
-    { "source": "/author", "destination": "/index.html" },
-    { "source": "/author-identity", "destination": "/index.html" }
+    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" }
   ]
 }
