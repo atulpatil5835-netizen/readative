@@ -71,6 +71,7 @@ const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const INITIAL_RENDERED_ENTRY_LIMIT = 12;
 const RENDERED_ENTRY_BATCH_SIZE = 8;
+const FEED_LOAD_TIMEOUT_MS = 9000;
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 
 interface SelectedImage extends KnowledgeImageAsset {
@@ -418,10 +419,21 @@ export function KnowledgeFeed({
       collection(db, "knowledge"),
       orderBy("createdAt", "desc"),
     );
+    let didReceiveFeedResponse = false;
+    const timeoutId = window.setTimeout(() => {
+      if (didReceiveFeedResponse) return;
+
+      setIsLoading(false);
+      setFeedLoadError(
+        "Posts are taking longer than expected to load. Please refresh, or try again in a moment.",
+      );
+    }, FEED_LOAD_TIMEOUT_MS);
 
     const unsubscribe = onSnapshot(
       knowledgeQuery,
       (snapshot) => {
+        didReceiveFeedResponse = true;
+        window.clearTimeout(timeoutId);
         const data = snapshot.docs.map((item) =>
           normalizeKnowledgeEntry(
             item.id,
@@ -444,6 +456,8 @@ export function KnowledgeFeed({
         setFeedLoadError(null);
       },
       (error) => {
+        didReceiveFeedResponse = true;
+        window.clearTimeout(timeoutId);
         console.error("Knowledge feed error:", error);
         setIsLoading(false);
         setFeedLoadError(
@@ -452,7 +466,10 @@ export function KnowledgeFeed({
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

@@ -26,9 +26,9 @@ View your app in AI Studio: https://ai.studio/apps/9284e864-ea53-486c-b150-f2122
 ## Branded Firebase Auth URL
 
 Readative uses `readative.com` as the Firebase Auth domain so the Google sign-in
-window opens on a branded URL instead of `readative-803b0.firebaseapp.com`.
-Local development still uses `readative-803b0.firebaseapp.com` to avoid Google
-OAuth `redirect_uri_mismatch` errors while running on `localhost`. Keep the
-`/__/auth/*` rewrite enabled in production and add `readative.com` in Firebase
-Authentication authorized domains. If Google Cloud asks for a redirect URI, add
+window opens on a branded URL in production. Local development still uses
+`readative-803b0.firebaseapp.com` to avoid Google OAuth `redirect_uri_mismatch`
+errors while running on `localhost`. Keep the `/__/auth/*` rewrite enabled in
+production and add `readative.com` in Firebase Authentication authorized
+domains. If Google Cloud asks for a redirect URI, add
 `https://readative.com/__/auth/handler`.

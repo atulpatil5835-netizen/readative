@@ -17,6 +17,7 @@ import {
   subscribeToGoogleIdentity,
 } from "./utils/googleAuth";
 import {
+  db,
   firebaseConfigMissingKeys,
   firebaseConfigReady,
 } from "./firebase/firebase";
@@ -218,14 +219,14 @@ export default function App() {
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
 
-    void Promise.all([import("firebase/firestore"), import("./firebase/firebase")])
-      .then(([firestore, firebase]) => {
+    void import("firebase/firestore")
+      .then((firestore) => {
         if (cancelled) {
           return;
         }
 
         const notificationsQuery = firestore.query(
-          firestore.collection(firebase.db, "notifications"),
+          firestore.collection(db, "notifications"),
           firestore.where("targetAuthorId", "==", identity.authorId)
         );
 
