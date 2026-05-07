@@ -10,6 +10,10 @@ export function getGuestId(): string {
   return id;
 }
 
+export function getSavedGuestId(): string | null {
+  return localStorage.getItem(GUEST_ID_KEY)?.trim() || null;
+}
+
 export function getGuestName(): string | null {
   const savedName = localStorage.getItem(GUEST_NAME_KEY)?.trim();
   return savedName || null;

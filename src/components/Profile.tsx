@@ -1,23 +1,45 @@
-import { useEffect, useState } from "react";
-import { BookOpenText, Clock3, Heart, ImagePlus, Sparkles, User } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import {
+  BookOpenText,
+  Clock3,
+  Heart,
+  ImagePlus,
+  Instagram,
+  Linkedin,
+  Pencil,
+  Save,
+  Sparkles,
+  User,
+  X,
+  Youtube,
+} from "lucide-react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { KnowledgeEntry, KnowledgeImageAsset, UserProfile } from "../types";
+import {
+  KnowledgeEntry,
+  KnowledgeImageAsset,
+  UserProfile,
+  UserSocialLinks,
+} from "../types";
 import { SEO } from "./SEO";
-import { IdentityPrompt, UsernamePrompt } from "./Auth";
+import { GoogleSignInPrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
 import {
   changeProfilePhoto,
   changeProfileUsername,
-  ensureGuestProfile,
   getUsernameChangeRemaining,
+  updateProfileSocialLinks,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { getGuestName } from "../utils/guestIdentity";
 import { buildAbsoluteRouteUrl } from "../utils/routes";
 import { hydrateUserProfile } from "../utils/profileData";
+import { signInWithGoogleAccount } from "../utils/googleAuth";
+import {
+  canViewKnowledgeEntry,
+  normalizeKnowledgeVisibility,
+} from "../utils/knowledgePrivacy";
 
 type ProfileSection = "shared" | "liked";
 
@@ -40,6 +62,43 @@ function formatCooldown(remainingMs: number) {
   return `Username can be changed again in about ${days} day${days === 1 ? "" : "s"}.`;
 }
 
+function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>) {
+  const createdAt = data.createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+  const updatedAt = data.updatedAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+
+  return {
+    ...data,
+    id,
+    visibility: normalizeKnowledgeVisibility(data.visibility),
+    comments: data.comments || [],
+    likes: data.likes || [],
+    hashtags: data.hashtags || [],
+    mentions: data.mentions || [],
+    createdAt:
+      createdAt &&
+      typeof createdAt === "object" &&
+      typeof createdAt.toMillis === "function"
+        ? createdAt.toMillis()
+        : typeof createdAt === "number"
+          ? createdAt
+          : Date.now(),
+    updatedAt:
+      updatedAt &&
+      typeof updatedAt === "object" &&
+      typeof updatedAt.toMillis === "function"
+        ? updatedAt.toMillis()
+        : typeof updatedAt === "number"
+          ? updatedAt
+          : null,
+  } as KnowledgeEntry;
+}
+
 export function Profile({
   currentIdentity,
   viewedAuthorId,
@@ -55,16 +114,17 @@ export function Profile({
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
-  const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [avatarSaveError, setAvatarSaveError] = useState<string | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileEditError, setProfileEditError] = useState<string | null>(null);
   const [section, setSection] = useState<ProfileSection>("shared");
   const [pendingAction, setPendingAction] = useState<
     { type: "like" | "comment"; entryId: string } | null
   >(null);
 
-  const guestName = getGuestName();
   const activeAuthorId = viewedAuthorId || currentIdentity?.authorId || null;
   const isOwnProfile =
     Boolean(currentIdentity?.authorId) &&
@@ -124,14 +184,16 @@ export function Profile({
       onSnapshot(
         query(collection(db, "knowledge"), where("authorId", "==", activeAuthorId)),
         (snapshot) => {
-          const data = snapshot.docs.map((item) => ({
-            id: item.id,
-            ...item.data(),
-            createdAt:
-              item.data().createdAt?.toMillis?.() ||
-              item.data().createdAt ||
-              Date.now(),
-          })) as KnowledgeEntry[];
+          const data = snapshot.docs
+            .map((item) =>
+              hydrateKnowledgeFromSnapshot(
+                item.id,
+                item.data() as Partial<KnowledgeEntry>,
+              ),
+            )
+            .filter((entry) =>
+              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
+            );
 
           setSharedEntries(sortKnowledge(data));
           setProfileLoadError(null);
@@ -150,14 +212,16 @@ export function Profile({
       onSnapshot(
         query(collection(db, "knowledge"), where("likes", "array-contains", activeAuthorId)),
         (snapshot) => {
-          const data = snapshot.docs.map((item) => ({
-            id: item.id,
-            ...item.data(),
-            createdAt:
-              item.data().createdAt?.toMillis?.() ||
-              item.data().createdAt ||
-              Date.now(),
-          })) as KnowledgeEntry[];
+          const data = snapshot.docs
+            .map((item) =>
+              hydrateKnowledgeFromSnapshot(
+                item.id,
+                item.data() as Partial<KnowledgeEntry>,
+              ),
+            )
+            .filter((entry) =>
+              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
+            );
 
           setLikedEntries(sortKnowledge(data));
           setProfileLoadError(null);
@@ -175,7 +239,7 @@ export function Profile({
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [activeAuthorId, isOwnProfile]);
+  }, [activeAuthorId, currentIdentity?.authorId, isOwnProfile]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -218,28 +282,53 @@ export function Profile({
         description:
           profile.bio || "A Readative member publishing and curating knowledge.",
         url: profileUrl,
+        sameAs: Object.values(profile.socialLinks || {}).filter(Boolean),
       }
     : undefined;
 
-  const handleClaimIdentity = async (username: string) => {
-    const nextProfile = await ensureGuestProfile(username);
-    onIdentityChange({
-      displayName: nextProfile.username,
-      authorId: nextProfile.id,
-    });
+  const handleClaimIdentity = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    onIdentityChange(nextIdentity);
     setShowIdentityPrompt(false);
   };
 
-  const handleChangeUsername = async (nextUsername: string) => {
+  const handleSaveProfileSettings = async ({
+    username,
+    socialLinks,
+  }: {
+    username: string;
+    socialLinks: UserSocialLinks;
+  }) => {
     if (!profile || !isOwnProfile) return;
 
-    const updatedProfile = await changeProfileUsername(profile, nextUsername);
-    setProfile(updatedProfile);
-    onIdentityChange({
-      displayName: updatedProfile.username,
-      authorId: updatedProfile.id,
-    });
-    setShowUsernamePrompt(false);
+    setIsSavingProfile(true);
+    setProfileEditError(null);
+
+    try {
+      let updatedProfile = profile;
+      if (username.trim().toLowerCase() !== profile.usernameLower) {
+        updatedProfile = await changeProfileUsername(profile, username);
+        onIdentityChange({
+          displayName: updatedProfile.username,
+          authorId: updatedProfile.id,
+        });
+      }
+
+      updatedProfile = await updateProfileSocialLinks(
+        updatedProfile,
+        socialLinks,
+      );
+      setProfile(updatedProfile);
+      setShowEditProfile(false);
+    } catch (error) {
+      setProfileEditError(
+        error instanceof Error
+          ? error.message
+          : "Could not save profile changes right now.",
+      );
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleChangeAvatar = async (nextProfileImage: KnowledgeImageAsset) => {
@@ -264,20 +353,18 @@ export function Profile({
     }
   };
 
-  const handleNameConfirm = async (username: string) => {
+  const handleGoogleSignInForPendingAction = async () => {
     if (!pendingAction) return;
 
-    const nextProfile = await ensureGuestProfile(username);
-    onIdentityChange({
-      displayName: nextProfile.username,
-      authorId: nextProfile.id,
-    });
+    const nextIdentity = await signInWithGoogleAccount();
+    onIdentityChange(nextIdentity);
 
     window.dispatchEvent(
       new CustomEvent("knowledge-action", {
         detail: {
           ...pendingAction,
-          username: nextProfile.username,
+          username: nextIdentity.displayName,
+          authorId: nextIdentity.authorId,
         },
       })
     );
@@ -289,31 +376,31 @@ export function Profile({
       <div className="space-y-6 pb-20">
         <SEO
           title="Profile | Readative"
-          description="Claim a username once to unlock your Readative profile, posts, and likes."
+          description="Sign in with Google to unlock your Readative profile, posts, and likes."
         />
 
-        <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-center text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white/15">
-            <Sparkles className="h-10 w-10 text-white" />
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+            <Sparkles className="h-7 w-7" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight">
-            Claim your username once
+          <h2 className="text-2xl font-black tracking-tight text-slate-950">
+            Sign in with Google
           </h2>
-          <p className="mt-2 text-sm text-emerald-100">
-            Readative remembers your username on this device for posts, likes,
-            comments, mentions, and realtime notifications.
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+            Keep your profile, posts, likes, and comments synced.
           </p>
           <button
             onClick={() => setShowIdentityPrompt(true)}
-            className="mt-6 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+            className="mt-5 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
           >
-            Save my username
+            Continue with Google
           </button>
         </div>
 
         {showIdentityPrompt && (
-          <IdentityPrompt
-            initialValue={guestName || ""}
+          <GoogleSignInPrompt
+            title="Sign in to view your profile"
+            submitLabel="Continue with Google"
             onConfirm={handleClaimIdentity}
             onClose={() => setShowIdentityPrompt(false)}
           />
@@ -362,38 +449,30 @@ export function Profile({
         </div>
       ) : (
         <>
-          <div className="rounded-[32px] bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-700 p-8 text-white shadow-[0_24px_72px_rgba(15,23,42,0.2)]">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               <div>
                 <ProfileAvatar
                   authorId={profile.id}
                   image={profile.profileImage}
+                  photoUrl={profile.photoUrl}
                   username={profile.username}
                   size="xl"
-                  className="mb-4 border-white/20 bg-white/10"
+                  className="mb-4 border-slate-200 bg-white"
                 />
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-200">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
                   {isOwnProfile ? "Your Profile" : "Community Profile"}
                 </p>
-                <h2 className="mt-2 text-3xl font-black tracking-tight">
+                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
                   @{profile.username}
                 </h2>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-emerald-100">
+                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">
                   {profile.bio || "Building a strong knowledge trail on Readative."}
                 </p>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                   Joined {new Date(profile.createdAt).toLocaleDateString()}
                 </p>
-                {isOwnProfile && !profile.profileImage && (
-                  <div className="mt-4 inline-flex max-w-xl items-start gap-2 rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm leading-6 text-emerald-50">
-                    <ImagePlus className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>
-                      Upload a square profile photo to personalize your account.
-                      We crop and optimize it before saving so avatars stay sharp
-                      and lightweight throughout the app.
-                    </span>
-                  </div>
-                )}
+                <ProfileSocialLinks socialLinks={profile.socialLinks} />
               </div>
 
               <div className="grid grid-cols-3 gap-3 md:min-w-[320px]">
@@ -407,20 +486,15 @@ export function Profile({
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => {
-                    setAvatarSaveError(null);
-                    setShowAvatarPicker(true);
+                    setProfileEditError(null);
+                    setShowEditProfile(true);
                   }}
-                  className="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
                 >
-                  Change photo
+                  <Pencil className="h-4 w-4" />
+                  Edit profile
                 </button>
-                <button
-                  onClick={() => setShowUsernamePrompt(true)}
-                  className="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
-                >
-                  Change username
-                </button>
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-emerald-100">
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500">
                   <Clock3 className="h-4 w-4" />
                   {formatCooldown(usernameCooldown)}
                 </div>
@@ -450,6 +524,7 @@ export function Profile({
               }
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
+              currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
@@ -466,6 +541,7 @@ export function Profile({
               }
               emptyMessage="No liked knowledge yet."
               entries={likedEntries}
+              currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={(action) => setPendingAction(action)}
               onOpenProfile={onOpenProfile}
@@ -476,21 +552,30 @@ export function Profile({
       )}
 
       {showIdentityPrompt && (
-        <IdentityPrompt
-          initialValue={currentIdentity?.displayName || guestName || ""}
+        <GoogleSignInPrompt
+          title="Continue with Google"
+          submitLabel="Continue with Google"
           onConfirm={handleClaimIdentity}
           onClose={() => setShowIdentityPrompt(false)}
         />
       )}
 
-      {showUsernamePrompt && profile && (
-        <UsernamePrompt
-          title="Change username"
-          description="You can change your username only once every 5 days."
-          submitLabel="Save username"
-          initialValue={profile.username}
-          onConfirm={handleChangeUsername}
-          onClose={() => setShowUsernamePrompt(false)}
+      {showEditProfile && profile && (
+        <EditProfileModal
+          profile={profile}
+          usernameCooldown={usernameCooldown}
+          isSaving={isSavingProfile}
+          errorMessage={profileEditError}
+          onChangePhoto={() => {
+            setAvatarSaveError(null);
+            setShowAvatarPicker(true);
+          }}
+          onSave={handleSaveProfileSettings}
+          onClose={() => {
+            if (isSavingProfile) return;
+            setProfileEditError(null);
+            setShowEditProfile(false);
+          }}
         />
       )}
 
@@ -510,14 +595,241 @@ export function Profile({
       )}
 
       {pendingAction && (
-        <UsernamePrompt
-          action={pendingAction.type}
-          initialValue={currentIdentity?.displayName || guestName || ""}
-          onConfirm={handleNameConfirm}
+        <GoogleSignInPrompt
+          title={
+            pendingAction.type === "like"
+              ? "Sign in to like"
+              : "Sign in to comment"
+          }
+          description="Use your Google account so this activity is saved to your profile on every browser and device."
+          submitLabel="Continue with Google"
+          onConfirm={handleGoogleSignInForPendingAction}
           onClose={() => setPendingAction(null)}
         />
       )}
     </div>
+  );
+}
+
+function ProfileSocialLinks({ socialLinks }: { socialLinks: UserSocialLinks }) {
+  const links = [
+    {
+      key: "linkedin",
+      label: "Open LinkedIn profile",
+      href: socialLinks.linkedin,
+      icon: <Linkedin className="h-4 w-4" />,
+    },
+    {
+      key: "instagram",
+      label: "Open Instagram profile",
+      href: socialLinks.instagram,
+      icon: <Instagram className="h-4 w-4" />,
+    },
+    {
+      key: "youtube",
+      label: "Open YouTube channel",
+      href: socialLinks.youtube,
+      icon: <Youtube className="h-4 w-4" />,
+    },
+  ].filter((link) => Boolean(link.href));
+
+  if (links.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      {links.map((link) => (
+        <a
+          key={link.key}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={link.label}
+          title={link.label}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          {link.icon}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function EditProfileModal({
+  profile,
+  usernameCooldown,
+  isSaving,
+  errorMessage,
+  onChangePhoto,
+  onSave,
+  onClose,
+}: {
+  profile: UserProfile;
+  usernameCooldown: number;
+  isSaving: boolean;
+  errorMessage: string | null;
+  onChangePhoto: () => void;
+  onSave: (input: {
+    username: string;
+    socialLinks: UserSocialLinks;
+  }) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const [username, setUsername] = useState(profile.username);
+  const [linkedin, setLinkedin] = useState(profile.socialLinks.linkedin || "");
+  const [instagram, setInstagram] = useState(
+    profile.socialLinks.instagram || "",
+  );
+  const [youtube, setYoutube] = useState(profile.socialLinks.youtube || "");
+
+  const handleSave = () => {
+    void onSave({
+      username,
+      socialLinks: {
+        linkedin,
+        instagram,
+        youtube,
+      },
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+        <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+            aria-label="Close edit profile"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
+            Edit Profile
+          </p>
+          <h2 className="mt-1 pr-10 text-2xl font-black tracking-tight text-slate-950">
+            Profile settings
+          </h2>
+        </div>
+
+        <div className="space-y-5 p-5 sm:p-6">
+          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <ProfileAvatar
+              authorId={profile.id}
+              image={profile.profileImage}
+              photoUrl={profile.photoUrl}
+              username={profile.username}
+              size="lg"
+              className="border-slate-200 bg-white"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-slate-900">
+                @{profile.username}
+              </p>
+              <button
+                type="button"
+                onClick={onChangePhoto}
+                disabled={isSaving}
+                className="mt-2 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <ImagePlus className="h-4 w-4" />
+                Change photo
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+              Username
+            </label>
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="username"
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            />
+            <p className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <Clock3 className="h-4 w-4" />
+              {formatCooldown(usernameCooldown)}
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            <SocialInput
+              icon={<Linkedin className="h-4 w-4" />}
+              label="LinkedIn"
+              value={linkedin}
+              onChange={setLinkedin}
+              placeholder="https://www.linkedin.com/in/username"
+            />
+            <SocialInput
+              icon={<Instagram className="h-4 w-4" />}
+              label="Instagram"
+              value={instagram}
+              onChange={setInstagram}
+              placeholder="https://www.instagram.com/username"
+            />
+            <SocialInput
+              icon={<Youtube className="h-4 w-4" />}
+              label="YouTube"
+              value={youtube}
+              onChange={setYoutube}
+              placeholder="https://www.youtube.com/@channel"
+            />
+          </div>
+
+          {errorMessage && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || username.trim().length < 3}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
+          >
+            <Save className="h-4 w-4" />
+            {isSaving ? "Saving..." : "Save profile"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SocialInput({
+  icon,
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block rounded-2xl border border-slate-200 bg-white px-4 py-3">
+      <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+        {icon}
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-transparent text-sm text-slate-700 outline-none"
+      />
+    </label>
   );
 }
 
@@ -552,9 +864,9 @@ function ProfileStat({
   value: number;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
-      <p className="text-2xl font-black">{value}</p>
-      <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-emerald-50/80">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-2xl font-black text-slate-950">{value}</p>
+      <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
         {label}
       </p>
     </div>
@@ -565,6 +877,7 @@ function KnowledgeSection({
   title,
   emptyMessage,
   entries,
+  currentIdentity,
   profiles,
   onIdentityRequired,
   onOpenProfile,
@@ -573,6 +886,7 @@ function KnowledgeSection({
   title: string;
   emptyMessage: string;
   entries: KnowledgeEntry[];
+  currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
   onOpenProfile: (authorId: string) => void;
@@ -597,6 +911,7 @@ function KnowledgeSection({
           <KnowledgeCard
             key={entry.id}
             entry={entry}
+            currentIdentity={currentIdentity}
             profiles={profiles}
             onIdentityRequired={onIdentityRequired}
             onOpenProfile={onOpenProfile}

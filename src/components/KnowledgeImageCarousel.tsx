@@ -56,7 +56,7 @@ export function KnowledgeImageCarousel({
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />
 
             <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 px-0 py-0 text-[10px] font-semibold tracking-[0.16em] text-white">
-              <Logo className="h-4 w-4 opacity-95" loading="lazy" fetchPriority="low" />
+              <Logo className="h-4 w-4 opacity-95" loading="lazy" />
               <span className="readative-watermark-wordmark uppercase text-white">
                 Readative
               </span>

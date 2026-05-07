@@ -3,6 +3,7 @@ import {
   AtSign,
   CheckCircle,
   Heart,
+  LogIn,
   MessageCircle,
   ShieldCheck,
   X,
@@ -50,7 +51,7 @@ export function IdentityPrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl">
         <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-6 text-white">
           <button
@@ -166,7 +167,7 @@ export function UsernamePrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl">
         <button
           onClick={onClose}
@@ -217,6 +218,85 @@ export function UsernamePrompt({
             {isSaving ? "Saving..." : resolvedSubmitLabel}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+interface GoogleSignInPromptProps {
+  title?: string;
+  description?: string;
+  submitLabel?: string;
+  onConfirm: () => void | Promise<void>;
+  onClose: () => void;
+}
+
+export function GoogleSignInPrompt({
+  title = "Continue with Google",
+  description = "Use your Google account to keep your profile and activity synced.",
+  submitLabel = "Continue with Google",
+  onConfirm,
+  onClose,
+}: GoogleSignInPromptProps) {
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSignIn = async () => {
+    setIsSigningIn(true);
+    setErrorMessage(null);
+
+    try {
+      await onConfirm();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Google sign-in could not finish right now.",
+      );
+      setIsSigningIn(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-sm rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl">
+        <div>
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close sign in"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="mb-4 inline-flex rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <h2 className="pr-8 text-2xl font-black tracking-tight text-slate-950">
+            {title}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {description}
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {errorMessage && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSignIn}
+            disabled={isSigningIn}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <LogIn className="h-4 w-4" />
+            {isSigningIn ? "Opening Google..." : submitLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

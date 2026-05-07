@@ -9,6 +9,7 @@ type AvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
 interface ProfileAvatarProps {
   authorId?: string | null;
   image?: KnowledgeImageAsset | null;
+  photoUrl?: string | null;
   username?: string | null;
   size?: AvatarSize;
   className?: string;
@@ -74,12 +75,14 @@ function getInitials(username?: string | null) {
 export function ProfileAvatar({
   authorId,
   image,
+  photoUrl,
   username,
   size = "md",
   className,
 }: ProfileAvatarProps) {
   const seed = authorId || username || "readative-guest";
   const theme = PLACEHOLDER_THEMES[hashSeed(seed) % PLACEHOLDER_THEMES.length];
+  const imageSource = image?.dataUrl || photoUrl || null;
 
   return (
     <div
@@ -91,13 +94,14 @@ export function ProfileAvatar({
       role="img"
       aria-label={`${username ? `@${username}` : "Readative member"} profile picture`}
     >
-      {image ? (
+      {imageSource ? (
         <img
-          src={image.dataUrl}
+          src={imageSource}
           alt=""
           aria-hidden="true"
           className="h-full w-full object-cover"
           decoding="async"
+          referrerPolicy="no-referrer"
         />
       ) : (
         <div

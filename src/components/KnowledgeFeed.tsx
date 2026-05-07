@@ -9,9 +9,10 @@ import {
   useState,
 } from "react";
 import {
-  AtSign,
   BookOpenText,
+  Globe2,
   ImagePlus,
+  Lock,
   Send,
   Sparkles,
   Tag,
@@ -31,17 +32,18 @@ import {
   KnowledgeEntry,
   KnowledgeImageAsset,
   KnowledgeImageLayout,
+  KnowledgeVisibility,
   TaggedUser,
   UserProfile,
 } from "../types";
 import { SEO } from "./SEO";
-import { IdentityPrompt, UsernamePrompt } from "./Auth";
+import { GoogleSignInPrompt } from "./Auth";
 import { KnowledgeCard } from "./KnowledgeCard";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { getGuestName } from "../utils/guestIdentity";
 import { hydrateUserProfile } from "../utils/profileData";
+import { signInWithGoogleAccount } from "../utils/googleAuth";
 import {
   buildAbsoluteRouteUrl,
   navigateToRoute,
@@ -58,6 +60,10 @@ import {
   getKnowledgeEntryImages,
   getKnowledgeImageLayoutSettings,
 } from "../utils/knowledgeImages";
+import {
+  canViewKnowledgeEntry,
+  normalizeKnowledgeVisibility,
+} from "../utils/knowledgePrivacy";
 
 type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
@@ -257,10 +263,25 @@ function normalizeKnowledgeEntry(
   data: Partial<KnowledgeEntry> & {
     comments?: KnowledgeComment[];
     createdAt?: number | { toMillis?: () => number };
+    updatedAt?: number | { toMillis?: () => number };
   },
 ): KnowledgeEntry {
-  const { comments, createdAt, likes, mentions, images, imageLayout, ...restData } = data;
+  const {
+    comments,
+    createdAt,
+    updatedAt,
+    likes,
+    mentions,
+    images,
+    imageLayout,
+    visibility,
+    ...restData
+  } = data;
   const rawCreatedAt = createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+  const rawUpdatedAt = updatedAt as
     | number
     | { toMillis?: () => number }
     | undefined;
@@ -271,6 +292,7 @@ function normalizeKnowledgeEntry(
     authorEmail: "",
     title: "",
     content: "",
+    visibility: normalizeKnowledgeVisibility(visibility),
     hashtags: [],
     ...restData,
     id,
@@ -288,6 +310,14 @@ function normalizeKnowledgeEntry(
         : typeof rawCreatedAt === "number"
           ? rawCreatedAt
           : Date.now(),
+    updatedAt:
+      rawUpdatedAt &&
+      typeof rawUpdatedAt === "object" &&
+      typeof rawUpdatedAt.toMillis === "function"
+        ? rawUpdatedAt.toMillis()
+        : typeof rawUpdatedAt === "number"
+          ? rawUpdatedAt
+          : null,
   };
 }
 
@@ -316,6 +346,8 @@ export function KnowledgeFeed({
   const [publishAfterAccess, setPublishAfterAccess] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
+  const [draftVisibility, setDraftVisibility] =
+    useState<KnowledgeVisibility>("public");
   const [hashtagInput, setHashtagInput] = useState("");
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [selectedImageLayout, setSelectedImageLayout] =
@@ -335,7 +367,6 @@ export function KnowledgeFeed({
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
-  const guestName = getGuestName();
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
@@ -506,24 +537,35 @@ export function KnowledgeFeed({
     };
   }, []);
 
+  const viewableEntries = useMemo(
+    () =>
+      entries.filter((entry) =>
+        canViewKnowledgeEntry(entry, identity?.authorId),
+      ),
+    [entries, identity?.authorId],
+  );
   const focusedEntry = useMemo(
-    () => entries.find((entry) => entry.id === focusedEntryId) || null,
-    [entries, focusedEntryId],
+    () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
+    [viewableEntries, focusedEntryId],
   );
   const focusedEntryPrimaryImage = useMemo(
     () => (focusedEntry ? getKnowledgeEntryImages(focusedEntry)[0] || null : null),
     [focusedEntry],
   );
   const orderedEntries = useMemo(() => {
-    const entryMap = new Map(entries.map((entry) => [entry.id, entry] as const));
+    const entryMap = new Map(
+      viewableEntries.map((entry) => [entry.id, entry] as const),
+    );
     const frozenEntries =
       feedEntryOrder.length > 0
         ? feedEntryOrder
             .map((entryId) => entryMap.get(entryId))
             .filter((entry): entry is KnowledgeEntry => Boolean(entry))
-        : entries;
+        : viewableEntries;
     const rankedEntryIds = new Set(frozenEntries.map((entry) => entry.id));
-    const missingEntries = entries.filter((entry) => !rankedEntryIds.has(entry.id));
+    const missingEntries = viewableEntries.filter(
+      (entry) => !rankedEntryIds.has(entry.id),
+    );
     const baseEntries = [...frozenEntries, ...missingEntries];
 
     if (
@@ -538,7 +580,7 @@ export function KnowledgeFeed({
     }
 
     return baseEntries;
-  }, [entries, feedEntryOrder, focusedEntry, focusedEntryId]);
+  }, [viewableEntries, feedEntryOrder, focusedEntry, focusedEntryId]);
   const visibleEntries = useMemo(() => {
     if (!selectedHashtag) return orderedEntries;
 
@@ -626,6 +668,7 @@ export function KnowledgeFeed({
   const resetComposer = () => {
     setDraftTitle("");
     setDraftContent("");
+    setDraftVisibility("public");
     setHashtagInput("");
     setSelectedImages([]);
     setSelectedImageLayout(DEFAULT_IMAGE_LAYOUT);
@@ -681,6 +724,7 @@ export function KnowledgeFeed({
         authorEmail: "",
         title,
         content,
+        visibility: draftVisibility,
         hashtags,
         comments: [],
         likes: [],
@@ -693,6 +737,7 @@ export function KnowledgeFeed({
         imageHeight: primaryImage?.height || null,
         imageOptimizedAt: primaryImage?.optimizedAt || null,
         createdAt,
+        updatedAt: createdAt,
         excerpt: createExcerpt(content, 180),
         readingMinutes: estimateReadMinutes(content),
         qualityScore: moderation.knowledgeScore,
@@ -751,14 +796,8 @@ export function KnowledgeFeed({
     void publishKnowledge(identity);
   };
 
-  const handleIdentityConfirm = async (username: string) => {
-    const { ensureGuestProfile } = await import("../utils/userProfiles");
-    const profile = await ensureGuestProfile(username);
-    const nextIdentity: KnowledgeIdentity = {
-      displayName: profile.username,
-      authorId: profile.id,
-    };
-
+  const handleGoogleSignInForPublish = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
     onIdentityChange(nextIdentity);
     setShowIdentityPrompt(false);
 
@@ -873,21 +912,18 @@ export function KnowledgeFeed({
     );
   };
 
-  const handleNameConfirm = async (username: string) => {
+  const handleGoogleSignInForPendingAction = async () => {
     if (!pendingAction) return;
 
-    const { ensureGuestProfile } = await import("../utils/userProfiles");
-    const profile = await ensureGuestProfile(username);
-    onIdentityChange({
-      displayName: profile.username,
-      authorId: profile.id,
-    });
+    const nextIdentity = await signInWithGoogleAccount();
+    onIdentityChange(nextIdentity);
 
     window.dispatchEvent(
       new CustomEvent("knowledge-action", {
         detail: {
           ...pendingAction,
-          username: profile.username,
+          username: nextIdentity.displayName,
+          authorId: nextIdentity.authorId,
         },
       }),
     );
@@ -1054,6 +1090,7 @@ export function KnowledgeFeed({
                 <KnowledgeCard
                   key={entry.id}
                   entry={entry}
+                  currentIdentity={identity}
                   profiles={profiles}
                   onVisible={markKnowledgeEntrySeen}
                   onIdentityRequired={(action) => setPendingAction(action)}
@@ -1089,6 +1126,8 @@ export function KnowledgeFeed({
           setDraftTitle={setDraftTitle}
           draftContent={draftContent}
           setDraftContent={setDraftContent}
+          draftVisibility={draftVisibility}
+          setDraftVisibility={setDraftVisibility}
           hashtagInput={hashtagInput}
           setHashtagInput={setHashtagInput}
           selectedImages={selectedImages}
@@ -1111,12 +1150,11 @@ export function KnowledgeFeed({
       )}
 
       {showIdentityPrompt && (
-        <IdentityPrompt
-          title="Choose your posting username"
-          description="Set your username once and Readative will remember it on this browser for posts, likes, comments, mentions, and notifications."
-          submitLabel="Continue"
-          initialValue={identity?.displayName || guestName || ""}
-          onConfirm={handleIdentityConfirm}
+        <GoogleSignInPrompt
+          title="Sign in to publish"
+          description="Use your Google account to publish. Everyone can still read posts without signing in, and your content stays saved to your profile."
+          submitLabel="Continue with Google"
+          onConfirm={handleGoogleSignInForPublish}
           onClose={() => {
             setPublishAfterAccess(false);
             setShowIdentityPrompt(false);
@@ -1125,10 +1163,15 @@ export function KnowledgeFeed({
       )}
 
       {pendingAction && (
-        <UsernamePrompt
-          action={pendingAction.type}
-          initialValue={identity?.displayName || guestName || ""}
-          onConfirm={handleNameConfirm}
+        <GoogleSignInPrompt
+          title={
+            pendingAction.type === "like"
+              ? "Sign in to like"
+              : "Sign in to comment"
+          }
+          description="Use your Google account so this activity is saved to your Readative profile on every browser and device."
+          submitLabel="Continue with Google"
+          onConfirm={handleGoogleSignInForPendingAction}
           onClose={() => setPendingAction(null)}
         />
       )}
@@ -1144,6 +1187,8 @@ function ComposerModal({
   setDraftTitle,
   draftContent,
   setDraftContent,
+  draftVisibility,
+  setDraftVisibility,
   hashtagInput,
   setHashtagInput,
   selectedImages,
@@ -1170,6 +1215,8 @@ function ComposerModal({
   setDraftTitle: (value: string) => void;
   draftContent: string;
   setDraftContent: (value: string) => void;
+  draftVisibility: KnowledgeVisibility;
+  setDraftVisibility: (value: KnowledgeVisibility) => void;
   hashtagInput: string;
   setHashtagInput: (value: string) => void;
   selectedImages: SelectedImage[];
@@ -1193,62 +1240,76 @@ function ComposerModal({
     getKnowledgeImageLayoutSettings(selectedImageLayout);
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 pt-20 backdrop-blur-sm">
-      <div className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:max-h-[calc(100vh-6rem)]">
-        <div className="shrink-0 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
+    <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
+      <div className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)] md:max-h-[calc(100vh-6rem)]">
+        <div className="shrink-0 border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+            className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close composer"
           >
             <X className="h-4 w-4" />
           </button>
 
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-200">
-            Upload Post
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
+            New Post
           </p>
-          <h2 className="mt-2 text-3xl font-black tracking-tight">
-            Create a knowledge post
+          <h2 className="mt-1 pr-10 text-2xl font-black tracking-tight text-slate-950">
+            Create knowledge
           </h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-emerald-50">
-            Add your full post details here. Homepage stays clean and shows only
-            posts, while the `+` button opens everything needed to publish.
-          </p>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-5 p-6">
+          <div className="space-y-4 p-5 sm:p-6">
             {identity ? (
-              <div className="flex flex-col gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold">
+              <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">
                     Posting as @{identity.displayName}
                   </p>
-                  <p className="text-xs text-emerald-700">
-                    Remembered on this device for all your activity.
-                  </p>
                 </div>
-                <div className="flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em]">
-                  <button
-                    onClick={() => onOpenProfile(identity.authorId)}
-                    className="underline underline-offset-2"
-                  >
-                    View profile
-                  </button>
-                </div>
+                <button
+                  onClick={() => onOpenProfile(identity.authorId)}
+                  className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700"
+                >
+                  Profile
+                </button>
               </div>
             ) : (
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Choose your username once when you publish. We will remember it
-                after that.
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                Sign in to publish.
               </div>
             )}
+
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              {(
+                [
+                  ["public", "Public", Globe2],
+                  ["private", "Private", Lock],
+                ] as const
+              ).map(([visibility, label, Icon]) => (
+                <button
+                  key={visibility}
+                  type="button"
+                  onClick={() => setDraftVisibility(visibility)}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                    draftVisibility === visibility
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="grid gap-4">
               <input
                 value={draftTitle}
                 onChange={(event) => setDraftTitle(event.target.value)}
                 placeholder="Post title"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               />
 
               <div className="relative">
@@ -1269,8 +1330,8 @@ function ComposerModal({
                       event.currentTarget.selectionStart,
                     )
                   }
-                  placeholder="Write the full post here. Share useful knowledge only, and tag users with @username."
-                  className="min-h-[220px] w-full resize-none rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+                  placeholder="Write your post. Tag people with @username."
+                  className="min-h-[180px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
 
                 {activeMention && filteredMentionProfiles.length > 0 && (
@@ -1292,8 +1353,8 @@ function ComposerModal({
               </div>
 
               <div className="grid gap-4 md:grid-cols-[1.2fr,1fr]">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                     <Tag className="h-4 w-4" />
                     Hashtags
                   </div>
@@ -1305,10 +1366,10 @@ function ComposerModal({
                   />
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                         Images
                       </p>
                       <p className="mt-1 text-sm text-slate-600">
@@ -1316,7 +1377,7 @@ function ComposerModal({
                       </p>
                     </div>
 
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-dashed border-emerald-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700 transition-colors hover:bg-emerald-100">
                       <ImagePlus className="h-4 w-4" />
                       Add
                       <input
@@ -1332,14 +1393,14 @@ function ComposerModal({
                   <div className="mt-3 flex flex-wrap gap-2">
                     {(
                       [
-                        ["wide", "2 x 16:9"],
-                        ["portrait", "4 x 8:9"],
+                        ["wide", "Wide"],
+                        ["portrait", "Portrait"],
                       ] as const
                     ).map(([layout, label]) => (
                       <button
                         key={layout}
                         onClick={() => onImageLayoutChange(layout)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] transition-colors ${
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
                           selectedImageLayout === layout
                             ? "bg-emerald-600 text-white"
                             : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-emerald-50 hover:text-emerald-700"
@@ -1350,9 +1411,6 @@ function ComposerModal({
                     ))}
                   </div>
 
-                  <p className="mt-2 text-xs text-slate-500">
-                    {selectedImageLayoutSettings.description}. Images are auto-cropped to this ratio.
-                  </p>
                 </div>
               </div>
 
@@ -1372,29 +1430,13 @@ function ComposerModal({
                       </button>
                     )}
                   />
-                  <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
-                    <p className="text-sm text-slate-500">
-                      Swipe to preview. Add up to {selectedImageLayoutSettings.maxImages} images in this layout.
-                    </p>
+                  <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-4 py-3">
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                       {selectedImages.length} ready
                     </span>
                   </div>
                 </div>
               )}
-
-              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Knowledge only
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  No sexual content
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  <AtSign className="mr-1 inline h-3 w-3" />
-                  Mention with @username
-                </span>
-              </div>
 
               {feedMessage && (
                 <div
@@ -1412,13 +1454,8 @@ function ComposerModal({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-              Scroll inside this window to see image upload and all post
-              details.
-            </p>
-
+        <div className="shrink-0 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
+          <div className="flex justify-end">
             <button
               onClick={handlePublish}
               disabled={
@@ -1428,7 +1465,7 @@ function ComposerModal({
                 !draftTitle.trim() ||
                 !draftContent.trim()
               }
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
             >
               {isPosting || isModerating || isPreparingImage ? (
                 <Sparkles className="h-4 w-4 animate-spin" />

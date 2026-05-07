@@ -2,7 +2,6 @@ import { useDeferredValue, useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
-  Link2,
   ThumbsUp,
   ThumbsDown,
   Trophy,
@@ -24,16 +23,12 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { UsernamePrompt } from "./Auth";
+import { GoogleSignInPrompt } from "./Auth";
 import { DiscoverySearch } from "./DiscoverySearch";
-import {
-  clearGuestName,
-  getGuestId,
-  getGuestName,
-  saveGuestName,
-} from "../utils/guestIdentity";
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
+import { signInWithGoogleAccount } from "../utils/googleAuth";
+import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
 interface Answer {
   id: string;
@@ -54,12 +49,23 @@ interface Question {
   createdAt: number;
 }
 
-type NamePromptState =
+type VoteType = "like" | "dislike";
+
+type SmartTalkPromptState =
   | { type: "ask" }
   | { type: "answer"; questionId: string }
+  | {
+      type: "vote";
+      question: Question;
+      answerId: string;
+      voteType: VoteType;
+    }
   | null;
 
-type VoteType = "like" | "dislike";
+interface SmartTalkProps {
+  currentIdentity: KnowledgeIdentity | null;
+  onIdentityChange: (identity: KnowledgeIdentity | null) => void;
+}
 
 function tokenizeSearch(input: string) {
   return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
@@ -202,7 +208,10 @@ function toggleSmartTalkVote(
   };
 }
 
-export function SmartTalk() {
+export function SmartTalk({
+  currentIdentity,
+  onIdentityChange,
+}: SmartTalkProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newQuestion, setNewQuestion] = useState("");
@@ -213,10 +222,7 @@ export function SmartTalk() {
   const [moderatingAnswerId, setModeratingAnswerId] = useState<string | null>(
     null,
   );
-  const [namePrompt, setNamePrompt] = useState<NamePromptState>(null);
-  const [guestName, setGuestName] = useState<string | null>(() =>
-    getGuestName(),
-  );
+  const [namePrompt, setNamePrompt] = useState<SmartTalkPromptState>(null);
   const [moderationMessage, setModerationMessage] = useState<string | null>(
     null,
   );
@@ -228,7 +234,7 @@ export function SmartTalk() {
   >({});
   const [searchQuery, setSearchQuery] = useState("");
 
-  const guestId = getGuestId();
+  const activeAuthorId = currentIdentity?.authorId || null;
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
@@ -256,10 +262,9 @@ export function SmartTalk() {
     return () => unsubscribe();
   }, []);
 
-  const submitQuestion = async (authorName: string) => {
-    const normalizedName = saveGuestName(authorName);
+  const submitQuestion = async (authorIdentity: KnowledgeIdentity) => {
     const questionText = newQuestion.trim();
-    if (!normalizedName || !questionText) return;
+    if (!questionText) return;
 
     setModerationMessage(null);
     setIsModeratingQuestion(true);
@@ -274,14 +279,13 @@ export function SmartTalk() {
       return;
     }
 
-    setGuestName(normalizedName);
     setIsAsking(true);
     setIsModeratingQuestion(false);
 
     try {
       await addDoc(collection(db, "smarttalk"), {
-        author: normalizedName,
-        authorId: guestId,
+        author: authorIdentity.displayName,
+        authorId: authorIdentity.authorId,
         content: questionText,
         answers: [],
         createdAt: serverTimestamp(),
@@ -299,18 +303,20 @@ export function SmartTalk() {
 
     setModerationMessage(null);
 
-    if (guestName) {
-      void submitQuestion(guestName);
+    if (currentIdentity) {
+      void submitQuestion(currentIdentity);
       return;
     }
 
     setNamePrompt({ type: "ask" });
   };
 
-  const submitAnswer = async (questionId: string, authorName: string) => {
+  const submitAnswer = async (
+    questionId: string,
+    authorIdentity: KnowledgeIdentity,
+  ) => {
     const answerText = answerInputs[questionId]?.trim();
-    const normalizedName = saveGuestName(authorName);
-    if (!normalizedName || !answerText) return;
+    if (!answerText) return;
 
     setModerationMessage(null);
     setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
@@ -329,15 +335,14 @@ export function SmartTalk() {
       return;
     }
 
-    setGuestName(normalizedName);
     setIsAnswering((current) => ({ ...current, [questionId]: true }));
     setModeratingAnswerId(null);
 
     try {
       const answer: Answer = {
         id: Math.random().toString(36).slice(2, 11),
-        author: normalizedName,
-        authorId: guestId,
+        author: authorIdentity.displayName,
+        authorId: authorIdentity.authorId,
         content: answerText,
         likes: [],
         dislikes: [],
@@ -368,18 +373,19 @@ export function SmartTalk() {
     setModerationMessage(null);
     setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
 
-    if (guestName) {
-      void submitAnswer(questionId, guestName);
+    if (currentIdentity) {
+      void submitAnswer(questionId, currentIdentity);
       return;
     }
 
     setNamePrompt({ type: "answer", questionId });
   };
 
-  const handleVote = async (
+  const applyVote = async (
     question: Question,
     answerId: string,
     voteType: VoteType,
+    voterId: string,
   ) => {
     try {
       const questionRef = doc(db, "smarttalk", question.id);
@@ -395,7 +401,7 @@ export function SmartTalk() {
 
         const updatedAnswers = (currentQuestion.answers || []).map((answer) =>
           answer.id === answerId
-            ? toggleSmartTalkVote(answer, guestId, voteType)
+            ? toggleSmartTalkVote(answer, voterId, voteType)
             : answer,
         );
 
@@ -408,6 +414,19 @@ export function SmartTalk() {
     }
   };
 
+  const handleVote = async (
+    question: Question,
+    answerId: string,
+    voteType: VoteType,
+  ) => {
+    if (!currentIdentity) {
+      setNamePrompt({ type: "vote", question, answerId, voteType });
+      return;
+    }
+
+    await applyVote(question, answerId, voteType, currentIdentity.authorId);
+  };
+
   const getAnswerScore = (answer: Answer) =>
     (answer.likes?.length || 0) - (answer.dislikes?.length || 0);
 
@@ -417,31 +436,43 @@ export function SmartTalk() {
     isWorst: boolean,
   ) => {
     if (isTop) {
-      return "border-4 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]";
+      return "border border-amber-200 bg-amber-50/40";
     }
 
     const score = getAnswerScore(answer);
-    if (isWorst && score < -1) return "border-2 border-red-300 bg-red-50";
-    if (score >= 10) return "border-2 border-emerald-600";
-    if (score >= 5) return "border-2 border-emerald-400";
+    if (isWorst && score < -1) return "border border-rose-200 bg-rose-50";
+    if (score >= 10) return "border border-emerald-300";
+    if (score >= 5) return "border border-emerald-200";
     if (score >= 1) return "border border-emerald-200";
-    return "border border-gray-200";
+    return "border border-slate-200";
   };
 
-  const handlePromptConfirm = (username: string) => {
+  const handlePromptConfirm = async () => {
     if (!namePrompt) return;
 
-    const normalizedName = saveGuestName(username);
-    setGuestName(normalizedName);
     const prompt = namePrompt;
-    setNamePrompt(null);
+    const nextIdentity = await signInWithGoogleAccount();
+    onIdentityChange(nextIdentity);
 
     if (prompt.type === "ask") {
-      void submitQuestion(normalizedName);
+      setNamePrompt(null);
+      void submitQuestion(nextIdentity);
       return;
     }
 
-    void submitAnswer(prompt.questionId, normalizedName);
+    if (prompt.type === "answer") {
+      setNamePrompt(null);
+      void submitAnswer(prompt.questionId, nextIdentity);
+      return;
+    }
+
+    setNamePrompt(null);
+    void applyVote(
+      prompt.question,
+      prompt.answerId,
+      prompt.voteType,
+      nextIdentity.authorId,
+    );
   };
 
   const searchTerms = tokenizeSearch(deferredSearchQuery);
@@ -467,13 +498,17 @@ export function SmartTalk() {
     const likeCount = answer.likes?.length || 0;
     const dislikeCount = answer.dislikes?.length || 0;
     const score = getAnswerScore(answer);
-    const userLiked = (answer.likes || []).includes(guestId);
-    const userDisliked = (answer.dislikes || []).includes(guestId);
+    const userLiked = activeAuthorId
+      ? (answer.likes || []).includes(activeAuthorId)
+      : false;
+    const userDisliked = activeAuthorId
+      ? (answer.dislikes || []).includes(activeAuthorId)
+      : false;
 
     return (
       <div
         key={answer.id}
-        className={`rounded-2xl p-4 transition-all duration-300 bg-gray-50 ${getAnswerBorderClass(
+        className={`rounded-2xl p-4 transition-all duration-300 ${getAnswerBorderClass(
           answer,
           isTop,
           isWorst,
@@ -486,7 +521,7 @@ export function SmartTalk() {
             </span>
 
             {isTop && (
-              <span className="flex items-center gap-1 text-yellow-600 text-[10px] font-bold bg-yellow-50 px-2 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                 <Trophy className="w-3 h-3" /> Top Answer
               </span>
             )}
@@ -561,46 +596,29 @@ export function SmartTalk() {
         ]}
       />
 
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg">
-        <h2 className="text-3xl font-bold mb-1 flex items-center gap-3">
-          <Sparkles className="w-8 h-8 text-yellow-300" />
-          SmartTalk
-        </h2>
-
-        <p className="text-indigo-100 mb-2 text-sm">
-          Anyone can ask or answer. Votes are limited to one like or one dislike
-          per visitor.
-        </p>
-        <p className="text-indigo-100 mb-6 text-sm">
-          Learning questions only. Casual chat, sexual content, and low-value
-          posts are filtered before they go live.
-        </p>
+      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">
+              <Sparkles className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-2xl font-black tracking-tight text-slate-950">
+                SmartTalk
+              </h2>
+              {currentIdentity && (
+                <p className="truncate text-xs font-semibold text-slate-500">
+                  @{currentIdentity.displayName}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {moderationMessage && (
-          <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white">
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             {moderationMessage}
           </div>
-        )}
-
-        {guestName ? (
-          <p className="text-xs text-indigo-100 mb-3">
-            Posting as{" "}
-            <span className="font-semibold text-white">@{guestName}</span>
-            {" · "}
-            <button
-              onClick={() => {
-                clearGuestName();
-                setGuestName(null);
-              }}
-              className="underline underline-offset-2"
-            >
-              switch
-            </button>
-          </p>
-        ) : (
-          <p className="text-xs text-indigo-100 mb-3">
-            Add your name once, then start asking and answering.
-          </p>
         )}
 
         <div className="space-y-3">
@@ -618,20 +636,16 @@ export function SmartTalk() {
               }
             }}
             rows={3}
-            placeholder="Ask a learning question. You can add links like [NotebookLM](https://notebooklm.google.com)"
-            className="w-full resize-none bg-white/10 border border-white/20 rounded-2xl px-4 py-3 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 transition-all text-sm"
+            placeholder="Ask something useful..."
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
           />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="flex items-center gap-2 text-xs text-indigo-100">
-              <Link2 className="w-3.5 h-3.5" />
-              Use `[title](https://example.com)` for clickable links. Press
-              `Enter` to send and `Shift+Enter` for a new line.
-            </p>
+          <div className="flex justify-end">
             <button
               onClick={handleAsk}
               disabled={isAsking || isModeratingQuestion || !newQuestion.trim()}
-              className="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50 text-sm"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
             >
+              <Send className="h-4 w-4" />
               {isAsking || isModeratingQuestion ? "Posting..." : "Ask"}
             </button>
           </div>
@@ -691,17 +705,17 @@ export function SmartTalk() {
             return (
               <div
                 key={question.id}
-                className="bg-white rounded-3xl p-6 shadow-sm border border-black/5"
+                className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
               >
-                <div className="flex items-start gap-4 mb-5">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User className="w-5 h-5 text-indigo-600" />
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-50">
+                    <User className="h-4 w-4 text-indigo-600" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 leading-snug">
+                    <h3 className="text-base font-bold leading-snug text-slate-950">
                       {renderRichText({ text: question.content })}
                     </h3>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="mt-1 text-xs text-slate-400">
                       Asked by{" "}
                       <span className="font-semibold">{question.author}</span>
                       {" · "}
@@ -710,7 +724,7 @@ export function SmartTalk() {
                   </div>
                 </div>
 
-                <div className="space-y-3 pl-4 border-l-2 border-gray-100 ml-5 mb-5">
+                <div className="mb-5 ml-4 space-y-3 border-l border-slate-100 pl-4">
                   {sortedAnswers.length === 0 ? (
                     <p className="text-sm text-gray-400 italic py-2">
                       No answers yet. Be the first to help.
@@ -728,17 +742,10 @@ export function SmartTalk() {
                       {hiddenAnswerCount > 0 && (
                         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-indigo-700">
-                                Showing the top answer first
-                              </p>
-                              <p className="text-xs text-indigo-500">
-                                {hiddenAnswerCount} more answer
-                                {hiddenAnswerCount === 1 ? "" : "s"} hidden
-                                below.
-                              </p>
-                            </div>
-
+                            <p className="text-sm font-semibold text-indigo-700">
+                              {hiddenAnswerCount} more answer
+                              {hiddenAnswerCount === 1 ? "" : "s"}
+                            </p>
                             <button
                               onClick={() =>
                                 setExpandedAnswers((current) => ({
@@ -798,15 +805,10 @@ export function SmartTalk() {
                       }
                     }}
                     rows={3}
-                    placeholder="Write a useful answer. You can add links like [NotebookLM](https://notebooklm.google.com)"
-                    className="w-full resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+                    placeholder="Write an answer..."
+                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                   />
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-center gap-2 text-xs text-gray-400">
-                      <Link2 className="w-3.5 h-3.5" />
-                      Use `[title](https://example.com)` for clickable links.
-                      Press `Enter` to send and `Shift+Enter` for a new line.
-                    </p>
+                  <div className="flex justify-end">
                     <button
                       onClick={() => handleAnswer(question.id)}
                       disabled={
@@ -814,7 +816,7 @@ export function SmartTalk() {
                         isAnswering[question.id] ||
                         moderatingAnswerId === question.id
                       }
-                      className="inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-all"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 disabled:opacity-40 sm:w-auto"
                     >
                       {isAnswering[question.id] ||
                       moderatingAnswerId === question.id ? (
@@ -840,13 +842,16 @@ export function SmartTalk() {
       )}
 
       {namePrompt && (
-        <UsernamePrompt
+        <GoogleSignInPrompt
           title={
-            namePrompt.type === "ask" ? "Who is asking?" : "Who is answering?"
+            namePrompt.type === "ask"
+              ? "Sign in to ask"
+              : namePrompt.type === "answer"
+                ? "Sign in to answer"
+                : "Sign in to vote"
           }
-          description="Add your display name so everyone can see who posted it."
-          submitLabel={namePrompt.type === "ask" ? "Ask" : "Answer"}
-          initialValue={guestName || ""}
+          description="Use Google to keep SmartTalk synced with your profile."
+          submitLabel="Continue with Google"
           onConfirm={handlePromptConfirm}
           onClose={() => setNamePrompt(null)}
         />

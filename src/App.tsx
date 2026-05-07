@@ -5,11 +5,17 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Header } from "./components/Header";
+import { GoogleSignInPrompt } from "./components/Auth";
 import {
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
   type KnowledgeIdentity,
 } from "./utils/knowledgeIdentity";
+import {
+  signInWithGoogleAccount,
+  signOutGoogleAccount,
+  subscribeToGoogleIdentity,
+} from "./utils/googleAuth";
 import type { UserNotification } from "./types";
 import {
   navigateToRoute,
@@ -71,6 +77,8 @@ export default function App() {
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
+  const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
+  const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
 
   const syncRouteState = () => {
     const route = parseRouteFromLocation();
@@ -131,6 +139,21 @@ export default function App() {
     setShowNotificationsPanel((current) => !current);
   };
 
+  const handleGoogleSignIn = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    setIdentity(nextIdentity);
+    setAuthStatusMessage(null);
+    setShowGoogleSignInPrompt(false);
+  };
+
+  const handleGoogleSignOut = async () => {
+    await signOutGoogleAccount();
+    setIdentity(null);
+    setShowNotificationsPanel(false);
+    setUnreadNotificationCount(0);
+    setNotifications([]);
+  };
+
   useEffect(() => {
     const syncAndNormalizeRoute = () => {
       const route = parseRouteFromLocation();
@@ -179,18 +202,6 @@ export default function App() {
       window.removeEventListener("storage", syncIdentity);
     };
   }, []);
-
-  useEffect(() => {
-    if (!identity?.authorId || !identity.displayName) return;
-
-    void import("./utils/userProfiles")
-      .then(({ ensureGuestProfile }) =>
-        ensureGuestProfile(identity.displayName, identity.authorId),
-      )
-      .catch((error) => {
-        console.error("Failed to sync local profile:", error);
-      });
-  }, [identity?.authorId, identity?.displayName]);
 
   useEffect(() => {
     if (!identity?.authorId) {
@@ -265,12 +276,23 @@ export default function App() {
     };
   }, [identity?.authorId]);
 
+  useEffect(() => {
+    return subscribeToGoogleIdentity(
+      (nextIdentity) => {
+        setIdentity(nextIdentity);
+        setAuthStatusMessage(null);
+      },
+      (message) => setAuthStatusMessage(message),
+    );
+  }, []);
+
   return (
     <HelmetProvider>
       <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
         <Header
           activeTab={activeTab}
           setActiveTab={(tab) => handleTabChange(tab)}
+          identity={identity}
           onHomeAction={handleHomeAction}
           unreadNotificationCount={unreadNotificationCount}
           onOpenComposer={handleOpenComposer}
@@ -279,6 +301,8 @@ export default function App() {
             setShowNotificationsPanel(false);
             setShowInfoPanel((current) => !current);
           }}
+          onOpenSignIn={() => setShowGoogleSignInPrompt(true)}
+          onSignOut={() => void handleGoogleSignOut()}
         />
 
         <main className="mx-auto max-w-2xl px-4 pb-24 pt-20">
@@ -286,6 +310,14 @@ export default function App() {
             <BannerNotice
               title="Notifications unavailable"
               body={notificationsError}
+              tone="warning"
+            />
+          )}
+
+          {authStatusMessage && (
+            <BannerNotice
+              title="Google sign-in issue"
+              body={authStatusMessage}
               tone="warning"
             />
           )}
@@ -311,7 +343,10 @@ export default function App() {
           ) : null}
           {activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
-              <SmartTalk />
+              <SmartTalk
+                currentIdentity={identity}
+                onIdentityChange={setIdentity}
+              />
             </Suspense>
           )}
           {activeTab === "profile" && (
@@ -350,6 +385,13 @@ export default function App() {
               }}
             />
           </Suspense>
+        )}
+
+        {showGoogleSignInPrompt && (
+          <GoogleSignInPrompt
+            onConfirm={handleGoogleSignIn}
+            onClose={() => setShowGoogleSignInPrompt(false)}
+          />
         )}
 
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between border-t border-black/5 bg-white px-6 py-3 md:hidden">

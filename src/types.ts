@@ -13,6 +13,7 @@ export interface KnowledgeComment {
 }
 
 export type KnowledgeImageLayout = "wide" | "portrait";
+export type KnowledgeVisibility = "public" | "private";
 
 export interface KnowledgeImageAsset {
   dataUrl: string;
@@ -29,11 +30,13 @@ export interface KnowledgeEntry {
   authorEmail: string;
   title: string;
   content: string;
+  visibility: KnowledgeVisibility;
   hashtags: string[];
   likes: string[];
   comments: KnowledgeComment[];
   mentions: TaggedUser[];
   createdAt: number;
+  updatedAt?: number | null;
   images?: KnowledgeImageAsset[];
   imageLayout?: KnowledgeImageLayout | null;
   imageDataUrl?: string | null;
@@ -46,13 +49,21 @@ export interface KnowledgeEntry {
   qualityScore?: number | null;
 }
 
+export interface UserSocialLinks {
+  linkedin?: string;
+  instagram?: string;
+  youtube?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   username: string;
   usernameLower: string;
   bio: string;
+  socialLinks: UserSocialLinks;
   profileImage?: KnowledgeImageAsset | null;
+  photoUrl?: string | null;
   createdAt: number;
   updatedAt: number;
   lastUsernameChangedAt: number | null;

@@ -1,25 +1,32 @@
-import { Bell, CirclePlus, Info, Plus } from "lucide-react";
+import { Bell, CirclePlus, Info, LogIn, LogOut, Plus } from "lucide-react";
 import { Logo } from "./Logo";
 import { type AppTab } from "../utils/routes";
+import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
 interface HeaderProps {
   activeTab: AppTab | "notFound";
   setActiveTab: (tab: AppTab) => void;
+  identity: KnowledgeIdentity | null;
   onHomeAction: () => void;
   unreadNotificationCount: number;
   onOpenComposer: () => void;
   onOpenNotifications: () => void;
   onOpenInfo: () => void;
+  onOpenSignIn: () => void;
+  onSignOut: () => void;
 }
 
 export function Header({
   activeTab,
   setActiveTab,
+  identity,
   onHomeAction,
   unreadNotificationCount,
   onOpenComposer,
   onOpenNotifications,
   onOpenInfo,
+  onOpenSignIn,
+  onSignOut,
 }: HeaderProps) {
   const tabs: AppTab[] = ["knowledge", "smarttalk", "profile"];
 
@@ -32,7 +39,7 @@ export function Header({
             className="relative flex h-9 w-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.02] md:h-10 md:w-10"
             aria-label="Open homepage"
           >
-            <Logo className="h-full w-full" loading="eager" fetchPriority="high" />
+            <Logo className="h-full w-full" loading="eager" />
           </button>
           <div className="flex flex-col justify-center">
             <button
@@ -102,6 +109,30 @@ export function Header({
               </span>
             )}
           </button>
+
+          {identity ? (
+            <button
+              onClick={onSignOut}
+              className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-sm font-bold text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 sm:w-auto sm:px-3"
+              aria-label="Sign out"
+              title={`Signed in as @${identity.displayName}`}
+            >
+              <span className="hidden max-w-24 truncate sm:inline">
+                @{identity.displayName}
+              </span>
+              <LogOut className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onOpenSignIn}
+              className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100 sm:w-auto sm:px-3"
+              aria-label="Sign in with Google"
+              title="Sign in with Google"
+            >
+              <LogIn className="h-4 w-4" />
+              <span className="hidden sm:inline">Sign in</span>
+            </button>
+          )}
 
           <button
             onClick={onOpenInfo}

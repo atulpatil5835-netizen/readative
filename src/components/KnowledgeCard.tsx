@@ -2,22 +2,24 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import {
   KnowledgeComment,
   KnowledgeEntry,
+  KnowledgeVisibility,
   TaggedUser,
   UserProfile,
 } from "../types";
 import {
   BookOpenText,
+  Globe2,
   Heart,
+  Lock,
   MessageCircle,
+  Pencil,
+  Save,
   Share2,
+  Trash2,
+  X,
 } from "lucide-react";
-import { arrayUnion, doc, updateDoc } from "firebase/firestore";
+import { arrayUnion, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import {
-  getGuestId,
-  getGuestName,
-  saveGuestName,
-} from "../utils/guestIdentity";
 import { renderRichText } from "../utils/renderRichText";
 import { recordKnowledgeFeedActivity } from "../utils/feedPersonalization";
 import { toggleKnowledgeEntryLike } from "../utils/knowledgeFeedData";
@@ -29,6 +31,10 @@ import {
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import {
+  normalizeKnowledgeVisibility,
+} from "../utils/knowledgePrivacy";
 
 function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(" ");
@@ -102,6 +108,7 @@ function observeEntryVisibilityOnce(target: Element, onVisible: () => void) {
 
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
+  currentIdentity: KnowledgeIdentity | null;
   profiles?: UserProfile[];
   onVisible?: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: {
@@ -117,6 +124,35 @@ interface KnowledgeCardProps {
 function estimateReadMinutes(text: string) {
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(wordCount / 180) || 1);
+}
+
+function parseManualHashtags(input: string): string[] {
+  return input
+    .split(/[\s,\n]+/)
+    .map((token) => token.replace(/^#/, "").trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function extractInlineHashtags(text: string): string[] {
+  return [...text.matchAll(/#([a-z0-9][a-z0-9_-]*)/gi)].map((match) =>
+    match[1].toLowerCase(),
+  );
+}
+
+function mergeHashtags(...sources: string[][]): string[] {
+  const unique = new Set<string>();
+  sources.flat().forEach((tag) => {
+    if (!tag) return;
+    unique.add(tag.toLowerCase());
+  });
+  return [...unique].slice(0, 8);
+}
+
+function createExcerpt(text: string, maxLength = 155) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
 }
 
 interface CommentMentionState {
@@ -150,6 +186,7 @@ function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
 
 export function KnowledgeCard({
   entry,
+  currentIdentity,
   profiles = [],
   onVisible,
   onIdentityRequired,
@@ -171,24 +208,34 @@ export function KnowledgeCard({
   const [localComments, setLocalComments] = useState<KnowledgeComment[]>(
     entry.comments || [],
   );
-  const [pendingCommenter, setPendingCommenter] = useState<string | null>(null);
+  const [actionIdentity, setActionIdentity] =
+    useState<KnowledgeIdentity | null>(currentIdentity);
   const [activeCommentMention, setActiveCommentMention] =
     useState<CommentMentionState | null>(null);
-  const [guestName, setGuestName] = useState<string | null>(() =>
-    getGuestName(),
-  );
   const [likeAnimationVersion, setLikeAnimationVersion] = useState(0);
   const [isUpdatingLike, setIsUpdatingLike] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const hasTrackedVisibilityRef = useRef(false);
 
-  const guestId = getGuestId();
-  const isLiked = localLikes.includes(guestId);
+  const activeIdentity = currentIdentity || actionIdentity;
+  const activeAuthorId = activeIdentity?.authorId || null;
+  const isLiked = activeAuthorId ? localLikes.includes(activeAuthorId) : false;
+  const canManageEntry = currentIdentity?.authorId === entry.authorId;
+  const entryVisibility = normalizeKnowledgeVisibility(entry.visibility);
   const mentions = entry.mentions || [];
   const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
   const readingMinutes = estimateReadMinutes(entry.content);
+  const topComment = useMemo(
+    () =>
+      [...localComments].sort(
+        (left, right) => (right.createdAt || 0) - (left.createdAt || 0),
+      )[0] || null,
+    [localComments],
+  );
   const profileMap = useMemo(
     () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
     [profiles],
@@ -210,6 +257,10 @@ export function KnowledgeCard({
     setLocalLikes(entry.likes || []);
     setLocalComments(entry.comments || []);
   }, [entry.id, entry.likes, entry.comments]);
+
+  useEffect(() => {
+    setActionIdentity(currentIdentity);
+  }, [currentIdentity?.authorId, currentIdentity?.displayName]);
 
   useEffect(() => {
     queueLegacyKnowledgeImageMigration(entry);
@@ -262,26 +313,32 @@ export function KnowledgeCard({
           type: "like" | "comment";
           entryId: string;
           username: string;
+          authorId: string;
         }>
       ).detail;
 
-      if (!detail || detail.entryId !== entry.id) return;
+      if (!detail || detail.entryId !== entry.id || !detail.authorId) return;
 
-      const normalizedName = saveGuestName(detail.username);
-      setGuestName(normalizedName);
+      const nextIdentity = {
+        displayName: detail.username,
+        authorId: detail.authorId,
+      };
+      setActionIdentity(nextIdentity);
 
       if (detail.type === "like") {
-        void updateLike(true, normalizedName);
+        void updateLike(true, nextIdentity);
         return;
       }
 
       setShowComments(true);
-      setPendingCommenter(normalizedName);
+      if (commentText.trim()) {
+        void handleComment(nextIdentity);
+      }
     };
 
     window.addEventListener("knowledge-action", handler);
     return () => window.removeEventListener("knowledge-action", handler);
-  }, [entry.id, localLikes]);
+  }, [commentText, entry.id, localLikes]);
 
   const updateCommentMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -319,18 +376,26 @@ export function KnowledgeCard({
     });
   };
 
-  const updateLike = async (shouldLike: boolean, actorName?: string | null) => {
+  const updateLike = async (
+    shouldLike: boolean,
+    actorIdentity: KnowledgeIdentity | null = activeIdentity,
+  ) => {
+    if (!actorIdentity) {
+      onIdentityRequired({ type: "like", entryId: entry.id });
+      return;
+    }
+
     if (isUpdatingLike) {
       return;
     }
 
-    if (shouldLike && !localLikes.includes(guestId)) {
+    if (shouldLike && !localLikes.includes(actorIdentity.authorId)) {
       setLikeAnimationVersion((current) => current + 1);
     }
 
     const nextLikes = shouldLike
-      ? [...localLikes, guestId]
-      : localLikes.filter((id) => id !== guestId);
+      ? [...new Set([...localLikes, actorIdentity.authorId])]
+      : localLikes.filter((id) => id !== actorIdentity.authorId);
 
     setLocalLikes(nextLikes);
     setInteractionMessage(null);
@@ -339,8 +404,8 @@ export function KnowledgeCard({
     try {
       await toggleKnowledgeEntryLike({
         entry,
-        actorId: guestId,
-        actorName,
+        actorId: actorIdentity.authorId,
+        actorName: actorIdentity.displayName,
         shouldLike,
       });
     } catch (error) {
@@ -355,23 +420,30 @@ export function KnowledgeCard({
   };
 
   const handleLike = () => {
+    if (!activeIdentity) {
+      onIdentityRequired({ type: "like", entryId: entry.id });
+      return;
+    }
+
     if (isLiked) {
-      void updateLike(false, guestName);
+      void updateLike(false, activeIdentity);
       return;
     }
 
-    if (guestName) {
-      void updateLike(true, guestName);
-      return;
-    }
-
-    onIdentityRequired({ type: "like", entryId: entry.id });
+    void updateLike(true, activeIdentity);
   };
 
-  const handleComment = async (authorName: string) => {
-    const normalizedName = saveGuestName(authorName);
+  const handleComment = async (
+    commentIdentity: KnowledgeIdentity | null = activeIdentity,
+  ) => {
     const content = commentText.trim();
-    if (!normalizedName || !content) return;
+    if (!content) return;
+    if (!commentIdentity) {
+      onIdentityRequired({ type: "comment", entryId: entry.id });
+      return;
+    }
+
+    const normalizedName = commentIdentity.displayName;
     const commentMentions = resolveMentions(content, profiles);
 
     setCommentMessage(null);
@@ -389,8 +461,7 @@ export function KnowledgeCard({
       return;
     }
 
-    setGuestName(normalizedName);
-    setPendingCommenter(null);
+    setActionIdentity(commentIdentity);
     setIsCommenting(true);
     setIsModeratingComment(false);
     setActiveCommentMention(null);
@@ -398,7 +469,7 @@ export function KnowledgeCard({
     const optimisticComment: KnowledgeComment = {
       id: `temp-${Date.now()}`,
       author: normalizedName,
-      authorId: guestId,
+      authorId: commentIdentity.authorId,
       text: content,
       mentions: commentMentions,
       createdAt: Date.now(),
@@ -411,7 +482,7 @@ export function KnowledgeCard({
       const savedComment: KnowledgeComment = {
         id: Math.random().toString(36).slice(2, 11),
         author: normalizedName,
-        authorId: guestId,
+        authorId: commentIdentity.authorId,
         text: content,
         mentions: commentMentions,
         createdAt: Date.now(),
@@ -426,7 +497,7 @@ export function KnowledgeCard({
       await notifyCommentOnKnowledge(
         entry,
         {
-          authorId: guestId,
+          authorId: commentIdentity.authorId,
           username: normalizedName,
         },
         savedComment,
@@ -440,7 +511,7 @@ export function KnowledgeCard({
         },
         savedComment,
         {
-          authorId: guestId,
+          authorId: commentIdentity.authorId,
           username: normalizedName,
         },
         commentMentions,
@@ -472,9 +543,8 @@ export function KnowledgeCard({
   const handleCommentSubmit = () => {
     if (!commentText.trim()) return;
 
-    const name = pendingCommenter || guestName;
-    if (name) {
-      void handleComment(name);
+    if (activeIdentity) {
+      void handleComment(activeIdentity);
       return;
     }
 
@@ -544,6 +614,76 @@ export function KnowledgeCard({
     }
   };
 
+  const handleDeleteEntry = async () => {
+    if (!canManageEntry || isDeleting) return;
+
+    const shouldDelete = window.confirm(
+      "Delete this post? This cannot be undone.",
+    );
+    if (!shouldDelete) return;
+
+    setIsDeleting(true);
+    setInteractionMessage(null);
+
+    try {
+      await deleteDoc(doc(db, "knowledge", entry.id));
+    } catch (error) {
+      console.error("Failed to delete post:", error);
+      setInteractionMessage(
+        "Could not delete this post right now. Please try again.",
+      );
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSaveEntryEdit = async ({
+    title,
+    content,
+    hashtagInput,
+    visibility,
+  }: {
+    title: string;
+    content: string;
+    hashtagInput: string;
+    visibility: KnowledgeVisibility;
+  }) => {
+    if (!canManageEntry) return;
+
+    const seedHashtags = mergeHashtags(
+      parseManualHashtags(hashtagInput),
+      extractInlineHashtags(`${title}\n${content}`),
+    );
+    const mentions = resolveMentions(`${title}\n${content}`, profiles);
+
+    const { moderateContent } = await import("../utils/contentModeration");
+    const moderation = await moderateContent("knowledge-post", {
+      title,
+      content,
+      hashtags: seedHashtags,
+    });
+
+    if (!moderation.allowed) {
+      throw new Error(
+        [moderation.message, ...moderation.suggestions].slice(0, 2).join(" "),
+      );
+    }
+
+    await updateDoc(doc(db, "knowledge", entry.id), {
+      title,
+      content,
+      visibility,
+      hashtags: seedHashtags,
+      mentions,
+      excerpt: createExcerpt(content, 180),
+      readingMinutes: estimateReadMinutes(content),
+      qualityScore: moderation.knowledgeScore,
+      updatedAt: Date.now(),
+    });
+
+    setShowEditModal(false);
+    setInteractionMessage("Post updated.");
+  };
+
   return (
     <article
       ref={articleRef}
@@ -573,6 +713,7 @@ export function KnowledgeCard({
               <ProfileAvatar
                 authorId={entry.authorId}
                 image={authorProfile?.profileImage}
+                photoUrl={authorProfile?.photoUrl}
                 username={entry.author}
                 size="sm"
                 className="border-slate-200"
@@ -598,8 +739,37 @@ export function KnowledgeCard({
             </div>
           </div>
 
-          <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">
-            Insight Drop
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">
+              Insight
+            </span>
+            {entryVisibility === "private" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
+                <Lock className="h-3 w-3" />
+                Private
+              </span>
+            )}
+            {canManageEntry && (
+              <div className="flex items-center rounded-full border border-slate-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(true)}
+                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Edit post"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteEntry()}
+                  disabled={isDeleting}
+                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                  aria-label="Delete post"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -647,11 +817,59 @@ export function KnowledgeCard({
           </div>
         )}
 
+        {topComment && (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+              Top comment
+            </p>
+            <div className="flex items-start gap-3">
+              <ProfileAvatar
+                authorId={topComment.authorId || topComment.id}
+                image={
+                  topComment.authorId
+                    ? profileMap.get(topComment.authorId)?.profileImage
+                    : undefined
+                }
+                photoUrl={
+                  topComment.authorId
+                    ? profileMap.get(topComment.authorId)?.photoUrl
+                    : undefined
+                }
+                username={topComment.author}
+                size="xs"
+                className="border-slate-200"
+              />
+              <div className="min-w-0 flex-1">
+                {topComment.authorId ? (
+                  <button
+                    onClick={() => handleOpenAuthorProfile(topComment.authorId)}
+                    className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
+                  >
+                    @{topComment.author}
+                  </button>
+                ) : (
+                  <span className="text-xs font-bold text-slate-800">
+                    @{topComment.author}
+                  </span>
+                )}
+                <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+                  {renderRichText({
+                    text: topComment.text,
+                    mentions: topComment.mentions || [],
+                    onOpenProfile: handleOpenAuthorProfile,
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
           <div className="flex items-center gap-5">
             <button
               onClick={handleLike}
               disabled={isUpdatingLike}
+              aria-label={isLiked ? "Unlike post" : "Like post"}
               className={cn(
                 "relative overflow-visible flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70",
                 isLiked
@@ -704,6 +922,7 @@ export function KnowledgeCard({
 
             <button
               onClick={() => setShowComments((current) => !current)}
+              aria-label={showComments ? "Hide comments" : "Show comments"}
               className={cn(
                 "flex items-center gap-1.5 text-sm font-semibold transition-colors",
                 showComments
@@ -741,10 +960,12 @@ export function KnowledgeCard({
 
       {showComments && (
         <div className="border-t border-slate-100 bg-slate-50/70 p-6">
-          {guestName && (
+          {activeIdentity && (
             <p className="mb-3 text-xs text-slate-400">
               Commenting as{" "}
-              <span className="font-semibold text-slate-600">@{guestName}</span>
+              <span className="font-semibold text-slate-600">
+                @{activeIdentity.displayName}
+              </span>
             </p>
           )}
 
@@ -761,22 +982,32 @@ export function KnowledgeCard({
                   );
                   if (commentMessage) setCommentMessage(null);
                 }}
-                onClick={(event) =>
+                onClick={(event) => {
+                  if (!activeIdentity) {
+                    onIdentityRequired({ type: "comment", entryId: entry.id });
+                    return;
+                  }
+
                   updateCommentMentionState(
                     event.currentTarget.value,
                     event.currentTarget.selectionStart ||
                       event.currentTarget.value.length,
-                  )
-                }
+                  );
+                }}
+                onFocus={() => {
+                  if (!activeIdentity) {
+                    onIdentityRequired({ type: "comment", entryId: entry.id });
+                  }
+                }}
                 onKeyDown={(event) =>
                   event.key === "Enter" &&
                   !event.shiftKey &&
                   handleCommentSubmit()
                 }
                 placeholder={
-                  pendingCommenter
-                    ? `Commenting as @${pendingCommenter}...`
-                    : "Add your thought and tag with @username..."
+                  activeIdentity
+                    ? `Commenting as @${activeIdentity.displayName}...`
+                    : "Sign in to comment and tag with @username..."
                 }
                 className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
               />
@@ -835,6 +1066,11 @@ export function KnowledgeCard({
                           ? profileMap.get(comment.authorId)?.profileImage
                           : undefined
                       }
+                      photoUrl={
+                        comment.authorId
+                          ? profileMap.get(comment.authorId)?.photoUrl
+                          : undefined
+                      }
                       username={comment.author}
                       size="xs"
                       className="border-slate-200"
@@ -872,6 +1108,159 @@ export function KnowledgeCard({
           </div>
         </div>
       )}
+
+      {showEditModal && (
+        <EditPostModal
+          entry={entry}
+          onClose={() => setShowEditModal(false)}
+          onSave={handleSaveEntryEdit}
+        />
+      )}
     </article>
+  );
+}
+
+function EditPostModal({
+  entry,
+  onClose,
+  onSave,
+}: {
+  entry: KnowledgeEntry;
+  onClose: () => void;
+  onSave: (input: {
+    title: string;
+    content: string;
+    hashtagInput: string;
+    visibility: KnowledgeVisibility;
+  }) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(entry.title);
+  const [content, setContent] = useState(entry.content);
+  const [hashtagInput, setHashtagInput] = useState(
+    entry.hashtags.map((tag) => `#${tag}`).join(" "),
+  );
+  const [visibility, setVisibility] = useState<KnowledgeVisibility>(
+    normalizeKnowledgeVisibility(entry.visibility),
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    const nextTitle = title.trim();
+    const nextContent = content.trim();
+    if (!nextTitle || !nextContent || isSaving) return;
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      await onSave({
+        title: nextTitle,
+        content: nextContent,
+        hashtagInput,
+        visibility,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not update this post right now.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+        <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+            aria-label="Close edit post"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
+            Edit Post
+          </p>
+          <h2 className="mt-1 pr-10 text-2xl font-black tracking-tight text-slate-950">
+            Update knowledge
+          </h2>
+        </div>
+
+        <div className="space-y-4 p-5 sm:p-6">
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+            {(
+              [
+                ["public", "Public", Globe2],
+                ["private", "Private", Lock],
+              ] as const
+            ).map(([nextVisibility, label, Icon]) => (
+              <button
+                key={nextVisibility}
+                type="button"
+                onClick={() => setVisibility(nextVisibility)}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                  visibility === nextVisibility
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Post title"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+          />
+
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="Write your post. Tag people with @username."
+            className="min-h-[190px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+          />
+
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+              Hashtags
+            </p>
+            <input
+              value={hashtagInput}
+              onChange={(event) => setHashtagInput(event.target.value)}
+              placeholder="#science #history #productivity"
+              className="w-full bg-transparent text-sm text-slate-700 outline-none"
+            />
+          </div>
+
+          {errorMessage && (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={isSaving || !title.trim() || !content.trim()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
+          >
+            <Save className="h-4 w-4" />
+            {isSaving ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

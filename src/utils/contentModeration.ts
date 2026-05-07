@@ -228,7 +228,7 @@ function evaluateLocally(
 
   if (mode !== "knowledge-comment" && chatMatches.length > 0) {
     reasons.push(
-      "This reads more like casual chat than a useful knowledge contribution.",
+      "Add a clearer learning takeaway before this can go live.",
     );
   }
 

@@ -24,8 +24,7 @@ function normalizeIdentity(parsed: Partial<KnowledgeIdentity> | null) {
     return null;
   }
 
-  const authorId =
-    parsed?.authorId?.startsWith("guest_") ? parsed.authorId : getGuestId();
+  const authorId = parsed?.authorId?.trim() || getGuestId();
 
   return {
     displayName,
