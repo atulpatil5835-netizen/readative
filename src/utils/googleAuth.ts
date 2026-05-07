@@ -7,6 +7,8 @@ import {
 } from "firebase/auth";
 import {
   auth,
+  firebaseConfigMissingKeys,
+  firebaseConfigReady,
   authPersistenceReady,
   firebaseAuthDomain,
 } from "../firebase/firebase";
@@ -76,6 +78,10 @@ function getFirebaseAuthErrorMessage(error: unknown) {
       : "";
   const details = collectErrorText(error).toLowerCase();
 
+  if (details.includes("firebase is missing required environment variables")) {
+    return `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}. Add them in your hosting environment and redeploy.`;
+  }
+
   if (
     details.includes("api_key_service_blocked") ||
     (details.includes("identitytoolkit") && details.includes("blocked"))
@@ -121,6 +127,12 @@ export async function resolveGoogleUserIdentity(
 
 export async function signInWithGoogleAccount(): Promise<KnowledgeIdentity> {
   try {
+    if (!firebaseConfigReady) {
+      throw new Error(
+        `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
+      );
+    }
+
     void authPersistenceReady;
     const result = await signInWithPopup(auth, googleProvider);
     return resolveGoogleUserIdentity(result.user);
@@ -134,6 +146,15 @@ export function subscribeToGoogleIdentity(
   onChange: (identity: KnowledgeIdentity | null) => void,
   onError?: (message: string) => void,
 ) {
+  if (!firebaseConfigReady) {
+    clearKnowledgeIdentity();
+    onChange(null);
+    onError?.(
+      `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
+    );
+    return () => undefined;
+  }
+
   return onAuthStateChanged(
     auth,
     (user) => {

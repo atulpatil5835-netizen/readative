@@ -16,6 +16,10 @@ import {
   signOutGoogleAccount,
   subscribeToGoogleIdentity,
 } from "./utils/googleAuth";
+import {
+  firebaseConfigMissingKeys,
+  firebaseConfigReady,
+} from "./firebase/firebase";
 import type { UserNotification } from "./types";
 import {
   navigateToRoute,
@@ -318,6 +322,14 @@ export default function App() {
             <BannerNotice
               title="Google sign-in issue"
               body={authStatusMessage}
+              tone="warning"
+            />
+          )}
+
+          {!firebaseConfigReady && (
+            <BannerNotice
+              title="Firebase setup needed"
+              body={`Missing ${firebaseConfigMissingKeys.join(", ")}. Add the VITE_FIREBASE values in the hosting environment and redeploy so sign-in, posts, likes, comments, and profiles can connect.`}
               tone="warning"
             />
           )}
