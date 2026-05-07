@@ -48,10 +48,28 @@ function isDefaultFirebaseAuthDomain(value: string) {
   )
 }
 
+function isLocalAuthHost() {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)
+}
+
+function getProjectAuthDomain() {
+  return normalizeAuthDomain(
+    readFirebaseEnvValue(
+      "VITE_FIREBASE_PROJECT_AUTH_DOMAIN",
+      FALLBACK_FIREBASE_CONFIG.authDomain,
+    ),
+  )
+}
+
 function resolveFirebaseAuthDomain() {
   const configuredAuthDomain = normalizeAuthDomain(
     readFirebaseEnvValue("VITE_FIREBASE_AUTH_DOMAIN"),
   )
+  const projectAuthDomain = getProjectAuthDomain()
   const brandedAuthDomain = normalizeAuthDomain(
     readFirebaseEnvValue("VITE_FIREBASE_BRANDED_AUTH_DOMAIN", BRANDED_AUTH_DOMAIN),
   )
@@ -59,12 +77,12 @@ function resolveFirebaseAuthDomain() {
     readFirebaseEnvValue("VITE_FIREBASE_USE_PROJECT_AUTH_DOMAIN").toLowerCase() ===
     "true"
 
-  if (forceProjectAuthDomain) {
-    return configuredAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
+  if (forceProjectAuthDomain || isLocalAuthHost() || import.meta.env.DEV) {
+    return projectAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
   }
 
   if (!configuredAuthDomain || isDefaultFirebaseAuthDomain(configuredAuthDomain)) {
-    return brandedAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
+    return brandedAuthDomain || projectAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
   }
 
   return configuredAuthDomain

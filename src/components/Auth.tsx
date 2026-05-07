@@ -242,6 +242,7 @@ export function GoogleSignInPrompt({
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const signInDomain = firebaseAuthDomain.replace(/^www\./, "");
+  const usesProjectAuthHelper = signInDomain.endsWith(".firebaseapp.com");
 
   const handleSignIn = async () => {
     setIsSigningIn(true);
@@ -283,8 +284,14 @@ export function GoogleSignInPrompt({
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <ShieldCheck className="h-4 w-4 shrink-0" />
             <span className="min-w-0">
-              Secure sign-in opens from{" "}
-              <span className="font-black">{signInDomain}</span>
+              {usesProjectAuthHelper ? (
+                "Secure Google sign-in for Readative"
+              ) : (
+                <>
+                  Secure sign-in opens from{" "}
+                  <span className="font-black">{signInDomain}</span>
+                </>
+              )}
             </span>
           </div>
         </div>
