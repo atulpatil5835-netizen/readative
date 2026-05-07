@@ -76,8 +76,16 @@ function resolveFirebaseAuthDomain() {
   const forceProjectAuthDomain =
     readFirebaseEnvValue("VITE_FIREBASE_USE_PROJECT_AUTH_DOMAIN").toLowerCase() ===
     "true"
+  const useBrandedAuthDomain =
+    readFirebaseEnvValue("VITE_FIREBASE_USE_BRANDED_AUTH_DOMAIN").toLowerCase() ===
+    "true"
 
-  if (forceProjectAuthDomain || isLocalAuthHost() || import.meta.env.DEV) {
+  if (
+    forceProjectAuthDomain ||
+    !useBrandedAuthDomain ||
+    isLocalAuthHost() ||
+    import.meta.env.DEV
+  ) {
     return projectAuthDomain || FALLBACK_FIREBASE_CONFIG.authDomain
   }
 
