@@ -1,4 +1,5 @@
-import { Bell, CirclePlus, Info, LogIn, LogOut, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, CirclePlus, Info, LogIn, LogOut, MoreVertical } from "lucide-react";
 import { Logo } from "./Logo";
 import { type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
@@ -29,6 +30,40 @@ export function Header({
   onSignOut,
 }: HeaderProps) {
   const tabs: AppTab[] = ["knowledge", "smarttalk", "profile"];
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        actionsMenuRef.current &&
+        !actionsMenuRef.current.contains(event.target as Node)
+      ) {
+        setActionsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActionsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionsOpen]);
+
+  const handleMenuAction = (action: () => void) => {
+    setActionsOpen(false);
+    action();
+  };
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
@@ -86,17 +121,6 @@ export function Header({
           </nav>
 
           <button
-            onClick={onOpenComposer}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-emerald-600 px-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
-            aria-label="Create post"
-            title="Create post"
-          >
-            <Plus className="h-4 w-4 md:hidden" />
-            <CirclePlus className="hidden h-4 w-4 md:block" />
-            <span className="hidden md:inline">Post</span>
-          </button>
-
-          <button
             onClick={onOpenNotifications}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
             aria-label="Open notifications"
@@ -110,38 +134,64 @@ export function Header({
             )}
           </button>
 
-          {identity ? (
+          <div ref={actionsMenuRef} className="relative">
             <button
-              onClick={onSignOut}
-              className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-sm font-bold text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 sm:w-auto sm:px-3"
-              aria-label="Sign out"
-              title={`Signed in as @${identity.displayName}`}
+              onClick={() => setActionsOpen((current) => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+              aria-label="Open actions menu"
+              aria-expanded={actionsOpen}
+              aria-haspopup="menu"
+              title="Actions"
             >
-              <span className="hidden max-w-24 truncate sm:inline">
-                @{identity.displayName}
-              </span>
-              <LogOut className="h-4 w-4" />
+              <MoreVertical className="h-4 w-4" />
             </button>
-          ) : (
-            <button
-              onClick={onOpenSignIn}
-              className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100 sm:w-auto sm:px-3"
-              aria-label="Sign in with Google"
-              title="Sign in with Google"
-            >
-              <LogIn className="h-4 w-4" />
-              <span className="hidden sm:inline">Sign in</span>
-            </button>
-          )}
 
-          <button
-            onClick={onOpenInfo}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
-            aria-label="Open info"
-            title="Contact and creator info"
-          >
-            <Info className="h-4 w-4" />
-          </button>
+            {actionsOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
+              >
+                <button
+                  onClick={() => handleMenuAction(onOpenComposer)}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  <CirclePlus className="h-4 w-4" />
+                  Add post
+                </button>
+                <button
+                  onClick={() => handleMenuAction(onOpenInfo)}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <Info className="h-4 w-4" />
+                  Info
+                </button>
+                {identity ? (
+                  <button
+                    onClick={() => handleMenuAction(onSignOut)}
+                    role="menuitem"
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                    title={`Signed in as @${identity.displayName}`}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="min-w-0 truncate">
+                      Sign out @{identity.displayName}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleMenuAction(onOpenSignIn)}
+                    role="menuitem"
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Sign in
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

@@ -607,20 +607,35 @@ function getRefreshDiscoveryScore(
   }
 
   const noise = getStableRefreshNoise(entry.id, refreshSeed);
+  const hasLikedTopicHistory = snapshot.likedHashtagAffinity.size > 0;
   const freshUnseenWeight =
     hoursSinceSeen === null
       ? ageHours <= 12
-        ? 10
+        ? hasLikedTopicHistory
+          ? 14
+          : 70
         : ageHours <= 48
-          ? 7
-          : 4
+          ? hasLikedTopicHistory
+            ? 11
+            : 58
+          : ageHours <= 120
+            ? hasLikedTopicHistory
+              ? 7
+              : 42
+            : hasLikedTopicHistory
+              ? 4
+              : 18
       : hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS
-        ? 2.5
-        : 0;
+        ? hasLikedTopicHistory
+          ? 4
+          : 20
+        : hasLikedTopicHistory
+          ? 1.5
+          : 10;
   const likedTopicBoost = getRepeatedLikedTopicBoost(entry, snapshot);
   const relatedDiscoveryBoost =
     likedTopicBoost > 0 && hoursSinceSeen === null
-      ? clamp(likedTopicBoost / 3, 2, 8)
+      ? clamp(likedTopicBoost / 2.6, 3, 10)
       : 0;
 
   return noise * freshUnseenWeight + relatedDiscoveryBoost;
@@ -841,6 +856,32 @@ function buildLatestEntriesFallback(scoredEntries: ScoredKnowledgeEntry[]) {
     .map((candidate) => candidate.entry);
 }
 
+function rotateColdStartRefreshLead(
+  entries: KnowledgeEntry[],
+  snapshot: KnowledgeFeedSnapshot,
+  refreshSeed?: number,
+) {
+  if (
+    typeof refreshSeed !== "number" ||
+    !Number.isFinite(refreshSeed) ||
+    snapshot.likedHashtagAffinity.size > 0 ||
+    entries.length < 3
+  ) {
+    return entries;
+  }
+
+  const refreshWindowSize = Math.min(6, entries.length);
+  const selectedIndex =
+    1 +
+    Math.floor(
+      getStableRefreshNoise("refresh-lead", refreshSeed) * (refreshWindowSize - 1),
+    );
+  const rotatedEntries = [...entries];
+  const [selectedEntry] = rotatedEntries.splice(selectedIndex, 1);
+
+  return [selectedEntry, ...rotatedEntries];
+}
+
 export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
   if (typeof window === "undefined") {
     return {
@@ -1021,7 +1062,7 @@ export function rankKnowledgeEntries(
 
   const fallbackEntries =
     rankedEntries.length > 0 ? rankedEntries : buildLatestEntriesFallback(scoredEntries);
-  return fallbackEntries;
+  return rotateColdStartRefreshLead(fallbackEntries, snapshot, options.refreshSeed);
 }
 
 function areEntryOrdersEqual(left: string[], right: string[]) {
