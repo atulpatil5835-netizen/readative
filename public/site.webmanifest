@@ -1,7 +1,7 @@
 {
   "name": "Readative",
   "short_name": "Readative",
-  "description": "A knowledge-first community for practical insights, explainers, and learning notes.",
+  "description": "A knowledge feed for practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f5f5f0",

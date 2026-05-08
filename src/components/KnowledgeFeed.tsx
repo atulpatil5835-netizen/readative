@@ -1174,7 +1174,7 @@ export function KnowledgeFeed({
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
       ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
-      : "Discover practical insights, visual explainers, AI tools, study notes, and SmartTalk ideas from creators on Readative.";
+      : "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
   const pageUrl = focusedEntry
     ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
     : selectedHashtag
