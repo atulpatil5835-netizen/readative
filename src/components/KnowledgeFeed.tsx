@@ -245,11 +245,9 @@ interface LoadNextEntriesPageOptions {
 
 interface CachedKnowledgeFeed {
   entries: KnowledgeEntry[];
-  feedEntryOrder: string[];
   visibleLikedEntryIds: string[];
   hasMoreServerEntries: boolean;
   cachedAt: number;
-  refreshSeed: number;
 }
 
 interface BrowserIdleCallbacks {
@@ -266,6 +264,10 @@ interface PendingFeedStorageWrite {
 }
 
 const pendingFeedStorageWrites = new Map<string, PendingFeedStorageWrite>();
+
+function createKnowledgeFeedRefreshSeed() {
+  return Date.now() + Math.floor(Math.random() * 1_000_000);
+}
 
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
@@ -621,22 +623,11 @@ function normalizeCachedKnowledgeFeed(value: unknown): CachedKnowledgeFeed | nul
   }
 
   const entryIds = new Set(entries.map((entry) => entry.id));
-  const feedEntryOrder = normalizeCacheStringArray(candidate.feedEntryOrder).filter(
-    (entryId) => entryIds.has(entryId),
-  );
-  const refreshSeed =
-    typeof candidate.refreshSeed === "number" &&
-    Number.isFinite(candidate.refreshSeed)
-      ? candidate.refreshSeed
-      : cachedAt;
-
   return {
     entries,
-    feedEntryOrder,
     visibleLikedEntryIds: normalizeCacheStringArray(candidate.visibleLikedEntryIds),
     hasMoreServerEntries: candidate.hasMoreServerEntries !== false,
     cachedAt,
-    refreshSeed,
   };
 }
 
@@ -718,13 +709,9 @@ function writeKnowledgeFeedStorageCache(
   const storageEntries = cache.entries
     .slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT)
     .map(stripEntryImagesForStorage);
-  const storageEntryIds = new Set(storageEntries.map((entry) => entry.id));
   const storageCache: CachedKnowledgeFeed = {
     ...cache,
     entries: storageEntries,
-    feedEntryOrder: cache.feedEntryOrder.filter((entryId) =>
-      storageEntryIds.has(entryId),
-    ),
     visibleLikedEntryIds: [],
   };
 
@@ -802,9 +789,6 @@ function writeKnowledgeFeedCache(
   const nextCache: CachedKnowledgeFeed = {
     ...cache,
     entries: memoryEntries,
-    feedEntryOrder: cache.feedEntryOrder.filter((entryId) =>
-      entryIds.has(entryId),
-    ),
     visibleLikedEntryIds: cache.visibleLikedEntryIds.filter((entryId) =>
       entryIds.has(entryId),
     ),
@@ -916,6 +900,9 @@ export function KnowledgeFeed({
   refreshSignal,
   isActive,
 }: KnowledgeFeedProps) {
+  const initialRefreshSeed = useMemo(createKnowledgeFeedRefreshSeed, [
+    identity?.authorId,
+  ]);
   const initialFeedCache = useMemo(
     () => readKnowledgeFeedCache(identity?.authorId),
     [identity?.authorId],
@@ -923,14 +910,13 @@ export function KnowledgeFeed({
   const initialFeedOrder = useMemo(
     () =>
       initialFeedCache
-        ? reconcileKnowledgeFeedOrder(
+        ? rankKnowledgeEntries(
             initialFeedCache.entries,
-            initialFeedCache.feedEntryOrder,
             getKnowledgeFeedSnapshot(),
-            { refreshSeed: initialFeedCache.refreshSeed },
-          )
+            { refreshSeed: initialRefreshSeed },
+          ).map((entry) => entry.id)
         : [],
-    [initialFeedCache],
+    [initialFeedCache, initialRefreshSeed],
   );
   const [entries, setEntries] = useState<KnowledgeEntry[]>(
     () => initialFeedCache?.entries || [],
@@ -982,12 +968,13 @@ export function KnowledgeFeed({
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>(entries);
   const visibleLikedEntryIdsRef = useRef<string[]>(visibleLikedEntryIds);
-  const feedRefreshSeedRef = useRef(initialFeedCache?.refreshSeed || Date.now());
+  const feedRefreshSeedRef = useRef(initialRefreshSeed);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
     useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const hasMoreServerEntriesRef = useRef(hasMoreServerEntries);
   const hasPaginatedPastFirstPageRef = useRef(false);
+  const hasAppliedInitialRealtimeRankRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -1011,10 +998,8 @@ export function KnowledgeFeed({
 
     writeKnowledgeFeedCache(identity?.authorId, {
       entries,
-      feedEntryOrder,
       visibleLikedEntryIds,
       hasMoreServerEntries,
-      refreshSeed: feedRefreshSeedRef.current,
     });
   }, [
     entries,
@@ -1025,6 +1010,10 @@ export function KnowledgeFeed({
   ]);
 
   useEffect(() => {
+    const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
+    feedRefreshSeedRef.current = nextRefreshSeed;
+    hasAppliedInitialRealtimeRankRef.current = false;
+
     const cachedFeed = readKnowledgeFeedCache(identity?.authorId);
     const nextVisibleLikedEntryIds = cachedFeed?.visibleLikedEntryIds || [];
     visibleLikedEntryIdsRef.current = nextVisibleLikedEntryIds;
@@ -1034,26 +1023,23 @@ export function KnowledgeFeed({
       entriesRef.current = cachedFeed.entries;
       setEntries(cachedFeed.entries);
       setFeedEntryOrder(
-        reconcileKnowledgeFeedOrder(
+        rankKnowledgeEntries(
           cachedFeed.entries,
-          cachedFeed.feedEntryOrder,
           getKnowledgeFeedSnapshot(),
-          { refreshSeed: cachedFeed.refreshSeed },
-        ),
+          { refreshSeed: nextRefreshSeed },
+        ).map((entry) => entry.id),
       );
-      feedRefreshSeedRef.current = cachedFeed.refreshSeed;
       updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
       setIsLoading(false);
       return;
     }
 
-    setFeedEntryOrder((currentOrder) =>
-      reconcileKnowledgeFeedOrder(
+    setFeedEntryOrder(
+      rankKnowledgeEntries(
         entriesRef.current,
-        currentOrder,
         getKnowledgeFeedSnapshot(),
-        { refreshSeed: feedRefreshSeedRef.current },
-      ),
+        { refreshSeed: nextRefreshSeed },
+      ).map((entry) => entry.id),
     );
   }, [identity?.authorId, updateHasMoreServerEntries]);
 
@@ -1071,7 +1057,7 @@ export function KnowledgeFeed({
     setFeedMessage(null);
     visibleLikedEntryIdsRef.current = [];
     setVisibleLikedEntryIds([]);
-    feedRefreshSeedRef.current = Date.now();
+    feedRefreshSeedRef.current = createKnowledgeFeedRefreshSeed();
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
         refreshSeed: feedRefreshSeedRef.current,
@@ -1108,7 +1094,16 @@ export function KnowledgeFeed({
 
     const unsubscribe = onSnapshot(
       knowledgeQuery,
+      { includeMetadataChanges: true },
       (snapshot) => {
+        if (
+          snapshot.metadata.fromCache &&
+          snapshot.docs.length === 0 &&
+          entriesRef.current.length === 0
+        ) {
+          return;
+        }
+
         didReceiveFeedResponse = true;
         if (timeoutId !== null) {
           window.clearTimeout(timeoutId);
@@ -1140,17 +1135,30 @@ export function KnowledgeFeed({
           entriesRef.current,
           data,
         );
+        const shouldApplyFreshSnapshotOrder =
+          !hasAppliedInitialRealtimeRankRef.current;
+        hasAppliedInitialRealtimeRankRef.current = true;
         entriesRef.current = nextFeedEntries;
         setEntries(nextFeedEntries);
-        setFeedEntryOrder((currentOrder) =>
-          reconcileRealtimeKnowledgeFeedOrder({
+        setFeedEntryOrder((currentOrder) => {
+          const personalizationSnapshot = getKnowledgeFeedSnapshot();
+
+          if (shouldApplyFreshSnapshotOrder) {
+            return rankKnowledgeEntries(
+              nextFeedEntries,
+              personalizationSnapshot,
+              { refreshSeed: feedRefreshSeedRef.current },
+            ).map((entry) => entry.id);
+          }
+
+          return reconcileRealtimeKnowledgeFeedOrder({
             entries: nextFeedEntries,
             currentOrder,
-            snapshot: getKnowledgeFeedSnapshot(),
+            snapshot: personalizationSnapshot,
             newEntryIds,
             refreshSeed: feedRefreshSeedRef.current,
-          }),
-        );
+          });
+        });
 
         setIsLoading(false);
         setFeedLoadError(null);
@@ -1558,8 +1566,16 @@ export function KnowledgeFeed({
       matchesKnowledgeSearch(entry, searchTerms),
     );
   }, [deferredFeedSearchQuery, topicFilteredEntries]);
+  const hasActiveSearch = feedSearchQuery.trim().length > 0;
+  const hasActiveTopic = activeFeedTopic.id !== "all";
   const hasMoreEntries =
     !focusedEntryId && hasMoreServerEntries && Boolean(paginationCursorRef.current);
+  const shouldKeepLoadingEmptyFeed =
+    !focusedEntryId &&
+    filteredEntries.length === 0 &&
+    hasMoreEntries &&
+    !hasActiveSearch &&
+    !feedLoadError;
 
   useEffect(() => {
     if (!hasMoreEntries || typeof window === "undefined") return;
@@ -1587,6 +1603,28 @@ export function KnowledgeFeed({
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [hasMoreEntries, isLoadingMoreEntries, loadNextEntriesPage]);
+
+  useEffect(() => {
+    if (
+      !shouldKeepLoadingEmptyFeed ||
+      isLoading ||
+      isLoadingMoreEntries ||
+      isBackgroundLoadingEntries
+    ) {
+      return;
+    }
+
+    void loadNextEntriesPage({
+      showLoadingState: true,
+      surfaceErrors: true,
+    });
+  }, [
+    isBackgroundLoadingEntries,
+    isLoading,
+    isLoadingMoreEntries,
+    loadNextEntriesPage,
+    shouldKeepLoadingEmptyFeed,
+  ]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -1969,8 +2007,6 @@ export function KnowledgeFeed({
     : selectedHashtag
       ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
       : buildAbsoluteRouteUrl("knowledge");
-  const hasActiveSearch = feedSearchQuery.trim().length > 0;
-  const hasActiveTopic = activeFeedTopic.id !== "all";
   const isPaginationBusy =
     isLoadingMoreEntries || isBackgroundLoadingEntries;
 
@@ -2092,39 +2128,46 @@ export function KnowledgeFeed({
           )}
 
           {filteredEntries.length === 0 ? (
-            <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-              <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
-              <h3 className="mt-4 text-xl font-black text-slate-900">
-                {hasActiveSearch
-                  ? `No posts matched "${feedSearchQuery.trim()}"`
-                  : hasActiveTopic && selectedHashtag
-                    ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
+            shouldKeepLoadingEmptyFeed ? (
+              <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
+                <p className="mt-3 text-sm text-slate-400">Loading posts...</p>
+              </div>
+            ) : (
+              <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+                <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
+                <h3 className="mt-4 text-xl font-black text-slate-900">
+                  {hasActiveSearch
+                    ? `No posts matched "${feedSearchQuery.trim()}"`
+                    : hasActiveTopic && selectedHashtag
+                      ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
+                      : hasActiveTopic
+                        ? `No ${activeFeedTopic.label} posts found`
+                        : selectedHashtag
+                          ? `No posts for #${selectedHashtag}`
+                          : "No posts yet"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  {hasActiveSearch
+                    ? "Try a broader keyword, another hashtag, or search by @username."
                     : hasActiveTopic
-                      ? `No ${activeFeedTopic.label} posts found`
+                      ? "Try another category or keep scrolling while more posts load."
                       : selectedHashtag
-                        ? `No posts for #${selectedHashtag}`
-                        : "No posts yet"}
-              </h3>
-              <p className="mt-2 text-sm text-slate-500">
-                {hasActiveSearch
-                  ? "Try a broader keyword, another hashtag, or search by @username."
-                  : hasActiveTopic
-                    ? "Try another category or keep scrolling while more posts load."
-                    : selectedHashtag
-                      ? "Try another hashtag or clear this filter to explore the full feed."
-                      : "Tap the `+` button at the top to upload the first knowledge post."}
-              </p>
-              {hasMoreEntries && (
-                <button
-                  type="button"
-                  onClick={() => void loadNextEntriesPage()}
-                  disabled={isPaginationBusy}
-                  className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
-                >
-                  {isLoadingMoreEntries ? "Loading posts..." : "Load older posts"}
-                </button>
-              )}
-            </div>
+                        ? "Try another hashtag or clear this filter to explore the full feed."
+                        : "Tap the `+` button at the top to upload the first knowledge post."}
+                </p>
+                {hasMoreEntries && (
+                  <button
+                    type="button"
+                    onClick={() => void loadNextEntriesPage()}
+                    disabled={isPaginationBusy}
+                    className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                  >
+                    {isLoadingMoreEntries ? "Loading posts..." : "Load older posts"}
+                  </button>
+                )}
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               <KnowledgeCardList
