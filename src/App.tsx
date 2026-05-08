@@ -60,6 +60,9 @@ const NotificationsPanel = lazy(() =>
   }))
 );
 
+const NOTIFICATION_REALTIME_LIMIT = 20;
+const NOTIFICATION_FALLBACK_LIMIT = 60;
+
 export default function App() {
   const initialRoute = useMemo(parseRouteFromLocation, []);
   const [activeTab, setActiveTab] = useState<AppTab | "notFound">(initialRoute.tab);
@@ -225,36 +228,86 @@ export default function App() {
           return;
         }
 
-        const notificationsQuery = firestore.query(
+        const applyNotificationSnapshot = (snapshot: {
+          docs: Array<{
+            id: string;
+            data: () => UserNotification;
+          }>;
+        }) => {
+          const nextNotifications = snapshot.docs
+            .map((item) => {
+              const data = item.data() as UserNotification;
+              return {
+                id: item.id,
+                ...data,
+                createdAt: data.createdAt || Date.now(),
+              };
+            })
+            .sort((left, right) => right.createdAt - left.createdAt)
+            .slice(0, NOTIFICATION_REALTIME_LIMIT);
+
+          const unread = nextNotifications.filter(
+            (notification) => !notification.read
+          ).length;
+
+          setNotifications(nextNotifications);
+          setUnreadNotificationCount(unread);
+          setNotificationsError(null);
+        };
+
+        const startBasicNotificationListener = () => {
+          const basicNotificationsQuery = firestore.query(
+            firestore.collection(db, "notifications"),
+            firestore.where("targetAuthorId", "==", identity.authorId),
+            firestore.limit(NOTIFICATION_FALLBACK_LIMIT)
+          );
+
+          unsubscribe = firestore.onSnapshot(
+            basicNotificationsQuery,
+            applyNotificationSnapshot,
+            (error) => {
+              console.error("Notifications fallback listener error:", error);
+              setNotifications([]);
+              setUnreadNotificationCount(0);
+              setNotificationsError(
+                "Realtime notifications are temporarily unavailable. Please refresh in a moment."
+              );
+            }
+          );
+        };
+
+        const orderedNotificationsQuery = firestore.query(
           firestore.collection(db, "notifications"),
           firestore.where("targetAuthorId", "==", identity.authorId),
           firestore.orderBy("createdAt", "desc"),
-          firestore.limit(20)
+          firestore.limit(NOTIFICATION_REALTIME_LIMIT)
         );
 
         unsubscribe = firestore.onSnapshot(
-          notificationsQuery,
-          (snapshot) => {
-            const nextNotifications = snapshot.docs
-              .map((item) => {
-                const data = item.data() as UserNotification;
-                return {
-                  id: item.id,
-                  ...data,
-                  createdAt: data.createdAt || Date.now(),
-                };
-              })
-              .sort((left, right) => right.createdAt - left.createdAt);
-
-            const unread = nextNotifications.filter(
-              (notification) => !notification.read
-            ).length;
-
-            setNotifications(nextNotifications);
-            setUnreadNotificationCount(unread);
-            setNotificationsError(null);
-          },
+          orderedNotificationsQuery,
+          applyNotificationSnapshot,
           (error) => {
+            const message =
+              error instanceof Error ? error.message.toLowerCase() : "";
+            const code =
+              typeof error === "object" && error && "code" in error
+                ? String((error as { code?: unknown }).code).toLowerCase()
+                : "";
+            const needsIndex =
+              code === "failed-precondition" ||
+              message.includes("index") ||
+              message.includes("requires an index");
+
+            if (needsIndex && !cancelled) {
+              console.warn(
+                "Notifications ordered listener needs an index; using limited fallback listener.",
+                error
+              );
+              unsubscribe?.();
+              startBasicNotificationListener();
+              return;
+            }
+
             console.error("Notifications listener error:", error);
             setNotifications([]);
             setUnreadNotificationCount(0);
