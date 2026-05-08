@@ -2,6 +2,7 @@ import {
   type ChangeEvent,
   useDeferredValue,
   type KeyboardEvent,
+  type ComponentType,
   type RefObject,
   useCallback,
   useEffect,
@@ -11,13 +12,22 @@ import {
 } from "react";
 import {
   BookOpenText,
+  Bot,
+  Code2,
+  Flame,
   Globe2,
   ImagePlus,
   Lock,
+  Megaphone,
+  Palette,
+  Rocket,
   Send,
+  Smartphone,
   Sparkles,
   Tag,
+  Wrench,
   X,
+  Zap,
 } from "lucide-react";
 import {
   collection,
@@ -78,8 +88,131 @@ const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const FEED_PAGE_SIZE = 10;
 const FEED_LOAD_TIMEOUT_MS = 9000;
+const FEED_BACKGROUND_PAGE_DELAY_MS = 300;
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
+const TRENDING_FEED_LIMIT = 12;
+
+type FeedTopicId =
+  | "all"
+  | "trending"
+  | "ai"
+  | "apps"
+  | "productivity"
+  | "marketing"
+  | "software"
+  | "tools"
+  | "startups"
+  | "design"
+  | "learning";
+
+interface FeedTopicFilter {
+  id: FeedTopicId;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  keywords: string[];
+}
+
+const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
+  {
+    id: "all",
+    label: "All",
+    icon: Sparkles,
+    keywords: [],
+  },
+  {
+    id: "trending",
+    label: "Trending",
+    icon: Flame,
+    keywords: [],
+  },
+  {
+    id: "ai",
+    label: "AI",
+    icon: Bot,
+    keywords: [
+      "ai",
+      "artificial intelligence",
+      "chatgpt",
+      "openai",
+      "prompt",
+      "automation",
+      "machine learning",
+    ],
+  },
+  {
+    id: "apps",
+    label: "Apps",
+    icon: Smartphone,
+    keywords: ["app", "apps", "mobile", "ios", "android", "extension", "saas"],
+  },
+  {
+    id: "productivity",
+    label: "Productivity",
+    icon: Zap,
+    keywords: [
+      "productivity",
+      "workflow",
+      "time",
+      "focus",
+      "habit",
+      "automation",
+      "shortcut",
+    ],
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    icon: Megaphone,
+    keywords: [
+      "marketing",
+      "growth",
+      "seo",
+      "content",
+      "brand",
+      "social media",
+      "sales",
+    ],
+  },
+  {
+    id: "software",
+    label: "Software",
+    icon: Code2,
+    keywords: [
+      "software",
+      "coding",
+      "code",
+      "developer",
+      "programming",
+      "web",
+      "api",
+    ],
+  },
+  {
+    id: "tools",
+    label: "Tools",
+    icon: Wrench,
+    keywords: ["tool", "tools", "resource", "template", "browser", "chrome"],
+  },
+  {
+    id: "startups",
+    label: "Startups",
+    icon: Rocket,
+    keywords: ["startup", "founder", "business", "idea", "launch", "build"],
+  },
+  {
+    id: "design",
+    label: "Design",
+    icon: Palette,
+    keywords: ["design", "ui", "ux", "visual", "creative", "brand"],
+  },
+  {
+    id: "learning",
+    label: "Learning",
+    icon: BookOpenText,
+    keywords: ["learning", "study", "education", "guide", "notes", "course"],
+  },
+];
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -94,6 +227,13 @@ interface FeedMessage {
   tone: "success" | "warning";
   title: string;
   body: string;
+}
+
+type FeedPageLoadResult = "blocked" | "done" | "error" | "loaded";
+
+interface LoadNextEntriesPageOptions {
+  showLoadingState?: boolean;
+  surfaceErrors?: boolean;
 }
 
 interface BrowserIdleCallbacks {
@@ -221,6 +361,78 @@ function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
 
     return searchableText.includes(term);
   });
+}
+
+function getKnowledgeTopicSearchText(entry: KnowledgeEntry) {
+  return [
+    entry.title,
+    entry.content,
+    entry.author,
+    ...entry.hashtags,
+    ...(entry.mentions || []).map((mention) => mention.username),
+    ...(entry.comments || []).map((comment) => comment.text),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesKnowledgeTopic(entry: KnowledgeEntry, topic: FeedTopicFilter) {
+  if (topic.id === "all" || topic.id === "trending") return true;
+
+  const searchableText = getKnowledgeTopicSearchText(entry);
+  const hashtags = entry.hashtags.map((tag) => tag.toLowerCase());
+
+  return topic.keywords.some(
+    (keyword) =>
+      searchableText.includes(keyword) ||
+      hashtags.some((tag) => tag.includes(keyword.replace(/\s+/g, ""))),
+  );
+}
+
+function getKnowledgeTrendingScore(entry: KnowledgeEntry) {
+  const now = Date.now();
+  const ageHours = Math.max(1, (now - entry.createdAt) / 3_600_000);
+  const recencyBoost = Math.max(0, 8 - ageHours / 12);
+  const qualityBoost = Math.max(0, (entry.qualityScore || 0) / 25);
+
+  return (
+    (entry.likes || []).length * 3.5 +
+    (entry.comments || []).length * 5 +
+    qualityBoost +
+    recencyBoost
+  );
+}
+
+function getTrendingKnowledgeEntries(entries: KnowledgeEntry[]) {
+  if (entries.length <= 1) return entries;
+
+  const rankedEntries = [...entries].sort((left, right) => {
+    const scoreDifference =
+      getKnowledgeTrendingScore(right) - getKnowledgeTrendingScore(left);
+
+    if (scoreDifference !== 0) return scoreDifference;
+    return right.createdAt - left.createdAt;
+  });
+  const engagedEntries = rankedEntries.filter(
+    (entry) => (entry.likes || []).length > 0 || (entry.comments || []).length > 0,
+  );
+  const minimumTrendingCount = Math.min(4, entries.length);
+  const trendingPool =
+    engagedEntries.length >= minimumTrendingCount
+      ? engagedEntries
+      : rankedEntries;
+
+  return trendingPool.slice(0, Math.min(TRENDING_FEED_LIMIT, trendingPool.length));
+}
+
+function getKnowledgeEntriesForTopic(
+  entries: KnowledgeEntry[],
+  topic: FeedTopicFilter,
+) {
+  if (topic.id === "all") return entries;
+  if (topic.id === "trending") return getTrendingKnowledgeEntries(entries);
+
+  return entries.filter((entry) => matchesKnowledgeTopic(entry, topic));
 }
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
@@ -417,10 +629,14 @@ export function KnowledgeFeed({
     readSelectedHashtagFromLocation(),
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
+  const [selectedFeedTopic, setSelectedFeedTopic] =
+    useState<FeedTopicId>("all");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
   const [hasMoreServerEntries, setHasMoreServerEntries] = useState(true);
   const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
+  const [isBackgroundLoadingEntries, setIsBackgroundLoadingEntries] =
+    useState(false);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
@@ -428,10 +644,17 @@ export function KnowledgeFeed({
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
     useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const hasMoreServerEntriesRef = useRef(true);
+  const hasPaginatedPastFirstPageRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
+
+  const updateHasMoreServerEntries = useCallback((hasMoreEntries: boolean) => {
+    hasMoreServerEntriesRef.current = hasMoreEntries;
+    setHasMoreServerEntries(hasMoreEntries);
+  }, []);
 
   useEffect(() => {
     entriesRef.current = entries;
@@ -495,9 +718,11 @@ export function KnowledgeFeed({
             },
           ),
         );
-        paginationCursorRef.current =
-          snapshot.docs[snapshot.docs.length - 1] || null;
-        setHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
+        if (!hasPaginatedPastFirstPageRef.current) {
+          paginationCursorRef.current =
+            snapshot.docs[snapshot.docs.length - 1] || null;
+          updateHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
+        }
 
         const nextFeedEntries = mergeRealtimeKnowledgePage(
           entriesRef.current,
@@ -534,74 +759,159 @@ export function KnowledgeFeed({
       window.clearTimeout(timeoutId);
       unsubscribe();
     };
-  }, []);
+  }, [updateHasMoreServerEntries]);
 
-  const loadNextEntriesPage = useCallback(async () => {
-    if (
-      isLoadingMoreEntriesRef.current ||
-      !hasMoreServerEntries ||
-      !paginationCursorRef.current
-    ) {
-      return;
-    }
-
-    isLoadingMoreEntriesRef.current = true;
-    setIsLoadingMoreEntries(true);
-    setFeedLoadError(null);
-
-    try {
-      const nextPageQuery = query(
-        collection(db, "knowledge"),
-        orderBy("createdAt", "desc"),
-        startAfter(paginationCursorRef.current),
-        limit(FEED_PAGE_SIZE),
-      );
-      const snapshot = await getDocs(nextPageQuery);
-      const data = snapshot.docs.map((item) =>
-        normalizeKnowledgeEntry(
-          item.id,
-          item.data() as Partial<KnowledgeEntry> & {
-            comments?: KnowledgeComment[];
-            createdAt?: number | { toMillis?: () => number };
-          },
-        ),
-      );
-
-      if (snapshot.docs.length > 0) {
-        paginationCursorRef.current =
-          snapshot.docs[snapshot.docs.length - 1] || paginationCursorRef.current;
+  const loadNextEntriesPage = useCallback(
+    async ({
+      showLoadingState = true,
+      surfaceErrors = true,
+    }: LoadNextEntriesPageOptions = {}): Promise<FeedPageLoadResult> => {
+      if (
+        isLoadingMoreEntriesRef.current ||
+        !hasMoreServerEntriesRef.current ||
+        !paginationCursorRef.current
+      ) {
+        return isLoadingMoreEntriesRef.current ? "blocked" : "done";
       }
 
-      setHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
+      isLoadingMoreEntriesRef.current = true;
+      if (showLoadingState) {
+        setIsLoadingMoreEntries(true);
+      }
+      if (surfaceErrors) {
+        setFeedLoadError(null);
+      }
 
-      if (data.length > 0) {
-        const nextFeedEntries = mergeKnowledgeEntryPages(
-          entriesRef.current,
-          data,
+      try {
+        const nextPageQuery = query(
+          collection(db, "knowledge"),
+          orderBy("createdAt", "desc"),
+          startAfter(paginationCursorRef.current),
+          limit(FEED_PAGE_SIZE),
         );
-        entriesRef.current = nextFeedEntries;
-        setEntries(nextFeedEntries);
-        setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(
-            nextFeedEntries,
-            currentOrder,
-            getKnowledgeFeedSnapshot(),
-            {
-              refreshSeed: feedRefreshSeedRef.current,
+        const snapshot = await getDocs(nextPageQuery);
+        const data = snapshot.docs.map((item) =>
+          normalizeKnowledgeEntry(
+            item.id,
+            item.data() as Partial<KnowledgeEntry> & {
+              comments?: KnowledgeComment[];
+              createdAt?: number | { toMillis?: () => number };
             },
           ),
         );
+
+        hasPaginatedPastFirstPageRef.current = true;
+
+        if (snapshot.docs.length > 0) {
+          paginationCursorRef.current =
+            snapshot.docs[snapshot.docs.length - 1] ||
+            paginationCursorRef.current;
+        }
+
+        const hasAnotherPage = snapshot.docs.length === FEED_PAGE_SIZE;
+        updateHasMoreServerEntries(hasAnotherPage);
+
+        if (data.length > 0) {
+          const nextFeedEntries = mergeKnowledgeEntryPages(
+            entriesRef.current,
+            data,
+          );
+          entriesRef.current = nextFeedEntries;
+          setEntries(nextFeedEntries);
+          setFeedEntryOrder((currentOrder) =>
+            reconcileKnowledgeFeedOrder(
+              nextFeedEntries,
+              currentOrder,
+              getKnowledgeFeedSnapshot(),
+              {
+                refreshSeed: feedRefreshSeedRef.current,
+              },
+            ),
+          );
+        }
+
+        return hasAnotherPage ? "loaded" : "done";
+      } catch (error) {
+        console.error("Knowledge pagination error:", error);
+        if (surfaceErrors) {
+          setFeedLoadError(
+            "Could not load more posts right now. Please try again in a moment.",
+          );
+        }
+        return "error";
+      } finally {
+        isLoadingMoreEntriesRef.current = false;
+        if (showLoadingState) {
+          setIsLoadingMoreEntries(false);
+        }
       }
-    } catch (error) {
-      console.error("Knowledge pagination error:", error);
-      setFeedLoadError(
-        "Could not load more posts right now. Please try again in a moment.",
-      );
-    } finally {
-      isLoadingMoreEntriesRef.current = false;
-      setIsLoadingMoreEntries(false);
+    },
+    [updateHasMoreServerEntries],
+  );
+
+  useEffect(() => {
+    if (
+      isLoading ||
+      focusedEntryId ||
+      !hasMoreServerEntries ||
+      !paginationCursorRef.current ||
+      typeof window === "undefined"
+    ) {
+      setIsBackgroundLoadingEntries(false);
+      return;
     }
-  }, [hasMoreServerEntries]);
+
+    let cancelled = false;
+    const timeoutIds = new Set<number>();
+
+    const waitForNextBackgroundPage = () =>
+      new Promise<void>((resolve) => {
+        const timeoutId = window.setTimeout(() => {
+          timeoutIds.delete(timeoutId);
+          resolve();
+        }, FEED_BACKGROUND_PAGE_DELAY_MS);
+        timeoutIds.add(timeoutId);
+      });
+
+    const preloadRemainingPages = async () => {
+      setIsBackgroundLoadingEntries(true);
+
+      try {
+        await waitForNextBackgroundPage();
+
+        while (
+          !cancelled &&
+          hasMoreServerEntriesRef.current &&
+          paginationCursorRef.current
+        ) {
+          const result = await loadNextEntriesPage({
+            showLoadingState: false,
+            surfaceErrors: false,
+          });
+
+          if (cancelled || result === "done" || result === "error") {
+            break;
+          }
+
+          await waitForNextBackgroundPage();
+        }
+      } finally {
+        if (!cancelled) {
+          setIsBackgroundLoadingEntries(false);
+        }
+      }
+    };
+
+    void preloadRemainingPages();
+
+    return () => {
+      cancelled = true;
+      timeoutIds.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      timeoutIds.clear();
+    };
+  }, [focusedEntryId, hasMoreServerEntries, isLoading, loadNextEntriesPage]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -793,14 +1103,21 @@ export function KnowledgeFeed({
       entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag),
     );
   }, [orderedEntries, selectedHashtag]);
+  const activeFeedTopic =
+    FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
+    FEED_TOPIC_FILTERS[0];
+  const topicFilteredEntries = useMemo(
+    () => getKnowledgeEntriesForTopic(visibleEntries, activeFeedTopic),
+    [activeFeedTopic, visibleEntries],
+  );
   const filteredEntries = useMemo(() => {
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
-    if (searchTerms.length === 0) return visibleEntries;
+    if (searchTerms.length === 0) return topicFilteredEntries;
 
-    return visibleEntries.filter((entry) =>
+    return topicFilteredEntries.filter((entry) =>
       matchesKnowledgeSearch(entry, searchTerms),
     );
-  }, [deferredFeedSearchQuery, visibleEntries]);
+  }, [deferredFeedSearchQuery, topicFilteredEntries]);
   const hasMoreEntries =
     !focusedEntryId && hasMoreServerEntries && Boolean(paginationCursorRef.current);
 
@@ -1181,6 +1498,9 @@ export function KnowledgeFeed({
       ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
       : buildAbsoluteRouteUrl("knowledge");
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
+  const hasActiveTopic = activeFeedTopic.id !== "all";
+  const isPaginatingEntries =
+    isLoadingMoreEntries || isBackgroundLoadingEntries;
 
   return (
     <div className="pb-20">
@@ -1223,14 +1543,50 @@ export function KnowledgeFeed({
             />
           )}
 
-          <DiscoverySearch
-            theme="emerald"
-            placeholder="Search"
-            value={feedSearchQuery}
-            onChange={setFeedSearchQuery}
-            onClear={() => setFeedSearchQuery("")}
-            ariaLabel="Search home feed"
-          />
+          <div className="space-y-3">
+            <DiscoverySearch
+              theme="emerald"
+              placeholder="Search"
+              value={feedSearchQuery}
+              onChange={setFeedSearchQuery}
+              onClear={() => setFeedSearchQuery("")}
+              ariaLabel="Search home feed"
+            />
+
+            <div
+              className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              aria-label="Post categories"
+            >
+              <div className="flex min-w-max items-center gap-2 pb-1">
+                {FEED_TOPIC_FILTERS.map((topic) => {
+                  const TopicIcon = topic.icon;
+                  const isActive = topic.id === activeFeedTopic.id;
+
+                  return (
+                    <button
+                      key={topic.id}
+                      type="button"
+                      onClick={() => setSelectedFeedTopic(topic.id)}
+                      aria-pressed={isActive}
+                      aria-label={
+                        topic.id === "all"
+                          ? "Show all posts"
+                          : `Show ${topic.label} posts`
+                      }
+                      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition-colors ${
+                        isActive
+                          ? "border-emerald-500 bg-emerald-600 text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                      }`}
+                    >
+                      <TopicIcon className="h-3.5 w-3.5" />
+                      <span>{topic.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           {showRefreshFeedback && (
             <p className="text-center text-xs font-medium text-emerald-700">
@@ -1269,6 +1625,10 @@ export function KnowledgeFeed({
               <h3 className="mt-4 text-xl font-black text-slate-900">
                 {hasActiveSearch
                   ? `No posts matched "${feedSearchQuery.trim()}"`
+                  : hasActiveTopic && selectedHashtag
+                    ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
+                    : hasActiveTopic
+                      ? `No ${activeFeedTopic.label} posts found`
                   : selectedHashtag
                     ? `No posts for #${selectedHashtag}`
                     : "No posts yet"}
@@ -1276,6 +1636,8 @@ export function KnowledgeFeed({
               <p className="mt-2 text-sm text-slate-500">
                 {hasActiveSearch
                   ? "Try a broader keyword, another hashtag, or search by @username."
+                  : hasActiveTopic
+                    ? "Try another category or keep scrolling while more posts load."
                   : selectedHashtag
                     ? "Try another hashtag or clear this filter to explore the full feed."
                     : "Tap the `+` button at the top to upload the first knowledge post."}
@@ -1284,12 +1646,10 @@ export function KnowledgeFeed({
                 <button
                   type="button"
                   onClick={() => void loadNextEntriesPage()}
-                  disabled={isLoadingMoreEntries}
+                  disabled={isPaginatingEntries}
                   className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
                 >
-                  {isLoadingMoreEntries
-                    ? "Loading 10 more posts..."
-                    : "Load 10 older posts"}
+                  {isPaginatingEntries ? "Loading posts..." : "Load older posts"}
                 </button>
               )}
             </div>
@@ -1314,12 +1674,10 @@ export function KnowledgeFeed({
                   <button
                     type="button"
                     onClick={() => void loadNextEntriesPage()}
-                    disabled={isLoadingMoreEntries}
+                    disabled={isPaginatingEntries}
                     className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
                   >
-                    {isLoadingMoreEntries
-                      ? "Loading 10 more posts..."
-                      : "Load 10 more posts"}
+                    {isPaginatingEntries ? "Loading posts..." : "Load more posts"}
                   </button>
                 </div>
               )}
