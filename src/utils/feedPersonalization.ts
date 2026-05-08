@@ -887,7 +887,7 @@ function pushCurrentUserLikedEntriesDown(
   return [...freshEntries, ...likedEntries];
 }
 
-function rotateRefreshDiscoveryLead(
+function putRefreshDiscoveryEntriesFirst(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
   refreshSeed?: number,
@@ -901,47 +901,56 @@ function rotateRefreshDiscoveryLead(
   }
 
   const now = Date.now();
-  const refreshWindowSize = Math.min(KNOWLEDGE_REFRESH_WINDOW_SIZE, entries.length);
-  const candidateWindow = entries.slice(1, refreshWindowSize).map((entry, index) => ({
-    entry,
-    index: index + 1,
-    hoursSinceSeen: getHoursSinceSeen(entry.id, snapshot, now),
-    likedByCurrentUser: isLikedByCurrentUser(entry, snapshot),
-  }));
-  const discoveryCandidates = candidateWindow.filter(
-    (candidate) =>
-      !candidate.likedByCurrentUser &&
-      (candidate.hoursSinceSeen === null ||
-        candidate.hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS),
-  );
-  const unlikedCandidates = candidateWindow.filter(
-    (candidate) => !candidate.likedByCurrentUser,
-  );
-  const candidatePool =
-    discoveryCandidates.length > 0
-      ? discoveryCandidates
-      : unlikedCandidates.length > 0
-        ? unlikedCandidates
-        : candidateWindow;
+  const unseenEntries: KnowledgeEntry[] = [];
+  const cooledDownEntries: KnowledgeEntry[] = [];
+  const remainingEntries: KnowledgeEntry[] = [];
 
-  if (candidatePool.length === 0) {
+  entries.forEach((entry) => {
+    const likedByCurrentUser = isLikedByCurrentUser(entry, snapshot);
+    const hoursSinceSeen = getHoursSinceSeen(entry.id, snapshot, now);
+
+    if (!likedByCurrentUser && hoursSinceSeen === null) {
+      unseenEntries.push(entry);
+      return;
+    }
+
+    if (
+      !likedByCurrentUser &&
+      hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS
+    ) {
+      cooledDownEntries.push(entry);
+      return;
+    }
+
+    remainingEntries.push(entry);
+  });
+
+  const discoveryEntries =
+    unseenEntries.length > 0 ? unseenEntries : cooledDownEntries;
+  if (discoveryEntries.length === 0) {
     return entries;
   }
 
-  const selectedCandidate =
-    candidatePool[
-      Math.floor(
-        getStableRefreshNoise("refresh-lead", refreshSeed) * candidatePool.length,
-      )
-    ];
-  if (!selectedCandidate) {
-    return entries;
-  }
+  const refreshWindowSize = Math.min(
+    KNOWLEDGE_REFRESH_WINDOW_SIZE,
+    discoveryEntries.length,
+  );
+  const startIndex = Math.floor(
+    getStableRefreshNoise("refresh-lead", refreshSeed) * refreshWindowSize,
+  );
+  const discoveryWindow = discoveryEntries.slice(0, refreshWindowSize);
+  const discoveryTail = discoveryEntries.slice(refreshWindowSize);
+  const rotatedDiscoveryWindow = [
+    ...discoveryWindow.slice(startIndex),
+    ...discoveryWindow.slice(0, startIndex),
+  ];
 
-  const rotatedEntries = [...entries];
-  const [selectedEntry] = rotatedEntries.splice(selectedCandidate.index, 1);
-
-  return [selectedEntry, ...rotatedEntries];
+  return [
+    ...rotatedDiscoveryWindow,
+    ...discoveryTail,
+    ...cooledDownEntries.filter((entry) => !discoveryEntries.includes(entry)),
+    ...remainingEntries,
+  ];
 }
 
 export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
@@ -1128,7 +1137,7 @@ export function rankKnowledgeEntries(
     fallbackEntries,
     snapshot,
   );
-  const refreshedEntries = rotateRefreshDiscoveryLead(
+  const refreshedEntries = putRefreshDiscoveryEntriesFirst(
     unlikedFirstEntries,
     snapshot,
     options.refreshSeed,

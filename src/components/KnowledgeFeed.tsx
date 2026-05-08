@@ -1056,12 +1056,29 @@ export function KnowledgeFeed({
     };
   }, []);
 
+  const currentAuthorId = identity?.authorId || null;
+  const hasHiddenLikedPosts = useMemo(
+    () =>
+      Boolean(
+        currentAuthorId &&
+          entries.some((entry) => (entry.likes || []).includes(currentAuthorId)),
+      ),
+    [currentAuthorId, entries],
+  );
   const viewableEntries = useMemo(
     () =>
-      entries.filter((entry) =>
-        canViewKnowledgeEntry(entry, identity?.authorId),
-      ),
-    [entries, identity?.authorId],
+      entries.filter((entry) => {
+        if (!canViewKnowledgeEntry(entry, currentAuthorId)) {
+          return false;
+        }
+
+        if (focusedEntryId && entry.id === focusedEntryId) {
+          return true;
+        }
+
+        return !currentAuthorId || !(entry.likes || []).includes(currentAuthorId);
+      }),
+    [currentAuthorId, entries, focusedEntryId],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -1629,18 +1646,22 @@ export function KnowledgeFeed({
                     ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
                     : hasActiveTopic
                       ? `No ${activeFeedTopic.label} posts found`
-                  : selectedHashtag
-                    ? `No posts for #${selectedHashtag}`
-                    : "No posts yet"}
+                    : selectedHashtag
+                      ? `No posts for #${selectedHashtag}`
+                      : hasHiddenLikedPosts
+                        ? "No new posts right now"
+                        : "No posts yet"}
               </h3>
               <p className="mt-2 text-sm text-slate-500">
                 {hasActiveSearch
                   ? "Try a broader keyword, another hashtag, or search by @username."
                   : hasActiveTopic
                     ? "Try another category or keep scrolling while more posts load."
-                  : selectedHashtag
-                    ? "Try another hashtag or clear this filter to explore the full feed."
-                    : "Tap the `+` button at the top to upload the first knowledge post."}
+                    : selectedHashtag
+                      ? "Try another hashtag or clear this filter to explore the full feed."
+                      : hasHiddenLikedPosts
+                        ? "You have already liked the loaded posts. Refresh or keep scrolling while newer posts load."
+                        : "Tap the `+` button at the top to upload the first knowledge post."}
               </p>
               {hasMoreEntries && (
                 <button
