@@ -53,6 +53,7 @@ import {
 type ProfileSection = "shared" | "liked";
 
 const PROFILE_POST_LIMIT = 10;
+const PROFILE_POST_FALLBACK_LIMIT = 40;
 const PROFILE_DIRECTORY_LIMIT = 80;
 
 interface ProfileProps {
@@ -111,6 +112,20 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
   } as KnowledgeEntry;
 }
 
+function isMissingFirestoreIndexError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code).toLowerCase()
+      : "";
+
+  return (
+    code === "failed-precondition" ||
+    message.includes("index") ||
+    message.includes("requires an index")
+  );
+}
+
 export function Profile({
   currentIdentity,
   viewedAuthorId,
@@ -165,6 +180,79 @@ export function Profile({
     setIsLoadingProfile(true);
 
     const unsubscribers: Array<() => void> = [];
+    const hydrateEntries = (snapshot: {
+      docs: Array<{
+        id: string;
+        data: () => Partial<KnowledgeEntry>;
+      }>;
+    }) =>
+      sortKnowledge(
+        snapshot.docs
+          .map((item) =>
+            hydrateKnowledgeFromSnapshot(
+              item.id,
+              item.data() as Partial<KnowledgeEntry>,
+            ),
+          )
+          .filter((entry) =>
+            canViewKnowledgeEntry(entry, currentIdentity?.authorId),
+          ),
+      ).slice(0, PROFILE_POST_LIMIT);
+    const startProfileEntriesListener = ({
+      orderedQuery,
+      fallbackQuery,
+      label,
+      onEntries,
+      errorMessage,
+    }: {
+      orderedQuery: ReturnType<typeof query>;
+      fallbackQuery: ReturnType<typeof query>;
+      label: string;
+      onEntries: (entries: KnowledgeEntry[]) => void;
+      errorMessage: string;
+    }) => {
+      let activeUnsubscribe: (() => void) | null = null;
+
+      const startFallbackListener = () => {
+        activeUnsubscribe = onSnapshot(
+          fallbackQuery,
+          (snapshot) => {
+            onEntries(hydrateEntries(snapshot));
+            setProfileLoadError(null);
+          },
+          (error) => {
+            console.error(`${label} fallback listener error:`, error);
+            onEntries([]);
+            setProfileLoadError(errorMessage);
+          },
+        );
+      };
+
+      activeUnsubscribe = onSnapshot(
+        orderedQuery,
+        (snapshot) => {
+          onEntries(hydrateEntries(snapshot));
+          setProfileLoadError(null);
+        },
+        (error) => {
+          if (isMissingFirestoreIndexError(error)) {
+            console.warn(
+              `${label} ordered listener needs an index; using limited fallback listener.`,
+              error,
+            );
+            activeUnsubscribe?.();
+            startFallbackListener();
+            return;
+          }
+
+          console.error(`${label} listener error:`, error);
+          onEntries([]);
+          setProfileLoadError(errorMessage);
+        },
+      );
+
+      return () => activeUnsubscribe?.();
+    };
 
     unsubscribers.push(
       onSnapshot(
@@ -198,69 +286,41 @@ export function Profile({
     );
 
     unsubscribers.push(
-      onSnapshot(
-        query(
+      startProfileEntriesListener({
+        orderedQuery: query(
           collection(db, "knowledge"),
           where("authorId", "==", activeAuthorId),
           orderBy("createdAt", "desc"),
           limit(PROFILE_POST_LIMIT),
         ),
-        (snapshot) => {
-          const data = snapshot.docs
-            .map((item) =>
-              hydrateKnowledgeFromSnapshot(
-                item.id,
-                item.data() as Partial<KnowledgeEntry>,
-              ),
-            )
-            .filter((entry) =>
-              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
-            );
-
-          setSharedEntries(sortKnowledge(data));
-          setProfileLoadError(null);
-        },
-        (error) => {
-          console.error("Shared knowledge listener error:", error);
-          setSharedEntries([]);
-          setProfileLoadError(
-            "Could not load shared posts for this profile right now."
-          );
-        }
-      )
+        fallbackQuery: query(
+          collection(db, "knowledge"),
+          where("authorId", "==", activeAuthorId),
+          limit(PROFILE_POST_FALLBACK_LIMIT),
+        ),
+        label: "Shared knowledge",
+        onEntries: setSharedEntries,
+        errorMessage: "Could not load shared posts for this profile right now.",
+      })
     );
 
     unsubscribers.push(
-      onSnapshot(
-        query(
+      startProfileEntriesListener({
+        orderedQuery: query(
           collection(db, "knowledge"),
           where("likes", "array-contains", activeAuthorId),
           orderBy("createdAt", "desc"),
           limit(PROFILE_POST_LIMIT),
         ),
-        (snapshot) => {
-          const data = snapshot.docs
-            .map((item) =>
-              hydrateKnowledgeFromSnapshot(
-                item.id,
-                item.data() as Partial<KnowledgeEntry>,
-              ),
-            )
-            .filter((entry) =>
-              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
-            );
-
-          setLikedEntries(sortKnowledge(data));
-          setProfileLoadError(null);
-        },
-        (error) => {
-          console.error("Liked knowledge listener error:", error);
-          setLikedEntries([]);
-          setProfileLoadError(
-            "Could not load liked posts for this profile right now."
-          );
-        }
-      )
+        fallbackQuery: query(
+          collection(db, "knowledge"),
+          where("likes", "array-contains", activeAuthorId),
+          limit(PROFILE_POST_FALLBACK_LIMIT),
+        ),
+        label: "Liked knowledge",
+        onEntries: setLikedEntries,
+        errorMessage: "Could not load liked posts for this profile right now.",
+      })
     );
 
     return () => {
