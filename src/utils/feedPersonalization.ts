@@ -10,6 +10,7 @@ const LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2
 const KNOWLEDGE_ACTIVITY_KEY_PREFIX = "readativeKnowledgeFeedActivity:v2";
 const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 18;
 const KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS = 72;
+const KNOWLEDGE_REFRESH_WINDOW_SIZE = 10;
 const DUPLICATE_ACTIVITY_WINDOWS_MS = {
   view: 6 * HOUR_MS,
   open: 30 * 60 * 1000,
@@ -694,15 +695,15 @@ function getLikedEntryPenalty(
   }
 
   if (hoursSinceSeen === null) {
-    return 8;
+    return 38;
   }
 
   if (hoursSinceSeen >= KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS) {
-    return 6;
+    return 18;
   }
 
   const cooldownProgress = hoursSinceSeen / KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS;
-  return 30 - cooldownProgress * 10;
+  return 54 - cooldownProgress * 26;
 }
 
 function scoreKnowledgeEntry(
@@ -856,7 +857,37 @@ function buildLatestEntriesFallback(scoredEntries: ScoredKnowledgeEntry[]) {
     .map((candidate) => candidate.entry);
 }
 
-function rotateColdStartRefreshLead(
+function isLikedByCurrentUser(
+  entry: KnowledgeEntry,
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  return Boolean(snapshot.currentUserId && entry.likes.includes(snapshot.currentUserId));
+}
+
+function pushCurrentUserLikedEntriesDown(
+  entries: KnowledgeEntry[],
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  if (!snapshot.currentUserId) {
+    return entries;
+  }
+
+  const freshEntries: KnowledgeEntry[] = [];
+  const likedEntries: KnowledgeEntry[] = [];
+
+  entries.forEach((entry) => {
+    if (isLikedByCurrentUser(entry, snapshot)) {
+      likedEntries.push(entry);
+      return;
+    }
+
+    freshEntries.push(entry);
+  });
+
+  return [...freshEntries, ...likedEntries];
+}
+
+function rotateRefreshDiscoveryLead(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
   refreshSeed?: number,
@@ -864,20 +895,51 @@ function rotateColdStartRefreshLead(
   if (
     typeof refreshSeed !== "number" ||
     !Number.isFinite(refreshSeed) ||
-    snapshot.likedHashtagAffinity.size > 0 ||
     entries.length < 3
   ) {
     return entries;
   }
 
-  const refreshWindowSize = Math.min(6, entries.length);
-  const selectedIndex =
-    1 +
-    Math.floor(
-      getStableRefreshNoise("refresh-lead", refreshSeed) * (refreshWindowSize - 1),
-    );
+  const now = Date.now();
+  const refreshWindowSize = Math.min(KNOWLEDGE_REFRESH_WINDOW_SIZE, entries.length);
+  const candidateWindow = entries.slice(1, refreshWindowSize).map((entry, index) => ({
+    entry,
+    index: index + 1,
+    hoursSinceSeen: getHoursSinceSeen(entry.id, snapshot, now),
+    likedByCurrentUser: isLikedByCurrentUser(entry, snapshot),
+  }));
+  const discoveryCandidates = candidateWindow.filter(
+    (candidate) =>
+      !candidate.likedByCurrentUser &&
+      (candidate.hoursSinceSeen === null ||
+        candidate.hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS),
+  );
+  const unlikedCandidates = candidateWindow.filter(
+    (candidate) => !candidate.likedByCurrentUser,
+  );
+  const candidatePool =
+    discoveryCandidates.length > 0
+      ? discoveryCandidates
+      : unlikedCandidates.length > 0
+        ? unlikedCandidates
+        : candidateWindow;
+
+  if (candidatePool.length === 0) {
+    return entries;
+  }
+
+  const selectedCandidate =
+    candidatePool[
+      Math.floor(
+        getStableRefreshNoise("refresh-lead", refreshSeed) * candidatePool.length,
+      )
+    ];
+  if (!selectedCandidate) {
+    return entries;
+  }
+
   const rotatedEntries = [...entries];
-  const [selectedEntry] = rotatedEntries.splice(selectedIndex, 1);
+  const [selectedEntry] = rotatedEntries.splice(selectedCandidate.index, 1);
 
   return [selectedEntry, ...rotatedEntries];
 }
@@ -1062,7 +1124,17 @@ export function rankKnowledgeEntries(
 
   const fallbackEntries =
     rankedEntries.length > 0 ? rankedEntries : buildLatestEntriesFallback(scoredEntries);
-  return rotateColdStartRefreshLead(fallbackEntries, snapshot, options.refreshSeed);
+  const unlikedFirstEntries = pushCurrentUserLikedEntriesDown(
+    fallbackEntries,
+    snapshot,
+  );
+  const refreshedEntries = rotateRefreshDiscoveryLead(
+    unlikedFirstEntries,
+    snapshot,
+    options.refreshSeed,
+  );
+
+  return refreshedEntries;
 }
 
 function areEntryOrdersEqual(left: string[], right: string[]) {
