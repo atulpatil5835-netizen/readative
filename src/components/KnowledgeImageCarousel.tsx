@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
 import { Logo } from "./Logo";
 
@@ -29,46 +29,74 @@ export function KnowledgeImageCarousel({
   mode = "feed",
   renderOverlayAction,
 }: KnowledgeImageCarouselProps) {
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+
   if (images.length === 0) return null;
 
   return (
     <div className="relative overflow-hidden bg-slate-100">
       <div className="readative-scrollbar-hidden flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 py-4 sm:gap-4 sm:px-5">
-        {images.map((image, index) => (
-          <figure
-            key={`${image.optimizedAt}-${index}`}
-            className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-[24px] bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
-          >
-            <img
-              src={image.dataUrl}
-              alt={`${altBase} ${index + 1}`}
-              loading={mode === "feed" ? "lazy" : undefined}
-              decoding="async"
-              width={image.width}
-              height={image.height}
-              sizes={
-                layout === "portrait"
-                  ? "(max-width: 768px) 76vw, 58vw"
-                  : "(max-width: 768px) 92vw, 72vw"
-              }
-              className="h-full w-full object-cover"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />
+        {images.map((image, index) => {
+          const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
+          const isLoaded = Boolean(loadedImages[imageKey]);
 
-            <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 px-0 py-0 text-[10px] font-semibold tracking-[0.16em] text-white">
-              <Logo className="h-4 w-4 opacity-95" loading="lazy" />
-              <span className="readative-watermark-wordmark uppercase text-white">
-                Readative
-              </span>
-            </div>
+          return (
+            <figure
+              key={imageKey}
+              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-[24px] bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
+            >
+              <div
+                className={`absolute inset-0 scale-110 bg-cover bg-center blur-xl transition-opacity duration-500 ${
+                  isLoaded ? "opacity-0" : "opacity-70"
+                }`}
+                style={{ backgroundImage: `url(${image.dataUrl})` }}
+                aria-hidden="true"
+              />
+              <div
+                className={`absolute inset-0 animate-pulse bg-slate-200 transition-opacity duration-500 ${
+                  isLoaded ? "opacity-0" : "opacity-100"
+                }`}
+                aria-hidden="true"
+              />
+              <img
+                src={image.dataUrl}
+                alt={`${altBase} ${index + 1}`}
+                loading={mode === "feed" ? "lazy" : undefined}
+                decoding="async"
+                width={image.width}
+                height={image.height}
+                sizes={
+                  layout === "portrait"
+                    ? "(max-width: 768px) 76vw, 58vw"
+                    : "(max-width: 768px) 92vw, 72vw"
+                }
+                onLoad={() =>
+                  setLoadedImages((current) => ({
+                    ...current,
+                    [imageKey]: true,
+                  }))
+                }
+                className={`relative h-full w-full object-cover transition-opacity duration-500 ${
+                  isLoaded ? "opacity-100" : "opacity-0"
+                }`}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />
 
-            {renderOverlayAction && (
-              <div className="absolute right-3 top-3">
-                {renderOverlayAction(image, index)}
+              <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 px-0 py-0 text-[10px] font-semibold tracking-[0.16em] text-white">
+                <Logo className="h-4 w-4 opacity-95" loading="lazy" />
+                <span className="readative-watermark-wordmark uppercase text-white">
+                  Readative
+                </span>
               </div>
-            )}
-          </figure>
-        ))}
+
+              {renderOverlayAction && (
+                <div className="absolute right-3 top-3">
+                  {renderOverlayAction(image, index)}
+                </div>
+              )}
+            </figure>
+          );
+        })}
       </div>
 
       {images.length > 1 && (

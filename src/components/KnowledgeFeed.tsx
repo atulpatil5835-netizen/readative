@@ -3,6 +3,7 @@ import {
   useDeferredValue,
   type KeyboardEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -21,10 +22,16 @@ import {
 import {
   collection,
   doc,
+  getDoc,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   setDoc,
+  startAfter,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
@@ -38,7 +45,7 @@ import {
 } from "../types";
 import { SEO } from "./SEO";
 import { GoogleSignInPrompt } from "./Auth";
-import { KnowledgeCard } from "./KnowledgeCard";
+import { KnowledgeCardList } from "./KnowledgeCardList";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
@@ -69,10 +76,10 @@ type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
-const INITIAL_RENDERED_ENTRY_LIMIT = 12;
-const RENDERED_ENTRY_BATCH_SIZE = 8;
+const FEED_PAGE_SIZE = 10;
 const FEED_LOAD_TIMEOUT_MS = 9000;
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
+const PROFILE_DIRECTORY_LIMIT = 80;
 
 interface SelectedImage extends KnowledgeImageAsset {
   fileName: string;
@@ -330,6 +337,49 @@ function normalizeKnowledgeEntry(
   };
 }
 
+function sortKnowledgeEntries(entries: KnowledgeEntry[]) {
+  return [...entries].sort((left, right) => {
+    const createdAtDiff = right.createdAt - left.createdAt;
+    if (createdAtDiff !== 0) return createdAtDiff;
+    return right.id.localeCompare(left.id);
+  });
+}
+
+function mergeKnowledgeEntryPages(
+  currentEntries: KnowledgeEntry[],
+  nextEntries: KnowledgeEntry[],
+) {
+  const entryMap = new Map(
+    currentEntries.map((entry) => [entry.id, entry] as const),
+  );
+
+  nextEntries.forEach((entry) => {
+    entryMap.set(entry.id, entry);
+  });
+
+  return sortKnowledgeEntries([...entryMap.values()]);
+}
+
+function mergeRealtimeKnowledgePage(
+  currentEntries: KnowledgeEntry[],
+  firstPageEntries: KnowledgeEntry[],
+) {
+  if (firstPageEntries.length === 0) {
+    return [];
+  }
+
+  const firstPageIds = new Set(firstPageEntries.map((entry) => entry.id));
+  const oldestFirstPageCreatedAt =
+    firstPageEntries[firstPageEntries.length - 1]?.createdAt || 0;
+  const retainedOlderEntries = currentEntries.filter(
+    (entry) =>
+      !firstPageIds.has(entry.id) &&
+      entry.createdAt < oldestFirstPageCreatedAt,
+  );
+
+  return mergeKnowledgeEntryPages(firstPageEntries, retainedOlderEntries);
+}
+
 export function KnowledgeFeed({
   identity,
   onIdentityChange,
@@ -369,14 +419,16 @@ export function KnowledgeFeed({
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
-  const [renderedEntryLimit, setRenderedEntryLimit] = useState(
-    INITIAL_RENDERED_ENTRY_LIMIT,
-  );
+  const [hasMoreServerEntries, setHasMoreServerEntries] = useState(true);
+  const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>([]);
   const feedRefreshSeedRef = useRef(Date.now());
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const paginationCursorRef =
+    useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const isLoadingMoreEntriesRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
@@ -397,7 +449,6 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
-    setRenderedEntryLimit(INITIAL_RENDERED_ENTRY_LIMIT);
     feedRefreshSeedRef.current = Date.now();
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
@@ -418,6 +469,7 @@ export function KnowledgeFeed({
     const knowledgeQuery = query(
       collection(db, "knowledge"),
       orderBy("createdAt", "desc"),
+      limit(FEED_PAGE_SIZE),
     );
     let didReceiveFeedResponse = false;
     const timeoutId = window.setTimeout(() => {
@@ -443,13 +495,25 @@ export function KnowledgeFeed({
             },
           ),
         );
+        paginationCursorRef.current =
+          snapshot.docs[snapshot.docs.length - 1] || null;
+        setHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
 
-        setEntries(data);
-        entriesRef.current = data;
+        const nextFeedEntries = mergeRealtimeKnowledgePage(
+          entriesRef.current,
+          data,
+        );
+        entriesRef.current = nextFeedEntries;
+        setEntries(nextFeedEntries);
         setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(data, currentOrder, getKnowledgeFeedSnapshot(), {
-            refreshSeed: feedRefreshSeedRef.current,
-          }),
+          reconcileKnowledgeFeedOrder(
+            nextFeedEntries,
+            currentOrder,
+            getKnowledgeFeedSnapshot(),
+            {
+              refreshSeed: feedRefreshSeedRef.current,
+            },
+          ),
         );
 
         setIsLoading(false);
@@ -472,53 +536,124 @@ export function KnowledgeFeed({
     };
   }, []);
 
+  const loadNextEntriesPage = useCallback(async () => {
+    if (
+      isLoadingMoreEntriesRef.current ||
+      !hasMoreServerEntries ||
+      !paginationCursorRef.current
+    ) {
+      return;
+    }
+
+    isLoadingMoreEntriesRef.current = true;
+    setIsLoadingMoreEntries(true);
+    setFeedLoadError(null);
+
+    try {
+      const nextPageQuery = query(
+        collection(db, "knowledge"),
+        orderBy("createdAt", "desc"),
+        startAfter(paginationCursorRef.current),
+        limit(FEED_PAGE_SIZE),
+      );
+      const snapshot = await getDocs(nextPageQuery);
+      const data = snapshot.docs.map((item) =>
+        normalizeKnowledgeEntry(
+          item.id,
+          item.data() as Partial<KnowledgeEntry> & {
+            comments?: KnowledgeComment[];
+            createdAt?: number | { toMillis?: () => number };
+          },
+        ),
+      );
+
+      if (snapshot.docs.length > 0) {
+        paginationCursorRef.current =
+          snapshot.docs[snapshot.docs.length - 1] || paginationCursorRef.current;
+      }
+
+      setHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
+
+      if (data.length > 0) {
+        const nextFeedEntries = mergeKnowledgeEntryPages(
+          entriesRef.current,
+          data,
+        );
+        entriesRef.current = nextFeedEntries;
+        setEntries(nextFeedEntries);
+        setFeedEntryOrder((currentOrder) =>
+          reconcileKnowledgeFeedOrder(
+            nextFeedEntries,
+            currentOrder,
+            getKnowledgeFeedSnapshot(),
+            {
+              refreshSeed: feedRefreshSeedRef.current,
+            },
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("Knowledge pagination error:", error);
+      setFeedLoadError(
+        "Could not load more posts right now. Please try again in a moment.",
+      );
+    } finally {
+      isLoadingMoreEntriesRef.current = false;
+      setIsLoadingMoreEntries(false);
+    }
+  }, [hasMoreServerEntries]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
     let timeoutId: number | null = null;
     let idleCallbackId: number | null = null;
     const browserIdle = window as unknown as BrowserIdleCallbacks;
 
-    const startProfilesListener = () => {
-      if (unsubscribe) {
-        return;
-      }
-
+    const loadProfilesDirectory = async () => {
       const profilesQuery = query(
         collection(db, "userProfiles"),
         orderBy("usernameLower", "asc"),
+        limit(PROFILE_DIRECTORY_LIMIT),
       );
 
-      unsubscribe = onSnapshot(
-        profilesQuery,
-        (snapshot) => {
-          const data = snapshot.docs.map((item) =>
-            hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
-          );
+      try {
+        const snapshot = await getDocs(profilesQuery);
+        if (cancelled) return;
 
-          setProfiles(data);
-          setProfilesLoadError(null);
-        },
-        (error) => {
-          console.error("Profile directory error:", error);
-          setProfiles([]);
-          setProfilesLoadError(
-            "User mentions and profile previews may be incomplete for a moment.",
-          );
-        },
-      );
+        const data = snapshot.docs.map((item) =>
+          hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
+        );
+
+        setProfiles(data);
+        setProfilesLoadError(null);
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Profile directory error:", error);
+        setProfiles([]);
+        setProfilesLoadError(
+          "User mentions and profile previews may be incomplete for a moment.",
+        );
+      }
     };
 
     if (browserIdle.requestIdleCallback) {
-      idleCallbackId = browserIdle.requestIdleCallback(startProfilesListener, {
+      idleCallbackId = browserIdle.requestIdleCallback(() => {
+        void loadProfilesDirectory();
+      }, {
         timeout: PROFILE_DIRECTORY_IDLE_TIMEOUT_MS,
       });
     } else {
-      timeoutId = window.setTimeout(startProfilesListener, 1200);
+      timeoutId = window.setTimeout(() => {
+        void loadProfilesDirectory();
+      }, 1200);
     }
 
     return () => {
+      cancelled = true;
+
       if (idleCallbackId !== null && browserIdle.cancelIdleCallback) {
         browserIdle.cancelIdleCallback(idleCallbackId);
       }
@@ -526,10 +661,54 @@ export function KnowledgeFeed({
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
       }
-
-      unsubscribe?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!focusedEntryId) return;
+    if (entriesRef.current.some((entry) => entry.id === focusedEntryId)) return;
+
+    let cancelled = false;
+
+    const loadFocusedEntry = async () => {
+      try {
+        const snapshot = await getDoc(doc(db, "knowledge", focusedEntryId));
+        if (cancelled || !snapshot.exists()) return;
+
+        const focusedEntry = normalizeKnowledgeEntry(
+          snapshot.id,
+          snapshot.data() as Partial<KnowledgeEntry> & {
+            comments?: KnowledgeComment[];
+            createdAt?: number | { toMillis?: () => number };
+          },
+        );
+
+        if (entriesRef.current.some((entry) => entry.id === focusedEntry.id)) {
+          return;
+        }
+
+        const nextEntries = mergeKnowledgeEntryPages(entriesRef.current, [
+          focusedEntry,
+        ]);
+        entriesRef.current = nextEntries;
+        setEntries(nextEntries);
+        setFeedEntryOrder((currentOrder) => [
+          focusedEntry.id,
+          ...currentOrder.filter((entryId) => entryId !== focusedEntry.id),
+        ]);
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Focused knowledge entry error:", error);
+      }
+    };
+
+    void loadFocusedEntry();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedEntryId]);
 
   useEffect(() => {
     if (!focusedEntryId || entries.length === 0) return;
@@ -598,11 +777,7 @@ export function KnowledgeFeed({
     );
     const baseEntries = [...frozenEntries, ...missingEntries];
 
-    if (
-      focusedEntryId &&
-      focusedEntry &&
-      !rankedEntryIds.has(focusedEntryId)
-    ) {
+    if (focusedEntryId && focusedEntry) {
       return [
         focusedEntry,
         ...baseEntries.filter((entry) => entry.id !== focusedEntryId),
@@ -626,16 +801,8 @@ export function KnowledgeFeed({
       matchesKnowledgeSearch(entry, searchTerms),
     );
   }, [deferredFeedSearchQuery, visibleEntries]);
-  const renderedEntries = useMemo(() => {
-    if (focusedEntryId) return filteredEntries;
-    return filteredEntries.slice(0, renderedEntryLimit);
-  }, [filteredEntries, focusedEntryId, renderedEntryLimit]);
   const hasMoreEntries =
-    !focusedEntryId && renderedEntries.length < filteredEntries.length;
-
-  useEffect(() => {
-    setRenderedEntryLimit(INITIAL_RENDERED_ENTRY_LIMIT);
-  }, [deferredFeedSearchQuery, selectedHashtag, focusedEntryId]);
+    !focusedEntryId && hasMoreServerEntries && Boolean(paginationCursorRef.current);
 
   useEffect(() => {
     if (!hasMoreEntries || typeof window === "undefined") return;
@@ -644,9 +811,6 @@ export function KnowledgeFeed({
     if (!sentinel) return;
 
     if (typeof window.IntersectionObserver !== "function") {
-      setRenderedEntryLimit((currentLimit) =>
-        Math.min(filteredEntries.length, currentLimit + RENDERED_ENTRY_BATCH_SIZE),
-      );
       return;
     }
 
@@ -656,9 +820,7 @@ export function KnowledgeFeed({
           return;
         }
 
-        setRenderedEntryLimit((currentLimit) =>
-          Math.min(filteredEntries.length, currentLimit + RENDERED_ENTRY_BATCH_SIZE),
-        );
+        void loadNextEntriesPage();
       },
       {
         rootMargin: "600px 0px",
@@ -667,7 +829,7 @@ export function KnowledgeFeed({
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [filteredEntries.length, hasMoreEntries]);
+  }, [hasMoreEntries, isLoadingMoreEntries, loadNextEntriesPage]);
 
   const filteredMentionProfiles = useMemo(() => {
     if (!activeMention) return [];
@@ -987,16 +1149,21 @@ export function KnowledgeFeed({
     );
   };
 
-  const handleSelectHashtag = (tag: string) => {
+  const handleSelectHashtag = useCallback((tag: string) => {
     const normalizedTag = tag.trim().toLowerCase();
     if (!normalizedTag) return;
 
     navigateToRoute("knowledge", { selectedHashtag: normalizedTag });
-  };
+  }, []);
 
-  const clearSelectedHashtag = () => {
+  const clearSelectedHashtag = useCallback(() => {
     navigateToRoute("knowledge");
-  };
+  }, []);
+
+  const handleIdentityRequired = useCallback(
+    (action: NonNullable<PendingAction>) => setPendingAction(action),
+    [],
+  );
 
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
@@ -1113,29 +1280,47 @@ export function KnowledgeFeed({
                     ? "Try another hashtag or clear this filter to explore the full feed."
                     : "Tap the `+` button at the top to upload the first knowledge post."}
               </p>
+              {hasMoreEntries && (
+                <button
+                  type="button"
+                  onClick={() => void loadNextEntriesPage()}
+                  disabled={isLoadingMoreEntries}
+                  className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                >
+                  {isLoadingMoreEntries
+                    ? "Loading 10 more posts..."
+                    : "Load 10 older posts"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
-              {renderedEntries.map((entry) => (
-                <KnowledgeCard
-                  key={entry.id}
-                  entry={entry}
-                  currentIdentity={identity}
-                  profiles={profiles}
-                  onVisible={markKnowledgeEntrySeen}
-                  onIdentityRequired={(action) => setPendingAction(action)}
-                  onOpenProfile={onOpenProfile}
-                  onOpenEntry={onOpenEntry}
-                  onSelectHashtag={handleSelectHashtag}
-                  highlighted={entry.id === focusedEntryId}
-                />
-              ))}
+              <KnowledgeCardList
+                entries={filteredEntries}
+                currentIdentity={identity}
+                profiles={profiles}
+                onVisible={markKnowledgeEntrySeen}
+                onIdentityRequired={handleIdentityRequired}
+                onOpenProfile={onOpenProfile}
+                onOpenEntry={onOpenEntry}
+                onSelectHashtag={handleSelectHashtag}
+                highlightedEntryId={focusedEntryId}
+              />
               {hasMoreEntries && (
                 <div
                   ref={loadMoreSentinelRef}
-                  className="py-4 text-center text-xs font-medium text-slate-400"
+                  className="py-4 text-center"
                 >
-                  Loading more posts...
+                  <button
+                    type="button"
+                    onClick={() => void loadNextEntriesPage()}
+                    disabled={isLoadingMoreEntries}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                  >
+                    {isLoadingMoreEntries
+                      ? "Loading 10 more posts..."
+                      : "Load 10 more posts"}
+                  </button>
                 </div>
               )}
             </div>

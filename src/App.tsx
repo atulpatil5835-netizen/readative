@@ -1,5 +1,5 @@
 import { HelmetProvider } from "react-helmet-async";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import {
   MessageSquareMore,
   TriangleAlert,
@@ -85,15 +85,15 @@ export default function App() {
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
 
-  const syncRouteState = () => {
+  const syncRouteState = useCallback(() => {
     const route = parseRouteFromLocation();
     setActiveTab(route.tab);
     setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
     setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
     setRouteErrorPath(route.tab === "notFound" ? route.attemptedLocation : null);
-  };
+  }, []);
 
-  const handleTabChange = (
+  const handleTabChange = useCallback((
     tab: AppTab,
     nextProfileAuthorId: string | null = null,
     nextFocusedEntryId: string | null = null
@@ -104,17 +104,17 @@ export default function App() {
       profileAuthorId: nextProfileAuthorId,
       focusedEntryId: nextFocusedEntryId,
     });
-  };
+  }, []);
 
-  const handleOpenProfile = (authorId: string) => {
+  const handleOpenProfile = useCallback((authorId: string) => {
     handleTabChange("profile", authorId);
-  };
+  }, [handleTabChange]);
 
-  const handleOpenEntry = (entryId: string) => {
+  const handleOpenEntry = useCallback((entryId: string) => {
     handleTabChange("knowledge", null, entryId);
-  };
+  }, [handleTabChange]);
 
-  const handleHomeAction = () => {
+  const handleHomeAction = useCallback(() => {
     setShowInfoPanel(false);
     setShowNotificationsPanel(false);
 
@@ -127,9 +127,9 @@ export default function App() {
     }
 
     setHomeRefreshSignal((current) => current + 1);
-  };
+  }, []);
 
-  const handleOpenComposer = () => {
+  const handleOpenComposer = useCallback(() => {
     if (activeTab !== "knowledge") {
       handleTabChange("knowledge");
     }
@@ -137,27 +137,27 @@ export default function App() {
     setShowInfoPanel(false);
     setShowNotificationsPanel(false);
     setComposerOpenSignal((current) => current + 1);
-  };
+  }, [activeTab, handleTabChange]);
 
-  const handleOpenNotifications = () => {
+  const handleOpenNotifications = useCallback(() => {
     setShowInfoPanel(false);
     setShowNotificationsPanel((current) => !current);
-  };
+  }, []);
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = useCallback(async () => {
     const nextIdentity = await signInWithGoogleAccount();
     setIdentity(nextIdentity);
     setAuthStatusMessage(null);
     setShowGoogleSignInPrompt(false);
-  };
+  }, []);
 
-  const handleGoogleSignOut = async () => {
+  const handleGoogleSignOut = useCallback(async () => {
     await signOutGoogleAccount();
     setIdentity(null);
     setShowNotificationsPanel(false);
     setUnreadNotificationCount(0);
     setNotifications([]);
-  };
+  }, []);
 
   useEffect(() => {
     const syncAndNormalizeRoute = () => {
@@ -189,7 +189,7 @@ export default function App() {
       window.removeEventListener("popstate", syncAndNormalizeRoute);
       window.removeEventListener(ROUTE_CHANGE_EVENT, syncAndNormalizeRoute);
     };
-  }, []);
+  }, [syncRouteState]);
 
   useEffect(() => {
     trackPageView();
@@ -227,7 +227,9 @@ export default function App() {
 
         const notificationsQuery = firestore.query(
           firestore.collection(db, "notifications"),
-          firestore.where("targetAuthorId", "==", identity.authorId)
+          firestore.where("targetAuthorId", "==", identity.authorId),
+          firestore.orderBy("createdAt", "desc"),
+          firestore.limit(20)
         );
 
         unsubscribe = firestore.onSnapshot(

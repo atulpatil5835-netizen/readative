@@ -16,6 +16,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   serverTimestamp,
   doc,
   runTransaction,
@@ -29,6 +30,8 @@ import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+
+const SMART_TALK_REALTIME_LIMIT = 50;
 
 interface Answer {
   id: string;
@@ -241,6 +244,7 @@ export function SmartTalk({
     const smartTalkQuery = query(
       collection(db, "smarttalk"),
       orderBy("createdAt", "desc"),
+      limit(SMART_TALK_REALTIME_LIMIT),
     );
 
     const unsubscribe = onSnapshot(

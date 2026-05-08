@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   BookOpenText,
   Clock3,
@@ -13,7 +13,16 @@ import {
   X,
   Youtube,
 } from "lucide-react";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
   KnowledgeEntry,
@@ -23,7 +32,7 @@ import {
 } from "../types";
 import { SEO } from "./SEO";
 import { GoogleSignInPrompt } from "./Auth";
-import { KnowledgeCard } from "./KnowledgeCard";
+import { KnowledgeCardList } from "./KnowledgeCardList";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
 import {
@@ -42,6 +51,9 @@ import {
 } from "../utils/knowledgePrivacy";
 
 type ProfileSection = "shared" | "liked";
+
+const PROFILE_POST_LIMIT = 10;
+const PROFILE_DIRECTORY_LIMIT = 80;
 
 interface ProfileProps {
   currentIdentity: KnowledgeIdentity | null;
@@ -124,6 +136,11 @@ export function Profile({
   const [pendingAction, setPendingAction] = useState<
     { type: "like" | "comment"; entryId: string } | null
   >(null);
+  const handleIdentityRequired = useCallback(
+    (action: { type: "like" | "comment"; entryId: string }) =>
+      setPendingAction(action),
+    [],
+  );
 
   const activeAuthorId = viewedAuthorId || currentIdentity?.authorId || null;
   const isOwnProfile =
@@ -182,7 +199,12 @@ export function Profile({
 
     unsubscribers.push(
       onSnapshot(
-        query(collection(db, "knowledge"), where("authorId", "==", activeAuthorId)),
+        query(
+          collection(db, "knowledge"),
+          where("authorId", "==", activeAuthorId),
+          orderBy("createdAt", "desc"),
+          limit(PROFILE_POST_LIMIT),
+        ),
         (snapshot) => {
           const data = snapshot.docs
             .map((item) =>
@@ -210,7 +232,12 @@ export function Profile({
 
     unsubscribers.push(
       onSnapshot(
-        query(collection(db, "knowledge"), where("likes", "array-contains", activeAuthorId)),
+        query(
+          collection(db, "knowledge"),
+          where("likes", "array-contains", activeAuthorId),
+          orderBy("createdAt", "desc"),
+          limit(PROFILE_POST_LIMIT),
+        ),
         (snapshot) => {
           const data = snapshot.docs
             .map((item) =>
@@ -242,26 +269,42 @@ export function Profile({
   }, [activeAuthorId, currentIdentity?.authorId, isOwnProfile]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "userProfiles"),
-      (snapshot) => {
+    let cancelled = false;
+
+    const loadProfilesDirectory = async () => {
+      try {
+        const snapshot = await getDocs(
+          query(
+            collection(db, "userProfiles"),
+            orderBy("usernameLower", "asc"),
+            limit(PROFILE_DIRECTORY_LIMIT),
+          ),
+        );
+
+        if (cancelled) return;
+
         const data = snapshot.docs.map((item) =>
           hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
         );
 
         setProfiles(data);
         setDirectoryLoadError(null);
-      },
-      (error) => {
-        console.error("User directory listener error:", error);
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("User directory load error:", error);
         setProfiles([]);
         setDirectoryLoadError(
           "The profile directory is temporarily unavailable. Mentions and profile previews may be limited."
         );
       }
-    );
+    };
 
-    return () => unsubscribe();
+    void loadProfilesDirectory();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const usernameCooldown = profile ? getUsernameChangeRemaining(profile) : 0;
@@ -526,7 +569,7 @@ export function Profile({
               entries={sharedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
-              onIdentityRequired={(action) => setPendingAction(action)}
+              onIdentityRequired={handleIdentityRequired}
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
             />
@@ -543,7 +586,7 @@ export function Profile({
               entries={likedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
-              onIdentityRequired={(action) => setPendingAction(action)}
+              onIdentityRequired={handleIdentityRequired}
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
             />
@@ -907,17 +950,14 @@ function KnowledgeSection({
           <p className="mt-3 text-sm text-slate-400">{emptyMessage}</p>
         </div>
       ) : (
-        entries.map((entry) => (
-          <KnowledgeCard
-            key={entry.id}
-            entry={entry}
-            currentIdentity={currentIdentity}
-            profiles={profiles}
-            onIdentityRequired={onIdentityRequired}
-            onOpenProfile={onOpenProfile}
-            onOpenEntry={onOpenEntry}
-          />
-        ))
+        <KnowledgeCardList
+          entries={entries}
+          currentIdentity={currentIdentity}
+          profiles={profiles}
+          onIdentityRequired={onIdentityRequired}
+          onOpenProfile={onOpenProfile}
+          onOpenEntry={onOpenEntry}
+        />
       )}
     </div>
   );

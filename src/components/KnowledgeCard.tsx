@@ -1,4 +1,11 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -215,7 +222,7 @@ function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
     }));
 }
 
-export function KnowledgeCard({
+export const KnowledgeCard = memo(function KnowledgeCard({
   entry,
   currentIdentity,
   profiles = [],
@@ -1156,7 +1163,7 @@ export function KnowledgeCard({
       )}
     </article>
   );
-}
+});
 
 function EditPostModal({
   entry,
