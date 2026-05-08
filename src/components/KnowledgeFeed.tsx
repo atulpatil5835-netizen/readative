@@ -244,6 +244,7 @@ interface LoadNextEntriesPageOptions {
 interface CachedKnowledgeFeed {
   entries: KnowledgeEntry[];
   feedEntryOrder: string[];
+  visibleLikedEntryIds: string[];
   hasMoreServerEntries: boolean;
   cachedAt: number;
   refreshSeed: number;
@@ -565,7 +566,8 @@ function normalizeKnowledgeEntry(
 }
 
 function getKnowledgeFeedCacheKey(authorId?: string | null) {
-  const ownerId = authorId?.trim() || (typeof window === "undefined" ? "server" : getGuestId());
+  const ownerId =
+    authorId?.trim() || (typeof window === "undefined" ? "server" : getGuestId());
   return `${FEED_CACHE_KEY_PREFIX}:${ownerId}`;
 }
 
@@ -621,6 +623,7 @@ function normalizeCachedKnowledgeFeed(value: unknown): CachedKnowledgeFeed | nul
   return {
     entries,
     feedEntryOrder,
+    visibleLikedEntryIds: normalizeCacheStringArray(candidate.visibleLikedEntryIds),
     hasMoreServerEntries: candidate.hasMoreServerEntries !== false,
     cachedAt,
     refreshSeed,
@@ -691,6 +694,9 @@ function writeKnowledgeFeedCache(
     feedEntryOrder: cache.feedEntryOrder.filter((entryId) =>
       entryIds.has(entryId),
     ),
+    visibleLikedEntryIds: cache.visibleLikedEntryIds.filter((entryId) =>
+      entryIds.has(entryId),
+    ),
     cachedAt: Date.now(),
   };
 
@@ -699,6 +705,7 @@ function writeKnowledgeFeedCache(
   const storageCache = {
     ...nextCache,
     entries: nextCache.entries.slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT),
+    visibleLikedEntryIds: [],
   };
 
   try {
@@ -716,6 +723,54 @@ function writeKnowledgeFeedCache(
       // Memory cache still covers tab switches when local storage is full.
     }
   }
+}
+
+function isEntryLikedByAuthor(entry: KnowledgeEntry, authorId?: string | null) {
+  return Boolean(authorId && (entry.likes || []).includes(authorId));
+}
+
+function reconcileRealtimeKnowledgeFeedOrder({
+  entries,
+  currentOrder,
+  snapshot,
+  newEntryIds,
+  refreshSeed,
+}: {
+  entries: KnowledgeEntry[];
+  currentOrder: string[];
+  snapshot: ReturnType<typeof getKnowledgeFeedSnapshot>;
+  newEntryIds: Set<string>;
+  refreshSeed: number;
+}) {
+  const reconciledOrder = reconcileKnowledgeFeedOrder(
+    entries,
+    currentOrder,
+    snapshot,
+    { refreshSeed },
+  );
+
+  if (currentOrder.length === 0 || newEntryIds.size === 0) {
+    return reconciledOrder;
+  }
+
+  const newEntries = entries.filter(
+    (entry) =>
+      newEntryIds.has(entry.id) &&
+      !isEntryLikedByAuthor(entry, snapshot.currentUserId),
+  );
+  if (newEntries.length === 0) {
+    return reconciledOrder;
+  }
+
+  const leadEntryIds = rankKnowledgeEntries(newEntries, snapshot, {
+    refreshSeed,
+  }).map((entry) => entry.id);
+  const leadEntryIdSet = new Set(leadEntryIds);
+
+  return [
+    ...leadEntryIds,
+    ...reconciledOrder.filter((entryId) => !leadEntryIdSet.has(entryId)),
+  ];
 }
 
 function sortKnowledgeEntries(entries: KnowledgeEntry[]) {
@@ -823,6 +878,9 @@ export function KnowledgeFeed({
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] =
     useState<string[]>(initialFeedOrder);
+  const [visibleLikedEntryIds, setVisibleLikedEntryIds] = useState<string[]>(
+    () => initialFeedCache?.visibleLikedEntryIds || [],
+  );
   const [hasMoreServerEntries, setHasMoreServerEntries] = useState(
     () => initialFeedCache?.hasMoreServerEntries ?? true,
   );
@@ -832,6 +890,7 @@ export function KnowledgeFeed({
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>(entries);
+  const visibleLikedEntryIdsRef = useRef<string[]>(visibleLikedEntryIds);
   const feedRefreshSeedRef = useRef(initialFeedCache?.refreshSeed || Date.now());
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
@@ -853,18 +912,32 @@ export function KnowledgeFeed({
   }, [entries]);
 
   useEffect(() => {
+    visibleLikedEntryIdsRef.current = visibleLikedEntryIds;
+  }, [visibleLikedEntryIds]);
+
+  useEffect(() => {
     if (entries.length === 0) return;
 
     writeKnowledgeFeedCache(identity?.authorId, {
       entries,
       feedEntryOrder,
+      visibleLikedEntryIds,
       hasMoreServerEntries,
       refreshSeed: feedRefreshSeedRef.current,
     });
-  }, [entries, feedEntryOrder, hasMoreServerEntries, identity?.authorId]);
+  }, [
+    entries,
+    feedEntryOrder,
+    hasMoreServerEntries,
+    identity?.authorId,
+    visibleLikedEntryIds,
+  ]);
 
   useEffect(() => {
     const cachedFeed = readKnowledgeFeedCache(identity?.authorId);
+    const nextVisibleLikedEntryIds = cachedFeed?.visibleLikedEntryIds || [];
+    visibleLikedEntryIdsRef.current = nextVisibleLikedEntryIds;
+    setVisibleLikedEntryIds(nextVisibleLikedEntryIds);
 
     if (cachedFeed && entriesRef.current.length === 0) {
       entriesRef.current = cachedFeed.entries;
@@ -905,6 +978,8 @@ export function KnowledgeFeed({
 
     setFeedSearchQuery("");
     setFeedMessage(null);
+    visibleLikedEntryIdsRef.current = [];
+    setVisibleLikedEntryIds([]);
     feedRefreshSeedRef.current = Date.now();
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
@@ -962,6 +1037,14 @@ export function KnowledgeFeed({
           updateHasMoreServerEntries(snapshot.docs.length === FEED_PAGE_SIZE);
         }
 
+        const previousEntryIds = new Set(
+          entriesRef.current.map((entry) => entry.id),
+        );
+        const newEntryIds = new Set(
+          data
+            .filter((entry) => !previousEntryIds.has(entry.id))
+            .map((entry) => entry.id),
+        );
         const nextFeedEntries = mergeRealtimeKnowledgePage(
           entriesRef.current,
           data,
@@ -969,14 +1052,13 @@ export function KnowledgeFeed({
         entriesRef.current = nextFeedEntries;
         setEntries(nextFeedEntries);
         setFeedEntryOrder((currentOrder) =>
-          reconcileKnowledgeFeedOrder(
-            nextFeedEntries,
+          reconcileRealtimeKnowledgeFeedOrder({
+            entries: nextFeedEntries,
             currentOrder,
-            getKnowledgeFeedSnapshot(),
-            {
-              refreshSeed: feedRefreshSeedRef.current,
-            },
-          ),
+            snapshot: getKnowledgeFeedSnapshot(),
+            newEntryIds,
+            refreshSeed: feedRefreshSeedRef.current,
+          }),
         );
 
         setIsLoading(false);
@@ -1299,10 +1381,27 @@ export function KnowledgeFeed({
   }, []);
 
   const currentAuthorId = identity?.authorId || null;
+  const visibleLikedEntryIdSet = useMemo(
+    () => new Set(visibleLikedEntryIds),
+    [visibleLikedEntryIds],
+  );
   const viewableEntries = useMemo(
     () =>
-      entries.filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId)),
-    [currentAuthorId, entries],
+      entries.filter((entry) => {
+        if (!canViewKnowledgeEntry(entry, currentAuthorId)) {
+          return false;
+        }
+
+        if (focusedEntryId && entry.id === focusedEntryId) {
+          return true;
+        }
+
+        return (
+          !isEntryLikedByAuthor(entry, currentAuthorId) ||
+          visibleLikedEntryIdSet.has(entry.id)
+        );
+      }),
+    [currentAuthorId, entries, focusedEntryId, visibleLikedEntryIdSet],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -1725,6 +1824,18 @@ export function KnowledgeFeed({
 
   const handleLikeChange = useCallback(
     (entryId: string, likes: string[]) => {
+      const likedByCurrentUser = Boolean(
+        currentAuthorId && likes.includes(currentAuthorId),
+      );
+      setVisibleLikedEntryIds((currentIds) => {
+        const nextIds = likedByCurrentUser
+          ? [...new Set([...currentIds, entryId])]
+          : currentIds.filter((id) => id !== entryId);
+
+        visibleLikedEntryIdsRef.current = nextIds;
+        return nextIds;
+      });
+
       const nextEntries = entriesRef.current.map((entry) =>
         entry.id === entryId ? { ...entry, likes } : entry,
       );
@@ -1740,7 +1851,7 @@ export function KnowledgeFeed({
         ),
       );
     },
-    [],
+    [currentAuthorId],
   );
 
   const pageTitle = focusedEntry
