@@ -73,6 +73,7 @@ import {
   reconcileKnowledgeFeedOrder,
   rankKnowledgeEntries,
 } from "../utils/feedPersonalization";
+import { getGuestId } from "../utils/guestIdentity";
 import {
   getKnowledgeEntryImages,
   getKnowledgeImageLayoutSettings,
@@ -89,6 +90,10 @@ const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const FEED_PAGE_SIZE = 10;
 const FEED_LOAD_TIMEOUT_MS = 9000;
 const FEED_BACKGROUND_PAGE_DELAY_MS = 300;
+const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
+const FEED_CACHE_STORAGE_ENTRY_LIMIT = 40;
+const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v1";
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const TRENDING_FEED_LIMIT = 12;
@@ -236,6 +241,14 @@ interface LoadNextEntriesPageOptions {
   surfaceErrors?: boolean;
 }
 
+interface CachedKnowledgeFeed {
+  entries: KnowledgeEntry[];
+  feedEntryOrder: string[];
+  hasMoreServerEntries: boolean;
+  cachedAt: number;
+  refreshSeed: number;
+}
+
 interface BrowserIdleCallbacks {
   requestIdleCallback?: (
     callback: IdleRequestCallback,
@@ -253,6 +266,8 @@ interface KnowledgeFeedProps {
   composerOpenSignal: number;
   refreshSignal: number;
 }
+
+const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
 
 function parseManualHashtags(input: string): string[] {
   return input
@@ -549,6 +564,160 @@ function normalizeKnowledgeEntry(
   };
 }
 
+function getKnowledgeFeedCacheKey(authorId?: string | null) {
+  const ownerId = authorId?.trim() || (typeof window === "undefined" ? "server" : getGuestId());
+  return `${FEED_CACHE_KEY_PREFIX}:${ownerId}`;
+}
+
+function normalizeCacheStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeCachedKnowledgeFeed(value: unknown): CachedKnowledgeFeed | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<CachedKnowledgeFeed>;
+  const cachedAt =
+    typeof candidate.cachedAt === "number" && Number.isFinite(candidate.cachedAt)
+      ? candidate.cachedAt
+      : 0;
+
+  if (!cachedAt || Date.now() - cachedAt > FEED_CACHE_TTL_MS) {
+    return null;
+  }
+
+  const entries = Array.isArray(candidate.entries)
+    ? candidate.entries
+        .map((entry) => {
+          const data = entry as Partial<KnowledgeEntry>;
+          const id = typeof data.id === "string" ? data.id.trim() : "";
+          return id ? normalizeKnowledgeEntry(id, data) : null;
+        })
+        .filter((entry): entry is KnowledgeEntry => Boolean(entry))
+        .slice(0, FEED_CACHE_MEMORY_ENTRY_LIMIT)
+    : [];
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const entryIds = new Set(entries.map((entry) => entry.id));
+  const feedEntryOrder = normalizeCacheStringArray(candidate.feedEntryOrder).filter(
+    (entryId) => entryIds.has(entryId),
+  );
+  const refreshSeed =
+    typeof candidate.refreshSeed === "number" &&
+    Number.isFinite(candidate.refreshSeed)
+      ? candidate.refreshSeed
+      : cachedAt;
+
+  return {
+    entries,
+    feedEntryOrder,
+    hasMoreServerEntries: candidate.hasMoreServerEntries !== false,
+    cachedAt,
+    refreshSeed,
+  };
+}
+
+function readKnowledgeFeedCache(authorId?: string | null): CachedKnowledgeFeed | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cacheKey = getKnowledgeFeedCacheKey(authorId);
+  const memoryCache = normalizeCachedKnowledgeFeed(
+    knowledgeFeedMemoryCache.get(cacheKey),
+  );
+  if (memoryCache) {
+    knowledgeFeedMemoryCache.set(cacheKey, memoryCache);
+    return memoryCache;
+  }
+
+  knowledgeFeedMemoryCache.delete(cacheKey);
+
+  try {
+    const raw = window.localStorage.getItem(cacheKey);
+    if (!raw) {
+      return null;
+    }
+
+    const storageCache = normalizeCachedKnowledgeFeed(JSON.parse(raw));
+    if (!storageCache) {
+      window.localStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    knowledgeFeedMemoryCache.set(cacheKey, storageCache);
+    return storageCache;
+  } catch {
+    return null;
+  }
+}
+
+function stripEntryImagesForStorage(entry: KnowledgeEntry): KnowledgeEntry {
+  return {
+    ...entry,
+    images: [],
+    imageDataUrl: null,
+    imageMimeType: null,
+    imageWidth: null,
+    imageHeight: null,
+    imageOptimizedAt: null,
+  };
+}
+
+function writeKnowledgeFeedCache(
+  authorId: string | null | undefined,
+  cache: Omit<CachedKnowledgeFeed, "cachedAt">,
+) {
+  if (typeof window === "undefined" || cache.entries.length === 0) {
+    return;
+  }
+
+  const cacheKey = getKnowledgeFeedCacheKey(authorId);
+  const memoryEntries = cache.entries.slice(0, FEED_CACHE_MEMORY_ENTRY_LIMIT);
+  const entryIds = new Set(memoryEntries.map((entry) => entry.id));
+  const nextCache: CachedKnowledgeFeed = {
+    ...cache,
+    entries: memoryEntries,
+    feedEntryOrder: cache.feedEntryOrder.filter((entryId) =>
+      entryIds.has(entryId),
+    ),
+    cachedAt: Date.now(),
+  };
+
+  knowledgeFeedMemoryCache.set(cacheKey, nextCache);
+
+  const storageCache = {
+    ...nextCache,
+    entries: nextCache.entries.slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT),
+  };
+
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify(storageCache));
+  } catch {
+    try {
+      window.localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          ...storageCache,
+          entries: storageCache.entries.map(stripEntryImagesForStorage),
+        }),
+      );
+    } catch {
+      // Memory cache still covers tab switches when local storage is full.
+    }
+  }
+}
+
 function sortKnowledgeEntries(entries: KnowledgeEntry[]) {
   return [...entries].sort((left, right) => {
     const createdAtDiff = right.createdAt - left.createdAt;
@@ -601,9 +770,29 @@ export function KnowledgeFeed({
   composerOpenSignal,
   refreshSignal,
 }: KnowledgeFeedProps) {
-  const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
+  const initialFeedCache = useMemo(
+    () => readKnowledgeFeedCache(identity?.authorId),
+    [identity?.authorId],
+  );
+  const initialFeedOrder = useMemo(
+    () =>
+      initialFeedCache
+        ? reconcileKnowledgeFeedOrder(
+            initialFeedCache.entries,
+            initialFeedCache.feedEntryOrder,
+            getKnowledgeFeedSnapshot(),
+            { refreshSeed: initialFeedCache.refreshSeed },
+          )
+        : [],
+    [initialFeedCache],
+  );
+  const [entries, setEntries] = useState<KnowledgeEntry[]>(
+    () => initialFeedCache?.entries || [],
+  );
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(
+    () => !initialFeedCache?.entries.length,
+  );
   const [feedLoadError, setFeedLoadError] = useState<string | null>(null);
   const [profilesLoadError, setProfilesLoadError] = useState<string | null>(
     null,
@@ -632,19 +821,22 @@ export function KnowledgeFeed({
   const [selectedFeedTopic, setSelectedFeedTopic] =
     useState<FeedTopicId>("all");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
-  const [feedEntryOrder, setFeedEntryOrder] = useState<string[]>([]);
-  const [hasMoreServerEntries, setHasMoreServerEntries] = useState(true);
+  const [feedEntryOrder, setFeedEntryOrder] =
+    useState<string[]>(initialFeedOrder);
+  const [hasMoreServerEntries, setHasMoreServerEntries] = useState(
+    () => initialFeedCache?.hasMoreServerEntries ?? true,
+  );
   const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
   const [isBackgroundLoadingEntries, setIsBackgroundLoadingEntries] =
     useState(false);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
-  const entriesRef = useRef<KnowledgeEntry[]>([]);
-  const feedRefreshSeedRef = useRef(Date.now());
+  const entriesRef = useRef<KnowledgeEntry[]>(entries);
+  const feedRefreshSeedRef = useRef(initialFeedCache?.refreshSeed || Date.now());
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
     useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const hasMoreServerEntriesRef = useRef(true);
+  const hasMoreServerEntriesRef = useRef(hasMoreServerEntries);
   const hasPaginatedPastFirstPageRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
@@ -659,6 +851,47 @@ export function KnowledgeFeed({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
+
+  useEffect(() => {
+    if (entries.length === 0) return;
+
+    writeKnowledgeFeedCache(identity?.authorId, {
+      entries,
+      feedEntryOrder,
+      hasMoreServerEntries,
+      refreshSeed: feedRefreshSeedRef.current,
+    });
+  }, [entries, feedEntryOrder, hasMoreServerEntries, identity?.authorId]);
+
+  useEffect(() => {
+    const cachedFeed = readKnowledgeFeedCache(identity?.authorId);
+
+    if (cachedFeed && entriesRef.current.length === 0) {
+      entriesRef.current = cachedFeed.entries;
+      setEntries(cachedFeed.entries);
+      setFeedEntryOrder(
+        reconcileKnowledgeFeedOrder(
+          cachedFeed.entries,
+          cachedFeed.feedEntryOrder,
+          getKnowledgeFeedSnapshot(),
+          { refreshSeed: cachedFeed.refreshSeed },
+        ),
+      );
+      feedRefreshSeedRef.current = cachedFeed.refreshSeed;
+      updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
+      setIsLoading(false);
+      return;
+    }
+
+    setFeedEntryOrder((currentOrder) =>
+      reconcileKnowledgeFeedOrder(
+        entriesRef.current,
+        currentOrder,
+        getKnowledgeFeedSnapshot(),
+        { refreshSeed: feedRefreshSeedRef.current },
+      ),
+    );
+  }, [identity?.authorId, updateHasMoreServerEntries]);
 
   useEffect(() => {
     if (composerOpenSignal > 0) {
@@ -695,20 +928,25 @@ export function KnowledgeFeed({
       limit(FEED_PAGE_SIZE),
     );
     let didReceiveFeedResponse = false;
-    const timeoutId = window.setTimeout(() => {
-      if (didReceiveFeedResponse) return;
+    const timeoutId =
+      entriesRef.current.length === 0
+        ? window.setTimeout(() => {
+            if (didReceiveFeedResponse) return;
 
-      setIsLoading(false);
-      setFeedLoadError(
-        "Posts are taking longer than expected to load. Please refresh, or try again in a moment.",
-      );
-    }, FEED_LOAD_TIMEOUT_MS);
+            setIsLoading(false);
+            setFeedLoadError(
+              "Posts are taking longer than expected to load. Please refresh, or try again in a moment.",
+            );
+          }, FEED_LOAD_TIMEOUT_MS)
+        : null;
 
     const unsubscribe = onSnapshot(
       knowledgeQuery,
       (snapshot) => {
         didReceiveFeedResponse = true;
-        window.clearTimeout(timeoutId);
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId);
+        }
         const data = snapshot.docs.map((item) =>
           normalizeKnowledgeEntry(
             item.id,
@@ -746,7 +984,9 @@ export function KnowledgeFeed({
       },
       (error) => {
         didReceiveFeedResponse = true;
-        window.clearTimeout(timeoutId);
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId);
+        }
         console.error("Knowledge feed error:", error);
         setIsLoading(false);
         setFeedLoadError(
@@ -756,7 +996,9 @@ export function KnowledgeFeed({
     );
 
     return () => {
-      window.clearTimeout(timeoutId);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
       unsubscribe();
     };
   }, [updateHasMoreServerEntries]);
@@ -1057,28 +1299,10 @@ export function KnowledgeFeed({
   }, []);
 
   const currentAuthorId = identity?.authorId || null;
-  const hasHiddenLikedPosts = useMemo(
-    () =>
-      Boolean(
-        currentAuthorId &&
-          entries.some((entry) => (entry.likes || []).includes(currentAuthorId)),
-      ),
-    [currentAuthorId, entries],
-  );
   const viewableEntries = useMemo(
     () =>
-      entries.filter((entry) => {
-        if (!canViewKnowledgeEntry(entry, currentAuthorId)) {
-          return false;
-        }
-
-        if (focusedEntryId && entry.id === focusedEntryId) {
-          return true;
-        }
-
-        return !currentAuthorId || !(entry.likes || []).includes(currentAuthorId);
-      }),
-    [currentAuthorId, entries, focusedEntryId],
+      entries.filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId)),
+    [currentAuthorId, entries],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -1499,6 +1723,26 @@ export function KnowledgeFeed({
     [],
   );
 
+  const handleLikeChange = useCallback(
+    (entryId: string, likes: string[]) => {
+      const nextEntries = entriesRef.current.map((entry) =>
+        entry.id === entryId ? { ...entry, likes } : entry,
+      );
+
+      entriesRef.current = nextEntries;
+      setEntries(nextEntries);
+      setFeedEntryOrder((currentOrder) =>
+        reconcileKnowledgeFeedOrder(
+          nextEntries,
+          currentOrder,
+          getKnowledgeFeedSnapshot(),
+          { refreshSeed: feedRefreshSeedRef.current },
+        ),
+      );
+    },
+    [],
+  );
+
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
     : selectedHashtag
@@ -1646,10 +1890,8 @@ export function KnowledgeFeed({
                     ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
                     : hasActiveTopic
                       ? `No ${activeFeedTopic.label} posts found`
-                    : selectedHashtag
-                      ? `No posts for #${selectedHashtag}`
-                      : hasHiddenLikedPosts
-                        ? "No new posts right now"
+                      : selectedHashtag
+                        ? `No posts for #${selectedHashtag}`
                         : "No posts yet"}
               </h3>
               <p className="mt-2 text-sm text-slate-500">
@@ -1659,9 +1901,7 @@ export function KnowledgeFeed({
                     ? "Try another category or keep scrolling while more posts load."
                     : selectedHashtag
                       ? "Try another hashtag or clear this filter to explore the full feed."
-                      : hasHiddenLikedPosts
-                        ? "You have already liked the loaded posts. Refresh or keep scrolling while newer posts load."
-                        : "Tap the `+` button at the top to upload the first knowledge post."}
+                      : "Tap the `+` button at the top to upload the first knowledge post."}
               </p>
               {hasMoreEntries && (
                 <button
@@ -1685,6 +1925,7 @@ export function KnowledgeFeed({
                 onOpenProfile={onOpenProfile}
                 onOpenEntry={onOpenEntry}
                 onSelectHashtag={handleSelectHashtag}
+                onLikeChange={handleLikeChange}
                 highlightedEntryId={focusedEntryId}
               />
               {hasMoreEntries && (

@@ -34,6 +34,7 @@ interface KnowledgeCardListProps {
   onOpenEntry: (entryId: string) => void;
   onVisible?: (entry: KnowledgeEntry) => void;
   onSelectHashtag?: (tag: string) => void;
+  onLikeChange?: (entryId: string, likes: string[]) => void;
   highlightedEntryId?: string | null;
 }
 
@@ -57,6 +58,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   onOpenEntry,
   onVisible,
   onSelectHashtag,
+  onLikeChange,
   highlightedEntryId,
 }: KnowledgeCardListProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -202,6 +204,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 onOpenProfile={onOpenProfile}
                 onOpenEntry={onOpenEntry}
                 onSelectHashtag={onSelectHashtag}
+                onLikeChange={onLikeChange}
                 highlighted={entry.id === highlightedEntryId}
               />
             </Suspense>

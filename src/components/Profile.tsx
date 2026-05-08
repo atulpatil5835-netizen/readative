@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpenText,
   Clock3,
@@ -118,6 +118,7 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
 function mergeProfileEntries(
   currentEntries: KnowledgeEntry[],
   nextEntries: KnowledgeEntry[],
+  limitCount = PROFILE_POST_LIMIT,
 ) {
   const entryMap = new Map(
     currentEntries.map((entry) => [entry.id, entry] as const),
@@ -127,7 +128,7 @@ function mergeProfileEntries(
     entryMap.set(entry.id, entry);
   });
 
-  return sortKnowledge([...entryMap.values()]).slice(0, PROFILE_POST_LIMIT);
+  return sortKnowledge([...entryMap.values()]).slice(0, limitCount);
 }
 
 function chunkItems<T>(items: T[], size: number) {
@@ -136,6 +137,33 @@ function chunkItems<T>(items: T[], size: number) {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+function sortProfileLikedEntries(
+  entries: KnowledgeEntry[],
+  trackedLikedEntryIds: string[],
+) {
+  if (trackedLikedEntryIds.length === 0) {
+    return sortKnowledge(entries);
+  }
+
+  const likedOrder = new Map(
+    trackedLikedEntryIds.map((entryId, index) => [entryId, index] as const),
+  );
+
+  return [...entries].sort((left, right) => {
+    const leftOrder = likedOrder.get(left.id);
+    const rightOrder = likedOrder.get(right.id);
+
+    if (leftOrder !== undefined && rightOrder !== undefined) {
+      return rightOrder - leftOrder;
+    }
+
+    if (leftOrder !== undefined) return -1;
+    if (rightOrder !== undefined) return 1;
+
+    return right.createdAt - left.createdAt;
+  });
 }
 
 function isMissingFirestoreIndexError(error: unknown) {
@@ -407,6 +435,14 @@ export function Profile({
     trackedLikedEntryIds.length,
     likedEntries.length,
   );
+  const orderedLikedEntries = useMemo(
+    () =>
+      sortProfileLikedEntries(likedEntries, trackedLikedEntryIds).slice(
+        0,
+        PROFILE_POST_LIMIT,
+      ),
+    [likedEntries, trackedLikedEntryIdsKey],
+  );
   const engagementCount = sharedEntries.reduce(
     (sum, entry) =>
       sum + (entry.likes?.length || 0) + (entry.comments?.length || 0),
@@ -480,7 +516,11 @@ export function Profile({
         }
 
         setLikedEntries((currentEntries) =>
-          mergeProfileEntries(currentEntries, trackedEntries),
+          mergeProfileEntries(
+            currentEntries,
+            trackedEntries,
+            PROFILE_TRACKED_LIKE_LOOKUP_LIMIT,
+          ),
         );
       } catch (error) {
         if (!cancelled) {
@@ -756,7 +796,7 @@ export function Profile({
                   : `Knowledge liked by @${profile.username}`
               }
               emptyMessage="No liked knowledge yet."
-              entries={likedEntries}
+              entries={orderedLikedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}

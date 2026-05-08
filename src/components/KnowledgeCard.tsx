@@ -156,6 +156,7 @@ interface KnowledgeCardProps {
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag?: (tag: string) => void;
+  onLikeChange?: (entryId: string, likes: string[]) => void;
   highlighted?: boolean;
 }
 
@@ -231,6 +232,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   onOpenProfile,
   onOpenEntry,
   onSelectHashtag,
+  onLikeChange,
   highlighted = false,
 }: KnowledgeCardProps) {
   const [showComments, setShowComments] = useState(false);
@@ -446,6 +448,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         actorName: actorIdentity.displayName,
         shouldLike,
       });
+      onLikeChange?.(entry.id, nextLikes);
     } catch (error) {
       console.error("Failed to update like:", error);
       setLocalLikes(entry.likes || []);
