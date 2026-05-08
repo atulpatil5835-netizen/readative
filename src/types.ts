@@ -62,6 +62,7 @@ export interface UserProfile {
   usernameLower: string;
   bio: string;
   socialLinks: UserSocialLinks;
+  likedKnowledgeIds: string[];
   profileImage?: KnowledgeImageAsset | null;
   photoUrl?: string | null;
   createdAt: number;

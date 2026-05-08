@@ -53,6 +53,17 @@ function normalizeProfileSocialLinks(value: unknown): UserSocialLinks {
   };
 }
 
+function normalizeProfileKnowledgeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value)]
+    .filter((entryId): entryId is string => typeof entryId === "string")
+    .map((entryId) => entryId.trim())
+    .filter(Boolean);
+}
+
 export function hydrateUserProfile(
   data: Partial<UserProfile>,
   id: string,
@@ -64,6 +75,7 @@ export function hydrateUserProfile(
     usernameLower: data.usernameLower || "",
     bio: data.bio || "",
     socialLinks: normalizeProfileSocialLinks(data.socialLinks),
+    likedKnowledgeIds: normalizeProfileKnowledgeIds(data.likedKnowledgeIds),
     profileImage: normalizeProfileImage(data.profileImage),
     photoUrl: normalizeProfilePhotoUrl(data.photoUrl),
     createdAt: data.createdAt || Date.now(),

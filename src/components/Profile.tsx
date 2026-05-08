@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   collection,
+  documentId,
   doc,
   getDocs,
   limit,
@@ -54,6 +55,8 @@ type ProfileSection = "shared" | "liked";
 
 const PROFILE_POST_LIMIT = 10;
 const PROFILE_POST_FALLBACK_LIMIT = 40;
+const PROFILE_TRACKED_LIKE_LOOKUP_LIMIT = 120;
+const FIRESTORE_IN_QUERY_LIMIT = 30;
 const PROFILE_DIRECTORY_LIMIT = 80;
 
 interface ProfileProps {
@@ -110,6 +113,29 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
           ? updatedAt
           : null,
   } as KnowledgeEntry;
+}
+
+function mergeProfileEntries(
+  currentEntries: KnowledgeEntry[],
+  nextEntries: KnowledgeEntry[],
+) {
+  const entryMap = new Map(
+    currentEntries.map((entry) => [entry.id, entry] as const),
+  );
+
+  nextEntries.forEach((entry) => {
+    entryMap.set(entry.id, entry);
+  });
+
+  return sortKnowledge([...entryMap.values()]).slice(0, PROFILE_POST_LIMIT);
+}
+
+function chunkItems<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function isMissingFirestoreIndexError(error: unknown) {
@@ -374,6 +400,13 @@ export function Profile({
   }, []);
 
   const usernameCooldown = profile ? getUsernameChangeRemaining(profile) : 0;
+  const trackedLikedEntryIds =
+    profile?.id === activeAuthorId ? profile.likedKnowledgeIds : [];
+  const trackedLikedEntryIdsKey = trackedLikedEntryIds.join("\u001f");
+  const likedEntryCount = Math.max(
+    trackedLikedEntryIds.length,
+    likedEntries.length,
+  );
   const engagementCount = sharedEntries.reduce(
     (sum, entry) =>
       sum + (entry.likes?.length || 0) + (entry.comments?.length || 0),
@@ -394,6 +427,80 @@ export function Profile({
         sameAs: Object.values(profile.socialLinks || {}).filter(Boolean),
       }
     : undefined;
+
+  useEffect(() => {
+    if (!activeAuthorId || trackedLikedEntryIds.length === 0) {
+      return;
+    }
+
+    const targetAuthorId = activeAuthorId;
+    const loadedEntryIds = new Set(likedEntries.map((entry) => entry.id));
+    const missingEntryIds = [...new Set(trackedLikedEntryIds)]
+      .filter((entryId) => !loadedEntryIds.has(entryId))
+      .slice(-PROFILE_TRACKED_LIKE_LOOKUP_LIMIT);
+    if (missingEntryIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTrackedLikedEntries = async () => {
+      try {
+        const snapshots = await Promise.all(
+          chunkItems(missingEntryIds, FIRESTORE_IN_QUERY_LIMIT).map((entryIds) =>
+            getDocs(
+              query(
+                collection(db, "knowledge"),
+                where(documentId(), "in", entryIds),
+              ),
+            ),
+          ),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const trackedEntries = snapshots.flatMap((snapshot) =>
+          snapshot.docs
+            .map((item) =>
+              hydrateKnowledgeFromSnapshot(
+                item.id,
+                item.data() as Partial<KnowledgeEntry>,
+              ),
+            )
+            .filter((entry) =>
+              (entry.likes || []).includes(targetAuthorId) &&
+              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
+            ),
+        );
+
+        if (trackedEntries.length === 0) {
+          return;
+        }
+
+        setLikedEntries((currentEntries) =>
+          mergeProfileEntries(currentEntries, trackedEntries),
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Tracked liked knowledge lookup failed:", error);
+        }
+      }
+    };
+
+    void loadTrackedLikedEntries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeAuthorId,
+    currentIdentity?.authorId,
+    likedEntries,
+    trackedLikedEntryIds,
+    trackedLikedEntryIdsKey,
+  ]);
 
   const handleClaimIdentity = async () => {
     const nextIdentity = await signInWithGoogleAccount();
@@ -586,7 +693,7 @@ export function Profile({
 
               <div className="grid grid-cols-3 gap-3 md:min-w-[320px]">
                 <ProfileStat label="Shared" value={sharedEntries.length} />
-                <ProfileStat label="Liked" value={likedEntries.length} />
+                <ProfileStat label="Liked" value={likedEntryCount} />
                 <ProfileStat label="Engagement" value={engagementCount} />
               </div>
             </div>
@@ -620,7 +727,7 @@ export function Profile({
             <SectionButton
               active={section === "liked"}
               onClick={() => setSection("liked")}
-              label={`Liked (${likedEntries.length})`}
+              label={`Liked (${likedEntryCount})`}
             />
           </div>
 

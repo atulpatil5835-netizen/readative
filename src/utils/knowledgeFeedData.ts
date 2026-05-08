@@ -1,4 +1,10 @@
-import { arrayRemove, arrayUnion, doc, updateDoc } from "firebase/firestore";
+import {
+  arrayRemove,
+  arrayUnion,
+  doc,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 import type { KnowledgeEntry } from "../types";
 import { db } from "../firebase/firebase";
 import { recordKnowledgeFeedActivity } from "./feedPersonalization";
@@ -16,9 +22,24 @@ export async function toggleKnowledgeEntryLike({
   actorName,
   shouldLike,
 }: ToggleKnowledgeEntryLikeInput) {
-  await updateDoc(doc(db, "knowledge", entry.id), {
+  const knowledgeLikeUpdate = {
     likes: shouldLike ? arrayUnion(actorId) : arrayRemove(actorId),
-  });
+  };
+  const profileLikeUpdate = {
+    likedKnowledgeIds: shouldLike
+      ? arrayUnion(entry.id)
+      : arrayRemove(entry.id),
+  };
+  const batch = writeBatch(db);
+  batch.update(doc(db, "knowledge", entry.id), knowledgeLikeUpdate);
+  batch.update(doc(db, "userProfiles", actorId), profileLikeUpdate);
+
+  try {
+    await batch.commit();
+  } catch (error) {
+    console.warn("Profile liked-post tracking failed; saving post like only.", error);
+    await updateDoc(doc(db, "knowledge", entry.id), knowledgeLikeUpdate);
+  }
 
   const { notifyLikeOnKnowledge, removeLikeNotification } = await import("./notifications");
 

@@ -1,4 +1,5 @@
 import {
+  arrayUnion,
   type DocumentReference,
   collection,
   deleteField,
@@ -295,6 +296,7 @@ async function migrateGuestActivityToGoogleProfile(
     ref: DocumentReference;
     data: Record<string, unknown>;
   }> = [];
+  const migratedLikedEntryIds: string[] = [];
 
   const knowledgeSnapshot = await getDocs(collection(db, "knowledge"));
   knowledgeSnapshot.docs.forEach((item) => {
@@ -308,6 +310,7 @@ async function migrateGuestActivityToGoogleProfile(
     }
 
     if (Array.isArray(data.likes) && data.likes.includes(guestAuthorId)) {
+      migratedLikedEntryIds.push(item.id);
       payload.likes = [
         ...new Set(
           data.likes.map((authorId) =>
@@ -348,6 +351,15 @@ async function migrateGuestActivityToGoogleProfile(
       updates.push({ ref: item.ref, data: payload });
     }
   });
+
+  if (migratedLikedEntryIds.length > 0) {
+    updates.push({
+      ref: doc(db, "userProfiles", profile.id),
+      data: {
+        likedKnowledgeIds: arrayUnion(...migratedLikedEntryIds),
+      },
+    });
+  }
 
   const notificationSnapshot = await getDocs(collection(db, "notifications"));
   notificationSnapshot.docs.forEach((item) => {
@@ -453,6 +465,7 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     usernameLower: username,
     bio: "",
     socialLinks: {},
+    likedKnowledgeIds: [],
     profileImage: null,
     photoUrl,
     createdAt: now,
@@ -505,6 +518,7 @@ export async function ensureGuestProfile(
     usernameLower: username,
     bio: "",
     socialLinks: {},
+    likedKnowledgeIds: [],
     profileImage: null,
     createdAt: now,
     updatedAt: now,
