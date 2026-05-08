@@ -127,6 +127,7 @@ export default function App() {
 
     if (!alreadyOnBaseHome) {
       navigateToRoute("knowledge");
+      return;
     }
 
     setHomeRefreshSignal((current) => current + 1);
@@ -390,19 +391,25 @@ export default function App() {
               onGoHome={() => handleTabChange("knowledge")}
               onOpenSmartTalk={() => handleTabChange("smarttalk")}
             />
-          ) : activeTab === "knowledge" ? (
-            <Suspense fallback={<SectionSkeleton label="Loading home feed..." />}>
-              <KnowledgeFeed
-                identity={identity}
-                onIdentityChange={setIdentity}
-                onOpenProfile={handleOpenProfile}
-                focusedEntryId={focusedEntryId}
-                onOpenEntry={handleOpenEntry}
-                composerOpenSignal={composerOpenSignal}
-                refreshSignal={homeRefreshSignal}
-              />
-            </Suspense>
-          ) : null}
+          ) : (
+            <div
+              className={activeTab === "knowledge" ? undefined : "hidden"}
+              aria-hidden={activeTab !== "knowledge"}
+            >
+              <Suspense fallback={<SectionSkeleton label="Loading home feed..." />}>
+                <KnowledgeFeed
+                  identity={identity}
+                  onIdentityChange={setIdentity}
+                  onOpenProfile={handleOpenProfile}
+                  focusedEntryId={focusedEntryId}
+                  onOpenEntry={handleOpenEntry}
+                  composerOpenSignal={composerOpenSignal}
+                  refreshSignal={homeRefreshSignal}
+                  isActive={activeTab === "knowledge"}
+                />
+              </Suspense>
+            </div>
+          )}
           {firebaseConfigReady && activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
               <SmartTalk

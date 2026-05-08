@@ -5,7 +5,13 @@ import {
   setPersistence,
   type Auth,
 } from "firebase/auth"
-import { getFirestore, type Firestore } from "firebase/firestore"
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore"
 
 const FALLBACK_FIREBASE_CONFIG = {
   authDomain: "readative-803b0.firebaseapp.com",
@@ -134,7 +140,20 @@ const app: FirebaseApp | null = firebaseConfigReady
     ? getApp()
     : initializeApp(firebaseConfig)
   : null
-const maybeDb = app ? getFirestore(app) : null
+
+function createFirestore(app: FirebaseApp) {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    })
+  } catch {
+    return getFirestore(app)
+  }
+}
+
+const maybeDb = app ? createFirestore(app) : null
 const maybeAuth = app ? getAuth(app) : null
 
 export const db = maybeDb as Firestore

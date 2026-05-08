@@ -89,11 +89,13 @@ const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const FEED_PAGE_SIZE = 10;
 const FEED_LOAD_TIMEOUT_MS = 9000;
-const FEED_BACKGROUND_PAGE_DELAY_MS = 300;
+const FEED_BACKGROUND_PAGE_DELAY_MS = 1200;
+const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
-const FEED_CACHE_STORAGE_ENTRY_LIMIT = 40;
-const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v1";
+const FEED_CACHE_STORAGE_ENTRY_LIMIT = 32;
+const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v2";
+const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const TRENDING_FEED_LIMIT = 12;
@@ -258,6 +260,13 @@ interface BrowserIdleCallbacks {
   cancelIdleCallback?: (handle: number) => void;
 }
 
+interface PendingFeedStorageWrite {
+  idleCallbackId: number | null;
+  timeoutId: number | null;
+}
+
+const pendingFeedStorageWrites = new Map<string, PendingFeedStorageWrite>();
+
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
@@ -266,6 +275,7 @@ interface KnowledgeFeedProps {
   onOpenEntry: (entryId: string) => void;
   composerOpenSignal: number;
   refreshSignal: number;
+  isActive: boolean;
 }
 
 const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
@@ -677,6 +687,107 @@ function stripEntryImagesForStorage(entry: KnowledgeEntry): KnowledgeEntry {
   };
 }
 
+function removeLegacyKnowledgeFeedStorageCaches() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const legacyPrefixes = FEED_CACHE_LEGACY_KEY_PREFIXES.map(
+      (prefix) => `${prefix}:`,
+    );
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key && legacyPrefixes.some((prefix) => key.startsWith(prefix))) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Cache cleanup should never block the feed.
+  }
+}
+
+function writeKnowledgeFeedStorageCache(
+  cacheKey: string,
+  cache: CachedKnowledgeFeed,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storageEntries = cache.entries
+    .slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT)
+    .map(stripEntryImagesForStorage);
+  const storageEntryIds = new Set(storageEntries.map((entry) => entry.id));
+  const storageCache: CachedKnowledgeFeed = {
+    ...cache,
+    entries: storageEntries,
+    feedEntryOrder: cache.feedEntryOrder.filter((entryId) =>
+      storageEntryIds.has(entryId),
+    ),
+    visibleLikedEntryIds: [],
+  };
+
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify(storageCache));
+  } catch {
+    removeLegacyKnowledgeFeedStorageCaches();
+
+    try {
+      window.localStorage.setItem(cacheKey, JSON.stringify(storageCache));
+    } catch {
+      // Memory cache still covers tab switches when local storage is full.
+    }
+  }
+}
+
+function scheduleKnowledgeFeedStorageCacheWrite(
+  cacheKey: string,
+  cache: CachedKnowledgeFeed,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const browserIdle = window as unknown as BrowserIdleCallbacks;
+  const pendingWrite = pendingFeedStorageWrites.get(cacheKey);
+  if (pendingWrite) {
+    if (
+      pendingWrite.idleCallbackId !== null &&
+      browserIdle.cancelIdleCallback
+    ) {
+      browserIdle.cancelIdleCallback(pendingWrite.idleCallbackId);
+    }
+
+    if (pendingWrite.timeoutId !== null) {
+      window.clearTimeout(pendingWrite.timeoutId);
+    }
+  }
+
+  const nextPendingWrite: PendingFeedStorageWrite = {
+    idleCallbackId: null,
+    timeoutId: null,
+  };
+
+  const runStorageWrite = () => {
+    pendingFeedStorageWrites.delete(cacheKey);
+    writeKnowledgeFeedStorageCache(cacheKey, cache);
+  };
+
+  if (browserIdle.requestIdleCallback) {
+    nextPendingWrite.idleCallbackId = browserIdle.requestIdleCallback(
+      runStorageWrite,
+      {
+        timeout: FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS,
+      },
+    );
+  } else {
+    nextPendingWrite.timeoutId = window.setTimeout(runStorageWrite, 350);
+  }
+
+  pendingFeedStorageWrites.set(cacheKey, nextPendingWrite);
+}
+
 function writeKnowledgeFeedCache(
   authorId: string | null | undefined,
   cache: Omit<CachedKnowledgeFeed, "cachedAt">,
@@ -701,28 +812,7 @@ function writeKnowledgeFeedCache(
   };
 
   knowledgeFeedMemoryCache.set(cacheKey, nextCache);
-
-  const storageCache = {
-    ...nextCache,
-    entries: nextCache.entries.slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT),
-    visibleLikedEntryIds: [],
-  };
-
-  try {
-    window.localStorage.setItem(cacheKey, JSON.stringify(storageCache));
-  } catch {
-    try {
-      window.localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          ...storageCache,
-          entries: storageCache.entries.map(stripEntryImagesForStorage),
-        }),
-      );
-    } catch {
-      // Memory cache still covers tab switches when local storage is full.
-    }
-  }
+  scheduleKnowledgeFeedStorageCacheWrite(cacheKey, nextCache);
 }
 
 function isEntryLikedByAuthor(entry: KnowledgeEntry, authorId?: string | null) {
@@ -824,6 +914,7 @@ export function KnowledgeFeed({
   onOpenEntry,
   composerOpenSignal,
   refreshSignal,
+  isActive,
 }: KnowledgeFeedProps) {
   const initialFeedCache = useMemo(
     () => readKnowledgeFeedCache(identity?.authorId),
@@ -1175,6 +1266,7 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     if (
+      !isActive ||
       isLoading ||
       focusedEntryId ||
       !hasMoreServerEntries ||
@@ -1235,7 +1327,13 @@ export function KnowledgeFeed({
       });
       timeoutIds.clear();
     };
-  }, [focusedEntryId, hasMoreServerEntries, isLoading, loadNextEntriesPage]);
+  }, [
+    focusedEntryId,
+    hasMoreServerEntries,
+    isActive,
+    isLoading,
+    loadNextEntriesPage,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1371,6 +1469,8 @@ export function KnowledgeFeed({
   }, []);
 
   useEffect(() => {
+    if (!isActive) return;
+
     document.documentElement.classList.add("readative-knowledge-feed");
     document.body.classList.add("readative-knowledge-feed");
 
@@ -1378,7 +1478,7 @@ export function KnowledgeFeed({
       document.documentElement.classList.remove("readative-knowledge-feed");
       document.body.classList.remove("readative-knowledge-feed");
     };
-  }, []);
+  }, [isActive]);
 
   const currentAuthorId = identity?.authorId || null;
   const visibleLikedEntryIdSet = useMemo(
@@ -1871,7 +1971,7 @@ export function KnowledgeFeed({
       : buildAbsoluteRouteUrl("knowledge");
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
   const hasActiveTopic = activeFeedTopic.id !== "all";
-  const isPaginatingEntries =
+  const isPaginationBusy =
     isLoadingMoreEntries || isBackgroundLoadingEntries;
 
   return (
@@ -2018,10 +2118,10 @@ export function KnowledgeFeed({
                 <button
                   type="button"
                   onClick={() => void loadNextEntriesPage()}
-                  disabled={isPaginatingEntries}
+                  disabled={isPaginationBusy}
                   className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
                 >
-                  {isPaginatingEntries ? "Loading posts..." : "Load older posts"}
+                  {isLoadingMoreEntries ? "Loading posts..." : "Load older posts"}
                 </button>
               )}
             </div>
@@ -2047,10 +2147,10 @@ export function KnowledgeFeed({
                   <button
                     type="button"
                     onClick={() => void loadNextEntriesPage()}
-                    disabled={isPaginatingEntries}
+                    disabled={isPaginationBusy}
                     className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
                   >
-                    {isPaginatingEntries ? "Loading posts..." : "Load more posts"}
+                    {isLoadingMoreEntries ? "Loading posts..." : "Load more posts"}
                   </button>
                 </div>
               )}

@@ -13,8 +13,9 @@ import {
 import type { KnowledgeEntry, UserProfile } from "../types";
 import type { KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
+const knowledgeCardModulePromise = import("./KnowledgeCard");
 const LazyKnowledgeCard = lazy(() =>
-  import("./KnowledgeCard").then((module) => ({
+  knowledgeCardModulePromise.then((module) => ({
     default: module.KnowledgeCard,
   })),
 );
