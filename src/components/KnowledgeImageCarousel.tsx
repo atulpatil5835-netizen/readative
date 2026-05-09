@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
 import { Logo } from "./Logo";
+import { ReadativeLoader } from "./ReadativeLoader";
 
 interface KnowledgeImageCarouselProps {
   images: KnowledgeImageAsset[];
@@ -39,8 +40,7 @@ export function KnowledgeImageCarousel({
         {images.map((image, index) => {
           const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
           const isLoaded = Boolean(loadedImages[imageKey]);
-          const canShowImmediately =
-            mode === "composer" || image.dataUrl.startsWith("data:image/");
+          const canShowImmediately = mode === "composer";
           const shouldShowImage = isLoaded || canShowImmediately;
 
           return (
@@ -49,10 +49,9 @@ export function KnowledgeImageCarousel({
               className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-[24px] bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
             >
               <div
-                className={`absolute inset-0 scale-110 bg-cover bg-center blur-xl transition-opacity duration-500 ${
+                className={`absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.85),transparent_32%),linear-gradient(135deg,#e2e8f0,#f8fafc_44%,#cbd5e1)] transition-opacity duration-500 ${
                   shouldShowImage ? "opacity-0" : "opacity-70"
                 }`}
-                style={{ backgroundImage: `url(${image.dataUrl})` }}
                 aria-hidden="true"
               />
               <div
@@ -61,10 +60,15 @@ export function KnowledgeImageCarousel({
                 }`}
                 aria-hidden="true"
               />
+              {!shouldShowImage && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  <ReadativeLoader size="sm" label="Loading image..." />
+                </div>
+              )}
               <img
                 src={image.dataUrl}
                 alt={`${altBase} ${index + 1}`}
-                loading={mode === "feed" && index > 0 ? "lazy" : "eager"}
+                loading={mode === "feed" ? "lazy" : "eager"}
                 decoding="async"
                 width={image.width}
                 height={image.height}
@@ -74,6 +78,12 @@ export function KnowledgeImageCarousel({
                     : "(max-width: 768px) 92vw, 72vw"
                 }
                 onLoad={() =>
+                  setLoadedImages((current) => ({
+                    ...current,
+                    [imageKey]: true,
+                  }))
+                }
+                onError={() =>
                   setLoadedImages((current) => ({
                     ...current,
                     [imageKey]: true,

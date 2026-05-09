@@ -1,8 +1,8 @@
 import { type KnowledgeImageAsset } from "../types";
 
-const MAX_IMAGE_DIMENSION = 1280;
-const MAX_INLINE_IMAGE_CHARS = 360_000;
-const OUTPUT_QUALITIES = [0.78, 0.68, 0.58, 0.48];
+const MAX_IMAGE_DIMENSION = 1080;
+const MAX_INLINE_IMAGE_CHARS = 220_000;
+const OUTPUT_QUALITIES = [0.76, 0.66, 0.56, 0.46];
 const MIN_DIMENSION_SCALE = 0.55;
 const DOWNSCALE_STEP = 0.86;
 

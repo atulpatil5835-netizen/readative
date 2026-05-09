@@ -39,7 +39,9 @@ import {
   query,
   setDoc,
   startAfter,
+  where,
   type DocumentData,
+  type Query,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -49,7 +51,6 @@ import {
   KnowledgeImageAsset,
   KnowledgeImageLayout,
   KnowledgeVisibility,
-  TaggedUser,
   UserProfile,
 } from "../types";
 import { SEO } from "./SEO";
@@ -83,6 +84,14 @@ import {
   canViewKnowledgeEntry,
   normalizeKnowledgeVisibility,
 } from "../utils/knowledgePrivacy";
+import {
+  createExcerpt,
+  estimateReadMinutes,
+  extractInlineHashtags,
+  mergeHashtags,
+  parseManualHashtags,
+  resolveMentions,
+} from "../utils/knowledgeEntryHelpers";
 
 type PendingAction = { type: "like" | "comment"; entryId: string } | null;
 
@@ -101,6 +110,9 @@ const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const TRENDING_FEED_LIMIT = 12;
+const TRENDING_FEED_SCAN_LIMIT = 80;
+const TOPIC_FEED_FETCH_LIMIT = 60;
+const FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT = 30;
 
 type FeedTopicId =
   | "all"
@@ -324,6 +336,13 @@ interface CachedKnowledgeFeed {
   cachedAt: number;
 }
 
+interface TopicFeedState {
+  entries: KnowledgeEntry[];
+  isLoading: boolean;
+  hasLoaded: boolean;
+  error: string | null;
+}
+
 interface BrowserIdleCallbacks {
   requestIdleCallback?: (
     callback: IdleRequestCallback,
@@ -343,12 +362,15 @@ function createKnowledgeFeedRefreshSeed() {
   return Date.now() + Math.floor(Math.random() * 1_000_000);
 }
 
-function scrollKnowledgeFeedToTop() {
+function scrollKnowledgeFeedToTop(behavior: ScrollBehavior = "auto") {
   if (typeof window === "undefined") return;
 
-  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
+  window.scrollTo({ top: 0, left: 0, behavior });
+
+  if (behavior === "auto") {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
 }
 
 interface KnowledgeFeedProps {
@@ -363,64 +385,6 @@ interface KnowledgeFeedProps {
 }
 
 const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
-
-function parseManualHashtags(input: string): string[] {
-  return input
-    .split(/[\s,\n]+/)
-    .map((token) => token.replace(/^#/, "").trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function extractInlineHashtags(text: string): string[] {
-  return [...text.matchAll(/#([a-z0-9][a-z0-9_-]*)/gi)].map((match) =>
-    match[1].toLowerCase(),
-  );
-}
-
-function mergeHashtags(...sources: string[][]): string[] {
-  const unique = new Set<string>();
-  sources.flat().forEach((tag) => {
-    if (!tag) return;
-    unique.add(tag.toLowerCase());
-  });
-  return [...unique].slice(0, 8);
-}
-
-function extractMentionKeys(text: string): string[] {
-  return [
-    ...new Set(
-      [...text.matchAll(/(?:^|\s)@([a-z0-9_]{1,20})/gi)].map((match) =>
-        match[1].toLowerCase(),
-      ),
-    ),
-  ];
-}
-
-function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
-  const profileMap = new Map(
-    profiles.map((profile) => [profile.usernameLower, profile] as const),
-  );
-
-  return extractMentionKeys(text)
-    .map((usernameLower) => profileMap.get(usernameLower))
-    .filter((profile): profile is UserProfile => Boolean(profile))
-    .map((profile) => ({
-      authorId: profile.id,
-      username: profile.username,
-    }));
-}
-
-function createExcerpt(text: string, maxLength = 155) {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 3).trim()}...`;
-}
-
-function estimateReadMinutes(text: string) {
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(wordCount / 180) || 1);
-}
 
 function readSelectedHashtagFromLocation() {
   if (typeof window === "undefined") return null;
@@ -483,15 +447,12 @@ function normalizeKnowledgeTopicValue(value: string) {
     .trim();
 }
 
+function normalizeStoredHashtagValue(value: string) {
+  return value.replace(/^#/, "").trim().toLowerCase();
+}
+
 function getKnowledgeTopicSourceText(entry: KnowledgeEntry) {
-  return [
-    entry.title,
-    entry.content,
-    entry.author,
-    ...entry.hashtags,
-    ...(entry.mentions || []).map((mention) => mention.username),
-    ...(entry.comments || []).map((comment) => comment.text),
-  ].join(" ");
+  return entry.hashtags.join(" ");
 }
 
 function getKnowledgeTopicCorpus(entry: KnowledgeEntry) {
@@ -512,6 +473,27 @@ function getKnowledgeTopicCorpus(entry: KnowledgeEntry) {
     tokens,
     compactHashtags,
   };
+}
+
+function getTopicHashtagQueryValues(topic: FeedTopicFilter) {
+  if (topic.id === "all" || topic.id === "trending") return [];
+
+  const values = new Set<string>();
+  topic.keywords.forEach((keyword) => {
+    const normalizedKeyword = normalizeKnowledgeTopicValue(keyword);
+    if (!normalizedKeyword) return;
+
+    const compactKeyword = normalizedKeyword.replace(/\s+/g, "");
+    const dashedKeyword = normalizedKeyword.replace(/\s+/g, "-");
+    const underscoredKeyword = normalizedKeyword.replace(/\s+/g, "_");
+
+    [normalizedKeyword, compactKeyword, dashedKeyword, underscoredKeyword]
+      .map(normalizeStoredHashtagValue)
+      .filter((value) => value && !value.includes(" "))
+      .forEach((value) => values.add(value));
+  });
+
+  return [...values].slice(0, FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT);
 }
 
 function getTopicKeywordTokenVariants(token: string) {
@@ -574,12 +556,14 @@ function matchesKnowledgeTopic(entry: KnowledgeEntry, topic: FeedTopicFilter) {
 function getKnowledgeTrendingScore(entry: KnowledgeEntry) {
   const now = Date.now();
   const ageHours = Math.max(1, (now - entry.createdAt) / 3_600_000);
-  const recencyBoost = Math.max(0, 8 - ageHours / 12);
+  const recencyBoost = Math.max(0, 6 - ageHours / 18);
   const qualityBoost = Math.max(0, (entry.qualityScore || 0) / 25);
+  const likeCount = (entry.likes || []).length;
+  const commentCount = (entry.comments || []).length;
 
   return (
-    (entry.likes || []).length * 3.5 +
-    (entry.comments || []).length * 5 +
+    likeCount * 8 +
+    commentCount * 4 +
     qualityBoost +
     recencyBoost
   );
@@ -596,7 +580,7 @@ function getTrendingKnowledgeEntries(entries: KnowledgeEntry[]) {
     return right.createdAt - left.createdAt;
   });
   const engagedEntries = rankedEntries.filter(
-    (entry) => (entry.likes || []).length > 0 || (entry.comments || []).length > 0,
+    (entry) => (entry.likes || []).length > 0,
   );
   const minimumTrendingCount = Math.min(4, entries.length);
   const trendingPool =
@@ -1084,6 +1068,151 @@ function mergeRealtimeKnowledgePage(
   return mergeKnowledgeEntryPages(firstPageEntries, retainedOlderEntries);
 }
 
+function normalizeKnowledgeQueryDocs(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+) {
+  return docs.map((item) =>
+    normalizeKnowledgeEntry(
+      item.id,
+      item.data() as Partial<KnowledgeEntry> & {
+        comments?: KnowledgeComment[];
+        createdAt?: number | { toMillis?: () => number };
+      },
+    ),
+  );
+}
+
+function isFirestoreIndexError(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code).toLowerCase()
+      : "";
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error);
+
+  return (
+    code === "failed-precondition" ||
+    message.includes("index") ||
+    message.includes("requires an index")
+  );
+}
+
+async function getDocsWithIndexFallback(
+  orderedQuery: Query<DocumentData>,
+  fallbackQuery: Query<DocumentData>,
+  context: string,
+) {
+  try {
+    return await getDocs(orderedQuery);
+  } catch (error) {
+    if (!isFirestoreIndexError(error)) {
+      throw error;
+    }
+
+    console.info(`${context} ordered query needs an index; using fallback.`, error);
+    return getDocs(fallbackQuery);
+  }
+}
+
+async function loadHashtagKnowledgeEntries(
+  selectedHashtag: string,
+  topic: FeedTopicFilter,
+) {
+  const normalizedHashtag = normalizeStoredHashtagValue(selectedHashtag);
+  if (!normalizedHashtag) return [];
+
+  const knowledgeCollection = collection(db, "knowledge");
+  const orderedHashtagQuery = query(
+    knowledgeCollection,
+    where("hashtags", "array-contains", normalizedHashtag),
+    orderBy("createdAt", "desc"),
+    limit(TOPIC_FEED_FETCH_LIMIT),
+  );
+  const fallbackHashtagQuery = query(
+    knowledgeCollection,
+    where("hashtags", "array-contains", normalizedHashtag),
+    limit(TOPIC_FEED_FETCH_LIMIT),
+  );
+  const snapshot = await getDocsWithIndexFallback(
+    orderedHashtagQuery,
+    fallbackHashtagQuery,
+    `#${normalizedHashtag} feed`,
+  );
+  const entries = sortKnowledgeEntries(normalizeKnowledgeQueryDocs(snapshot.docs));
+
+  if (topic.id === "trending") {
+    return getTrendingKnowledgeEntries(entries);
+  }
+
+  return getKnowledgeEntriesForTopic(entries, topic);
+}
+
+async function loadTrendingKnowledgeEntries() {
+  const snapshot = await getDocs(
+    query(
+      collection(db, "knowledge"),
+      orderBy("createdAt", "desc"),
+      limit(TRENDING_FEED_SCAN_LIMIT),
+    ),
+  );
+
+  return getTrendingKnowledgeEntries(normalizeKnowledgeQueryDocs(snapshot.docs));
+}
+
+async function loadTopicKnowledgeEntries(topic: FeedTopicFilter) {
+  if (topic.id === "all") return [];
+  if (topic.id === "trending") return loadTrendingKnowledgeEntries();
+
+  const hashtagValues = getTopicHashtagQueryValues(topic);
+  if (hashtagValues.length === 0) return [];
+
+  const knowledgeCollection = collection(db, "knowledge");
+  const orderedTopicQuery = query(
+    knowledgeCollection,
+    where("hashtags", "array-contains-any", hashtagValues),
+    orderBy("createdAt", "desc"),
+    limit(TOPIC_FEED_FETCH_LIMIT),
+  );
+  const fallbackTopicQuery = query(
+    knowledgeCollection,
+    where("hashtags", "array-contains-any", hashtagValues),
+    limit(TOPIC_FEED_FETCH_LIMIT),
+  );
+  const snapshot = await getDocsWithIndexFallback(
+    orderedTopicQuery,
+    fallbackTopicQuery,
+    `${topic.label} category feed`,
+  );
+
+  return getKnowledgeEntriesForTopic(
+    sortKnowledgeEntries(normalizeKnowledgeQueryDocs(snapshot.docs)),
+    topic,
+  );
+}
+
+async function loadIndependentKnowledgeFeedEntries({
+  topic,
+  selectedHashtag,
+}: {
+  topic: FeedTopicFilter;
+  selectedHashtag: string | null;
+}) {
+  if (selectedHashtag) {
+    return loadHashtagKnowledgeEntries(selectedHashtag, topic);
+  }
+
+  return loadTopicKnowledgeEntries(topic);
+}
+
+function getIndependentFeedKey(
+  topicId: FeedTopicId,
+  selectedHashtag: string | null,
+) {
+  return selectedHashtag
+    ? `hashtag:${normalizeStoredHashtagValue(selectedHashtag)}:topic:${topicId}`
+    : `topic:${topicId}`;
+}
+
 export function KnowledgeFeed({
   identity,
   onIdentityChange,
@@ -1156,6 +1285,9 @@ export function KnowledgeFeed({
   const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
   const [isBackgroundLoadingEntries, setIsBackgroundLoadingEntries] =
     useState(false);
+  const [topicFeedStates, setTopicFeedStates] = useState<
+    Record<string, TopicFeedState>
+  >({});
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const entriesRef = useRef<KnowledgeEntry[]>(entries);
@@ -1249,6 +1381,13 @@ export function KnowledgeFeed({
     visibleLikedEntryIdsRef.current = [];
     setVisibleLikedEntryIds([]);
     feedRefreshSeedRef.current = createKnowledgeFeedRefreshSeed();
+    const shouldShuffleAllPosts = selectedFeedTopic === "all" && !selectedHashtag;
+
+    if (!shouldShuffleAllPosts) {
+      setShowRefreshFeedback(false);
+      return;
+    }
+
     scrollKnowledgeFeedToTop();
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
@@ -1267,7 +1406,7 @@ export function KnowledgeFeed({
       window.cancelAnimationFrame(animationFrameId);
       window.clearTimeout(timeoutId);
     };
-  }, [refreshSignal]);
+  }, [refreshSignal, selectedFeedTopic, selectedHashtag]);
 
   useEffect(() => {
     const knowledgeQuery = query(
@@ -1685,6 +1824,25 @@ export function KnowledgeFeed({
   }, [isActive]);
 
   const currentAuthorId = identity?.authorId || null;
+  const activeFeedTopic =
+    FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
+    FEED_TOPIC_FILTERS[0];
+  const normalizedSelectedHashtag = selectedHashtag
+    ? normalizeStoredHashtagValue(selectedHashtag)
+    : null;
+  const shouldUseIndependentFeed =
+    !focusedEntryId &&
+    (Boolean(normalizedSelectedHashtag) || activeFeedTopic.id !== "all");
+  const independentFeedKey = getIndependentFeedKey(
+    activeFeedTopic.id,
+    normalizedSelectedHashtag,
+  );
+  const activeTopicFeedState = topicFeedStates[independentFeedKey] || {
+    entries: [],
+    isLoading: false,
+    hasLoaded: false,
+    error: null,
+  };
   const visibleLikedEntryIdSet = useMemo(
     () => new Set(visibleLikedEntryIds),
     [visibleLikedEntryIds],
@@ -1740,38 +1898,134 @@ export function KnowledgeFeed({
 
     return baseEntries;
   }, [viewableEntries, feedEntryOrder, focusedEntry, focusedEntryId]);
-  const visibleEntries = useMemo(() => {
-    if (!selectedHashtag) return orderedEntries;
+  const independentFeedEntries = useMemo(() => {
+    if (!shouldUseIndependentFeed) return null;
 
-    return orderedEntries.filter((entry) =>
-      entry.hashtags.some((tag) => tag.toLowerCase() === selectedHashtag),
-    );
-  }, [orderedEntries, selectedHashtag]);
-  const activeFeedTopic =
-    FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
-    FEED_TOPIC_FILTERS[0];
-  const topicFilteredEntries = useMemo(
-    () => getKnowledgeEntriesForTopic(visibleEntries, activeFeedTopic),
-    [activeFeedTopic, visibleEntries],
-  );
+    return activeTopicFeedState.entries
+      .filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId))
+      .filter((entry) => {
+        if (!normalizedSelectedHashtag) return true;
+
+        return entry.hashtags.some(
+          (tag) => normalizeStoredHashtagValue(tag) === normalizedSelectedHashtag,
+        );
+      })
+      .filter((entry) => {
+        if (
+          activeFeedTopic.id === "all" ||
+          activeFeedTopic.id === "trending"
+        ) {
+          return true;
+        }
+
+        return matchesKnowledgeTopic(entry, activeFeedTopic);
+      });
+  }, [
+    activeFeedTopic,
+    activeTopicFeedState.entries,
+    currentAuthorId,
+    normalizedSelectedHashtag,
+    shouldUseIndependentFeed,
+  ]);
+  const visibleEntries = independentFeedEntries || orderedEntries;
   const filteredEntries = useMemo(() => {
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
-    if (searchTerms.length === 0) return topicFilteredEntries;
+    if (searchTerms.length === 0) return visibleEntries;
 
-    return topicFilteredEntries.filter((entry) =>
+    return visibleEntries.filter((entry) =>
       matchesKnowledgeSearch(entry, searchTerms),
     );
-  }, [deferredFeedSearchQuery, topicFilteredEntries]);
+  }, [deferredFeedSearchQuery, visibleEntries]);
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
   const hasActiveTopic = activeFeedTopic.id !== "all";
+  const isIndependentFeedLoading =
+    shouldUseIndependentFeed &&
+    (activeTopicFeedState.isLoading ||
+      (!activeTopicFeedState.hasLoaded && !activeTopicFeedState.error));
   const hasMoreEntries =
-    !focusedEntryId && hasMoreServerEntries && Boolean(paginationCursorRef.current);
-  const shouldKeepLoadingEmptyFeed =
+    !shouldUseIndependentFeed &&
     !focusedEntryId &&
-    filteredEntries.length === 0 &&
-    hasMoreEntries &&
-    !hasActiveSearch &&
-    !feedLoadError;
+    hasMoreServerEntries &&
+    Boolean(paginationCursorRef.current);
+  const shouldKeepLoadingEmptyFeed =
+    (isIndependentFeedLoading && filteredEntries.length === 0 && !hasActiveSearch) ||
+    (!focusedEntryId &&
+      filteredEntries.length === 0 &&
+      hasMoreEntries &&
+      !hasActiveSearch &&
+      !feedLoadError);
+
+  useEffect(() => {
+    if (!shouldUseIndependentFeed) return;
+    if (activeTopicFeedState.isLoading || activeTopicFeedState.hasLoaded) return;
+
+    let cancelled = false;
+
+    setTopicFeedStates((current) => {
+      const existing = current[independentFeedKey];
+      if (existing?.isLoading || existing?.hasLoaded) return current;
+
+      return {
+        ...current,
+        [independentFeedKey]: {
+          entries: existing?.entries || [],
+          isLoading: true,
+          hasLoaded: false,
+          error: null,
+        },
+      };
+    });
+
+    const loadFeed = async () => {
+      try {
+        const entries = await loadIndependentKnowledgeFeedEntries({
+          topic: activeFeedTopic,
+          selectedHashtag: normalizedSelectedHashtag,
+        });
+
+        if (cancelled) return;
+
+        setTopicFeedStates((current) => ({
+          ...current,
+          [independentFeedKey]: {
+            entries,
+            isLoading: false,
+            hasLoaded: true,
+            error: null,
+          },
+        }));
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Independent knowledge feed error:", error);
+        setTopicFeedStates((current) => ({
+          ...current,
+          [independentFeedKey]: {
+            entries: current[independentFeedKey]?.entries || [],
+            isLoading: false,
+            hasLoaded: true,
+            error:
+              activeFeedTopic.id === "trending"
+                ? "Could not load trending posts right now. Please try again in a moment."
+                : normalizedSelectedHashtag
+                  ? `Could not load posts for #${normalizedSelectedHashtag} right now.`
+                  : `Could not load ${activeFeedTopic.label} posts right now.`,
+          },
+        }));
+      }
+    };
+
+    void loadFeed();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeFeedTopic,
+    independentFeedKey,
+    normalizedSelectedHashtag,
+    shouldUseIndependentFeed,
+  ]);
 
   useEffect(() => {
     if (!hasMoreEntries || typeof window === "undefined") return;
@@ -2147,6 +2401,16 @@ export function KnowledgeFeed({
     navigateToRoute("knowledge", { selectedHashtag: normalizedTag });
   }, []);
 
+  const handleSelectFeedTopic = useCallback(
+    (topicId: FeedTopicId) => {
+      if (topicId === selectedFeedTopic) return;
+
+      setSelectedFeedTopic(topicId);
+      window.requestAnimationFrame(() => scrollKnowledgeFeedToTop("smooth"));
+    },
+    [selectedFeedTopic],
+  );
+
   const clearSelectedHashtag = useCallback(() => {
     navigateToRoute("knowledge");
   }, []);
@@ -2173,6 +2437,28 @@ export function KnowledgeFeed({
       entriesRef.current = entriesRef.current.map((entry) =>
         entry.id === entryId ? { ...entry, likes } : entry,
       );
+      setTopicFeedStates((current) => {
+        let didUpdate = false;
+        const nextStates = Object.fromEntries(
+          Object.entries(current).map(([key, state]) => {
+            let didUpdateState = false;
+            const nextEntries = state.entries.map((entry) => {
+              if (entry.id !== entryId) return entry;
+
+              didUpdate = true;
+              didUpdateState = true;
+              return { ...entry, likes };
+            });
+
+            return [
+              key,
+              didUpdateState ? { ...state, entries: nextEntries } : state,
+            ];
+          }),
+        );
+
+        return didUpdate ? nextStates : current;
+      });
     },
     [currentAuthorId],
   );
@@ -2224,8 +2510,15 @@ export function KnowledgeFeed({
         </div>
       ) : (
         <div className="space-y-6">
-          {feedLoadError && (
+          {feedLoadError && !shouldUseIndependentFeed && (
             <FeedNotice title="Feed loading issue" body={feedLoadError} />
+          )}
+
+          {shouldUseIndependentFeed && activeTopicFeedState.error && (
+            <FeedNotice
+              title="Category loading issue"
+              body={activeTopicFeedState.error}
+            />
           )}
 
           {profilesLoadError && (
@@ -2258,7 +2551,7 @@ export function KnowledgeFeed({
                     <button
                       key={topic.id}
                       type="button"
-                      onClick={() => setSelectedFeedTopic(topic.id)}
+                      onClick={() => handleSelectFeedTopic(topic.id)}
                       aria-pressed={isActive}
                       aria-label={
                         topic.id === "all"
@@ -2314,7 +2607,14 @@ export function KnowledgeFeed({
           {filteredEntries.length === 0 ? (
             shouldKeepLoadingEmptyFeed ? (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-                <ReadativeLoader size="md" label="Loading posts..." />
+                <ReadativeLoader
+                  size="md"
+                  label={
+                    shouldUseIndependentFeed
+                      ? `Loading ${activeFeedTopic.label.toLowerCase()} posts...`
+                      : "Loading posts..."
+                  }
+                />
               </div>
             ) : (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
@@ -2334,7 +2634,7 @@ export function KnowledgeFeed({
                   {hasActiveSearch
                     ? "Try a broader keyword, another hashtag, or search by @username."
                     : hasActiveTopic
-                      ? "Try another category or keep scrolling while more posts load."
+                      ? "Try another category or search by a more specific hashtag."
                       : selectedHashtag
                         ? "Try another hashtag or clear this filter to explore the full feed."
                         : "Tap the `+` button at the top to upload the first knowledge post."}

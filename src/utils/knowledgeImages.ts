@@ -28,16 +28,16 @@ export const KNOWLEDGE_IMAGE_LAYOUTS: Record<
     description: "Two wide slides",
     maxImages: 2,
     targetRatio: WIDE_IMAGE_RATIO,
-    maxInlineChars: 190_000,
-    maxDimension: 1400,
+    maxInlineChars: 150_000,
+    maxDimension: 1080,
   },
   portrait: {
     label: "4 x 8:9",
     description: "Four compact portraits",
     maxImages: 4,
     targetRatio: PORTRAIT_IMAGE_RATIO,
-    maxInlineChars: 120_000,
-    maxDimension: 1180,
+    maxInlineChars: 95_000,
+    maxDimension: 960,
   },
 };
 

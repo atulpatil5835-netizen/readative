@@ -69,7 +69,10 @@
 }
 
 .readative-scrollbar-hidden {
+  scroll-behavior: smooth;
   scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   -ms-overflow-style: none;
 }
 
@@ -79,7 +82,9 @@
 
 html.readative-knowledge-feed,
 body.readative-knowledge-feed {
+  scroll-padding-top: 84px;
   scrollbar-width: none;
+  overscroll-behavior-y: contain;
   -ms-overflow-style: none;
 }
 

@@ -12,6 +12,10 @@ import {
 } from "react";
 import type { KnowledgeEntry, UserProfile } from "../types";
 import type { KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import {
+  getKnowledgeEntryImageLayout,
+  getKnowledgeEntryImages,
+} from "../utils/knowledgeImages";
 
 const knowledgeCardModulePromise = import("./KnowledgeCard");
 const LazyKnowledgeCard = lazy(() =>
@@ -20,8 +24,8 @@ const LazyKnowledgeCard = lazy(() =>
   })),
 );
 
-const DEFAULT_CARD_HEIGHT = 720;
-const VIRTUAL_OVERSCAN_PX = 1200;
+const DEFAULT_CARD_HEIGHT = 680;
+const VIRTUAL_OVERSCAN_PX = 900;
 
 interface KnowledgeCardListProps {
   entries: KnowledgeEntry[];
@@ -50,6 +54,34 @@ interface ItemLayout {
   totalHeight: number;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function estimateKnowledgeCardHeight(entry: KnowledgeEntry) {
+  const imageCount = getKnowledgeEntryImages(entry).length;
+  const imageHeight =
+    imageCount === 0
+      ? 0
+      : getKnowledgeEntryImageLayout(entry) === "portrait"
+        ? 430
+        : 390;
+  const titleLines = Math.ceil(entry.title.length / 34);
+  const contentLines = Math.ceil(entry.content.length / 74);
+  const hashtagRows = Math.ceil((entry.hashtags || []).length / 3);
+  const mentionRows = Math.ceil((entry.mentions || []).length / 3);
+  const commentPreviewHeight = (entry.comments || []).length > 0 ? 92 : 0;
+  const textHeight =
+    220 +
+    clamp(titleLines, 1, 3) * 28 +
+    clamp(contentLines, 2, 12) * 28 +
+    hashtagRows * 34 +
+    mentionRows * 30 +
+    commentPreviewHeight;
+
+  return clamp(imageHeight + textHeight, 420, 1360);
+}
+
 export const KnowledgeCardList = memo(function KnowledgeCardList({
   entries,
   currentIdentity,
@@ -64,6 +96,16 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
 }: KnowledgeCardListProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const measuredHeightsRef = useRef<Record<string, number>>({});
+  const itemLayoutRef = useRef<ItemLayout>({
+    offsets: [],
+    heights: [],
+    totalHeight: 0,
+  });
+  const viewportWindowRef = useRef<ViewportWindow>({
+    top: 0,
+    bottom: typeof window === "undefined" ? 900 : window.innerHeight,
+  });
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
     {},
   );
@@ -93,6 +135,14 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   }, []);
 
   useEffect(() => {
+    measuredHeightsRef.current = measuredHeights;
+  }, [measuredHeights]);
+
+  useEffect(() => {
+    viewportWindowRef.current = viewportWindow;
+  }, [viewportWindow]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const scheduleUpdate = () => {
@@ -118,20 +168,40 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
     };
   }, [updateViewportWindow]);
 
+  const estimatedHeights = useMemo(
+    () =>
+      Object.fromEntries(
+        entries.map((entry) => [entry.id, estimateKnowledgeCardHeight(entry)]),
+      ),
+    [entries],
+  );
+  const entryIndexById = useMemo(
+    () =>
+      new Map(entries.map((entry, index) => [entry.id, index] as const)),
+    [entries],
+  );
+
   const itemLayout = useMemo<ItemLayout>(() => {
     const offsets: number[] = [];
     const heights: number[] = [];
     let totalHeight = 0;
 
     entries.forEach((entry) => {
-      const height = measuredHeights[entry.id] || DEFAULT_CARD_HEIGHT;
+      const height =
+        measuredHeights[entry.id] ||
+        estimatedHeights[entry.id] ||
+        DEFAULT_CARD_HEIGHT;
       offsets.push(totalHeight);
       heights.push(height);
       totalHeight += height;
     });
 
     return { offsets, heights, totalHeight };
-  }, [entries, measuredHeights]);
+  }, [entries, estimatedHeights, measuredHeights]);
+
+  useEffect(() => {
+    itemLayoutRef.current = itemLayout;
+  }, [itemLayout]);
 
   const virtualRange = useMemo(() => {
     if (entries.length === 0) {
@@ -166,18 +236,40 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
     [entries, virtualRange],
   );
 
-  const handleHeightChange = useCallback((entryId: string, height: number) => {
-    setMeasuredHeights((current) => {
-      if (Math.abs((current[entryId] || 0) - height) < 4) {
-        return current;
+  const handleHeightChange = useCallback(
+    (entryId: string, height: number) => {
+      const previousHeight =
+        measuredHeightsRef.current[entryId] ||
+        estimatedHeights[entryId] ||
+        DEFAULT_CARD_HEIGHT;
+
+      if (Math.abs(previousHeight - height) < 4) {
+        return;
       }
 
-      return {
-        ...current,
+      const entryIndex = entryIndexById.get(entryId);
+      const layout = itemLayoutRef.current;
+      const rowTop =
+        typeof entryIndex === "number" ? layout.offsets[entryIndex] || 0 : 0;
+      const rowBottom = rowTop + previousHeight;
+      const isAboveViewport = rowBottom < viewportWindowRef.current.top;
+      const heightDelta = height - previousHeight;
+
+      if (isAboveViewport && typeof window !== "undefined") {
+        window.scrollBy({ top: heightDelta, left: 0, behavior: "auto" });
+      }
+
+      measuredHeightsRef.current = {
+        ...measuredHeightsRef.current,
         [entryId]: height,
       };
-    });
-  }, []);
+      setMeasuredHeights((current) => ({
+        ...current,
+        [entryId]: height,
+      }));
+    },
+    [entryIndexById, estimatedHeights],
+  );
 
   return (
     <div
@@ -254,7 +346,13 @@ function MeasuredVirtualRow({
     <div
       ref={rowRef}
       className="absolute left-0 right-0 pb-4"
-      style={{ transform: `translateY(${top}px)` } as CSSProperties}
+      style={
+        {
+          contain: "layout paint",
+          transform: `translateY(${top}px)`,
+          willChange: "transform",
+        } as CSSProperties
+      }
     >
       {children}
     </div>

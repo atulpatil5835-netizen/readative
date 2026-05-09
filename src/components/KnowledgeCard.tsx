@@ -10,7 +10,6 @@ import {
   KnowledgeComment,
   KnowledgeEntry,
   KnowledgeVisibility,
-  TaggedUser,
   UserProfile,
 } from "../types";
 import {
@@ -39,9 +38,15 @@ import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import { normalizeKnowledgeVisibility } from "../utils/knowledgePrivacy";
 import {
-  normalizeKnowledgeVisibility,
-} from "../utils/knowledgePrivacy";
+  createExcerpt,
+  estimateReadMinutes,
+  extractInlineHashtags,
+  mergeHashtags,
+  parseManualHashtags,
+  resolveMentions,
+} from "../utils/knowledgeEntryHelpers";
 
 function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(" ");
@@ -160,67 +165,9 @@ interface KnowledgeCardProps {
   highlighted?: boolean;
 }
 
-function estimateReadMinutes(text: string) {
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(wordCount / 180) || 1);
-}
-
-function parseManualHashtags(input: string): string[] {
-  return input
-    .split(/[\s,\n]+/)
-    .map((token) => token.replace(/^#/, "").trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function extractInlineHashtags(text: string): string[] {
-  return [...text.matchAll(/#([a-z0-9][a-z0-9_-]*)/gi)].map((match) =>
-    match[1].toLowerCase(),
-  );
-}
-
-function mergeHashtags(...sources: string[][]): string[] {
-  const unique = new Set<string>();
-  sources.flat().forEach((tag) => {
-    if (!tag) return;
-    unique.add(tag.toLowerCase());
-  });
-  return [...unique].slice(0, 8);
-}
-
-function createExcerpt(text: string, maxLength = 155) {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 3).trim()}...`;
-}
-
 interface CommentMentionState {
   query: string;
   start: number;
-}
-
-function extractMentionKeys(text: string): string[] {
-  return [
-    ...new Set(
-      [...text.matchAll(/(?:^|\s)@([a-z0-9_]{1,20})/gi)].map((match) =>
-        match[1].toLowerCase(),
-      ),
-    ),
-  ];
-}
-
-function resolveMentions(text: string, profiles: UserProfile[]): TaggedUser[] {
-  const profileMap = new Map(
-    profiles.map((profile) => [profile.usernameLower, profile] as const),
-  );
-
-  return extractMentionKeys(text)
-    .map((usernameLower) => profileMap.get(usernameLower))
-    .filter((profile): profile is UserProfile => Boolean(profile))
-    .map((profile) => ({
-      authorId: profile.id,
-      username: profile.username,
-    }));
 }
 
 export const KnowledgeCard = memo(function KnowledgeCard({
