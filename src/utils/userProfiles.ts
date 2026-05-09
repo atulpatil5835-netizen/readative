@@ -6,6 +6,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
   setDoc,
   updateDoc,
@@ -173,7 +174,11 @@ function normalizeSocialLinksInput(
 
 async function isUsernameTaken(usernameLower: string, authorId?: string) {
   const snapshot = await getDocs(
-    query(collection(db, "userProfiles"), where("usernameLower", "==", usernameLower))
+    query(
+      collection(db, "userProfiles"),
+      where("usernameLower", "==", usernameLower),
+      limit(2),
+    )
   );
 
   return snapshot.docs.some((item) => item.id !== authorId);
@@ -214,22 +219,15 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
     data: Record<string, unknown>;
   }> = [];
 
-  const authoredKnowledgeSnapshot = await getDocs(
-    query(collection(db, "knowledge"), where("authorId", "==", authorId))
-  );
-
-  authoredKnowledgeSnapshot.docs.forEach((item) => {
-    updates.push({
-      ref: item.ref,
-      data: {
-        author: username,
-      },
-    });
-  });
-
   const allKnowledgeSnapshot = await getDocs(collection(db, "knowledge"));
   allKnowledgeSnapshot.docs.forEach((item) => {
     const data = item.data() as Partial<KnowledgeEntry>;
+    const payload: Record<string, unknown> = {};
+
+    if (data.authorId === authorId && data.author !== username) {
+      payload.author = username;
+    }
+
     const nextComments = (data.comments || []).map((comment) =>
       comment.authorId === authorId && comment.author !== username
         ? {
@@ -253,10 +251,11 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
       JSON.stringify(nextMentions) !== JSON.stringify(data.mentions || []);
 
     if (!commentsChanged && !mentionsChanged) {
-      return;
+      if (Object.keys(payload).length === 0) {
+        return;
+      }
     }
 
-    const payload: Record<string, unknown> = {};
     if (commentsChanged) payload.comments = nextComments;
     if (mentionsChanged) payload.mentions = nextMentions;
 
@@ -361,8 +360,27 @@ async function migrateGuestActivityToGoogleProfile(
     });
   }
 
-  const notificationSnapshot = await getDocs(collection(db, "notifications"));
-  notificationSnapshot.docs.forEach((item) => {
+  const [targetNotificationSnapshot, actorNotificationSnapshot] = await Promise.all([
+    getDocs(
+      query(
+        collection(db, "notifications"),
+        where("targetAuthorId", "==", guestAuthorId),
+      ),
+    ),
+    getDocs(
+      query(
+        collection(db, "notifications"),
+        where("actorAuthorId", "==", guestAuthorId),
+      ),
+    ),
+  ]);
+  const notificationDocsById = new Map(
+    [...targetNotificationSnapshot.docs, ...actorNotificationSnapshot.docs].map(
+      (item) => [item.id, item] as const,
+    ),
+  );
+
+  notificationDocsById.forEach((item) => {
     const data = item.data() as {
       targetAuthorId?: string;
       actorAuthorId?: string;

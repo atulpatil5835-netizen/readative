@@ -100,6 +100,7 @@ const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 const FEED_PAGE_SIZE = 10;
 const FEED_LOAD_TIMEOUT_MS = 9000;
 const FEED_BACKGROUND_PAGE_DELAY_MS = 1200;
+const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 1;
 const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
@@ -1300,6 +1301,7 @@ export function KnowledgeFeed({
   const hasPaginatedPastFirstPageRef = useRef(false);
   const hasAppliedInitialRealtimeRankRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
+  const hasLoadedProfilesDirectoryRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
@@ -1409,6 +1411,14 @@ export function KnowledgeFeed({
   }, [refreshSignal, selectedFeedTopic, selectedHashtag]);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    if (entriesRef.current.length === 0) {
+      setIsLoading(true);
+    }
+
     const knowledgeQuery = query(
       collection(db, "knowledge"),
       orderBy("createdAt", "desc"),
@@ -1517,7 +1527,7 @@ export function KnowledgeFeed({
       }
       unsubscribe();
     };
-  }, [updateHasMoreServerEntries]);
+  }, [isActive, updateHasMoreServerEntries]);
 
   const loadNextEntriesPage = useCallback(
     async ({
@@ -1638,15 +1648,18 @@ export function KnowledgeFeed({
       try {
         await waitForNextBackgroundPage();
 
+        let prefetchedPageCount = 0;
         while (
           !cancelled &&
           hasMoreServerEntriesRef.current &&
-          paginationCursorRef.current
+          paginationCursorRef.current &&
+          prefetchedPageCount < FEED_BACKGROUND_PREFETCH_PAGE_LIMIT
         ) {
           const result = await loadNextEntriesPage({
             showLoadingState: false,
             surfaceErrors: false,
           });
+          prefetchedPageCount += result === "loaded" ? 1 : 0;
 
           if (cancelled || result === "done" || result === "error") {
             break;
@@ -1679,14 +1692,21 @@ export function KnowledgeFeed({
   ]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (
+      typeof window === "undefined" ||
+      !isActive ||
+      hasLoadedProfilesDirectoryRef.current
+    ) {
+      return;
+    }
 
-    let cancelled = false;
+    let didStartLoad = false;
     let timeoutId: number | null = null;
     let idleCallbackId: number | null = null;
     const browserIdle = window as unknown as BrowserIdleCallbacks;
 
     const loadProfilesDirectory = async () => {
+      didStartLoad = true;
       const profilesQuery = query(
         collection(db, "userProfiles"),
         orderBy("usernameLower", "asc"),
@@ -1695,17 +1715,15 @@ export function KnowledgeFeed({
 
       try {
         const snapshot = await getDocs(profilesQuery);
-        if (cancelled) return;
 
         const data = snapshot.docs.map((item) =>
           hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
         );
 
+        hasLoadedProfilesDirectoryRef.current = true;
         setProfiles(data);
         setProfilesLoadError(null);
       } catch (error) {
-        if (cancelled) return;
-
         console.error("Profile directory error:", error);
         setProfiles([]);
         setProfilesLoadError(
@@ -1727,7 +1745,7 @@ export function KnowledgeFeed({
     }
 
     return () => {
-      cancelled = true;
+      if (didStartLoad) return;
 
       if (idleCallbackId !== null && browserIdle.cancelIdleCallback) {
         browserIdle.cancelIdleCallback(idleCallbackId);
@@ -1737,7 +1755,7 @@ export function KnowledgeFeed({
         window.clearTimeout(timeoutId);
       }
     };
-  }, []);
+  }, [isActive]);
 
   useEffect(() => {
     if (!focusedEntryId) return;
@@ -1956,7 +1974,7 @@ export function KnowledgeFeed({
       !feedLoadError);
 
   useEffect(() => {
-    if (!shouldUseIndependentFeed) return;
+    if (!isActive || !shouldUseIndependentFeed) return;
     if (activeTopicFeedState.isLoading || activeTopicFeedState.hasLoaded) return;
 
     let cancelled = false;
@@ -2023,12 +2041,13 @@ export function KnowledgeFeed({
   }, [
     activeFeedTopic,
     independentFeedKey,
+    isActive,
     normalizedSelectedHashtag,
     shouldUseIndependentFeed,
   ]);
 
   useEffect(() => {
-    if (!hasMoreEntries || typeof window === "undefined") return;
+    if (!isActive || !hasMoreEntries || typeof window === "undefined") return;
 
     const sentinel = loadMoreSentinelRef.current;
     if (!sentinel) return;
@@ -2052,10 +2071,11 @@ export function KnowledgeFeed({
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMoreEntries, isLoadingMoreEntries, loadNextEntriesPage]);
+  }, [hasMoreEntries, isActive, isLoadingMoreEntries, loadNextEntriesPage]);
 
   useEffect(() => {
     if (
+      !isActive ||
       !shouldKeepLoadingEmptyFeed ||
       isLoading ||
       isLoadingMoreEntries ||
@@ -2069,6 +2089,7 @@ export function KnowledgeFeed({
       surfaceErrors: true,
     });
   }, [
+    isActive,
     isBackgroundLoadingEntries,
     isLoading,
     isLoadingMoreEntries,
