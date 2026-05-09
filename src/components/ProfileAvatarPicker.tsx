@@ -1,7 +1,8 @@
 import { type ChangeEvent, useEffect, useState } from "react";
-import { Check, ImagePlus, LoaderCircle, X } from "lucide-react";
+import { Check, ImagePlus, X } from "lucide-react";
 import { type KnowledgeImageAsset } from "../types";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { ReadativeLoader } from "./ReadativeLoader";
 
 interface ProfileAvatarPickerProps {
   currentImage?: KnowledgeImageAsset | null;
@@ -156,7 +157,7 @@ export function ProfileAvatarPicker({
 
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700">
                 {isOptimizing ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  <ReadativeLoader size="xs" tone="light" />
                 ) : (
                   <ImagePlus className="h-4 w-4" />
                 )}

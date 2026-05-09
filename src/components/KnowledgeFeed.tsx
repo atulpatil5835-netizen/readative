@@ -23,7 +23,6 @@ import {
   Rocket,
   Send,
   Smartphone,
-  Sparkles,
   Tag,
   Wrench,
   X,
@@ -58,6 +57,7 @@ import { GoogleSignInPrompt } from "./Auth";
 import { KnowledgeCardList } from "./KnowledgeCardList";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
+import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { hydrateUserProfile } from "../utils/profileData";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
@@ -75,6 +75,7 @@ import {
 } from "../utils/feedPersonalization";
 import { getGuestId } from "../utils/guestIdentity";
 import {
+  getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
   getKnowledgeImageLayoutSettings,
 } from "../utils/knowledgeImages";
@@ -94,6 +95,7 @@ const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
 const FEED_CACHE_STORAGE_ENTRY_LIMIT = 32;
+const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 900_000;
 const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v2";
 const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
@@ -120,11 +122,19 @@ interface FeedTopicFilter {
   keywords: string[];
 }
 
+function ReadativeTopicIcon({ className = "" }: { className?: string }) {
+  return (
+    <ReadativeRMark
+      className={`${className} text-[11px] tracking-tight text-current`}
+    />
+  );
+}
+
 const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
   {
     id: "all",
     label: "All",
-    icon: Sparkles,
+    icon: ReadativeTopicIcon,
     keywords: [],
   },
   {
@@ -143,15 +153,29 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "chatgpt",
       "openai",
       "prompt",
-      "automation",
+      "llm",
+      "generative ai",
+      "ai automation",
       "machine learning",
+      "claude",
+      "copilot",
     ],
   },
   {
     id: "apps",
     label: "Apps",
     icon: Smartphone,
-    keywords: ["app", "apps", "mobile", "ios", "android", "extension", "saas"],
+    keywords: [
+      "app",
+      "apps",
+      "application",
+      "mobile",
+      "ios",
+      "android",
+      "extension",
+      "saas",
+      "web app",
+    ],
   },
   {
     id: "productivity",
@@ -165,6 +189,9 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "habit",
       "automation",
       "shortcut",
+      "notion",
+      "calendar",
+      "template",
     ],
   },
   {
@@ -177,6 +204,9 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "seo",
       "content",
       "brand",
+      "newsletter",
+      "copywriting",
+      "campaign",
       "social media",
       "sales",
     ],
@@ -193,31 +223,75 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "programming",
       "web",
       "api",
+      "react",
+      "typescript",
+      "javascript",
+      "python",
+      "github",
     ],
   },
   {
     id: "tools",
     label: "Tools",
     icon: Wrench,
-    keywords: ["tool", "tools", "resource", "template", "browser", "chrome"],
+    keywords: [
+      "tool",
+      "tools",
+      "resource",
+      "template",
+      "browser",
+      "chrome",
+      "extension",
+      "platform",
+    ],
   },
   {
     id: "startups",
     label: "Startups",
     icon: Rocket,
-    keywords: ["startup", "founder", "business", "idea", "launch", "build"],
+    keywords: [
+      "startup",
+      "founder",
+      "business",
+      "idea",
+      "launch",
+      "build",
+      "mvp",
+      "fundraising",
+      "customer",
+    ],
   },
   {
     id: "design",
     label: "Design",
     icon: Palette,
-    keywords: ["design", "ui", "ux", "visual", "creative", "brand"],
+    keywords: [
+      "design",
+      "ui",
+      "ux",
+      "visual",
+      "creative",
+      "brand",
+      "figma",
+      "prototype",
+      "interface",
+    ],
   },
   {
     id: "learning",
     label: "Learning",
     icon: BookOpenText,
-    keywords: ["learning", "study", "education", "guide", "notes", "course"],
+    keywords: [
+      "learning",
+      "study",
+      "education",
+      "guide",
+      "notes",
+      "course",
+      "tutorial",
+      "lesson",
+      "research",
+    ],
   },
 ];
 
@@ -391,7 +465,17 @@ function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
   });
 }
 
-function getKnowledgeTopicSearchText(entry: KnowledgeEntry) {
+function normalizeKnowledgeTopicValue(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9+#\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getKnowledgeTopicSourceText(entry: KnowledgeEntry) {
   return [
     entry.title,
     entry.content,
@@ -399,22 +483,84 @@ function getKnowledgeTopicSearchText(entry: KnowledgeEntry) {
     ...entry.hashtags,
     ...(entry.mentions || []).map((mention) => mention.username),
     ...(entry.comments || []).map((comment) => comment.text),
-  ]
-    .join(" ")
-    .toLowerCase();
+  ].join(" ");
+}
+
+function getKnowledgeTopicCorpus(entry: KnowledgeEntry) {
+  const text = normalizeKnowledgeTopicValue(getKnowledgeTopicSourceText(entry));
+  const rawTokens = text.match(/[a-z0-9+#]+/g) || [];
+  const tokens = new Set(
+    rawTokens.flatMap((token) =>
+      token.startsWith("#") ? [token, token.slice(1)] : [token],
+    ),
+  );
+  const compactHashtags = entry.hashtags
+    .map((tag) => normalizeKnowledgeTopicValue(tag.replace(/^#/, "")))
+    .map((tag) => tag.replace(/\s+/g, ""))
+    .filter(Boolean);
+
+  return {
+    text: ` ${text} `,
+    tokens,
+    compactHashtags,
+  };
+}
+
+function getTopicKeywordTokenVariants(token: string) {
+  const variants = new Set([token]);
+
+  if (token.length > 2 && !token.endsWith("s")) {
+    variants.add(`${token}s`);
+  }
+
+  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+    variants.add(token.slice(0, -1));
+  }
+
+  return variants;
+}
+
+function matchesTopicKeyword(
+  corpus: ReturnType<typeof getKnowledgeTopicCorpus>,
+  keyword: string,
+) {
+  const normalizedKeyword = normalizeKnowledgeTopicValue(keyword);
+  if (!normalizedKeyword) return false;
+
+  const keywordTokens = normalizedKeyword.split(/\s+/).filter(Boolean);
+  const compactKeyword = keywordTokens.join("");
+
+  if (keywordTokens.length > 1) {
+    return (
+      corpus.text.includes(` ${normalizedKeyword} `) ||
+      corpus.compactHashtags.some(
+        (tag) =>
+          tag === compactKeyword ||
+          (compactKeyword.length >= 5 && tag.includes(compactKeyword)),
+      )
+    );
+  }
+
+  const [keywordToken] = keywordTokens;
+  const variants = getTopicKeywordTokenVariants(keywordToken);
+  const matchesToken = [...variants].some((variant) =>
+    corpus.tokens.has(variant),
+  );
+  if (matchesToken) return true;
+
+  return corpus.compactHashtags.some((tag) =>
+    [...variants].some(
+      (variant) => tag === variant || (variant.length >= 4 && tag.includes(variant)),
+    ),
+  );
 }
 
 function matchesKnowledgeTopic(entry: KnowledgeEntry, topic: FeedTopicFilter) {
   if (topic.id === "all" || topic.id === "trending") return true;
 
-  const searchableText = getKnowledgeTopicSearchText(entry);
-  const hashtags = entry.hashtags.map((tag) => tag.toLowerCase());
+  const corpus = getKnowledgeTopicCorpus(entry);
 
-  return topic.keywords.some(
-    (keyword) =>
-      searchableText.includes(keyword) ||
-      hashtags.some((tag) => tag.includes(keyword.replace(/\s+/g, ""))),
-  );
+  return topic.keywords.some((keyword) => matchesTopicKeyword(corpus, keyword));
 }
 
 function getKnowledgeTrendingScore(entry: KnowledgeEntry) {
@@ -678,6 +824,44 @@ function stripEntryImagesForStorage(entry: KnowledgeEntry): KnowledgeEntry {
   };
 }
 
+function keepEntryImagesForStorage(entry: KnowledgeEntry): KnowledgeEntry {
+  const images = getKnowledgeEntryImages(entry);
+  const primaryImage = images[0] || null;
+
+  return {
+    ...entry,
+    images,
+    imageLayout: images.length > 0 ? getKnowledgeEntryImageLayout(entry) : null,
+    imageDataUrl: primaryImage?.dataUrl || null,
+    imageMimeType: primaryImage?.mimeType || null,
+    imageWidth: primaryImage?.width || null,
+    imageHeight: primaryImage?.height || null,
+    imageOptimizedAt: primaryImage?.optimizedAt || null,
+  };
+}
+
+function prepareEntriesForStorageCache(entries: KnowledgeEntry[]) {
+  let imageChars = 0;
+
+  return entries.slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT).map((entry) => {
+    const images = getKnowledgeEntryImages(entry);
+    const entryImageChars = images.reduce(
+      (total, image) => total + image.dataUrl.length,
+      0,
+    );
+
+    if (
+      images.length > 0 &&
+      imageChars + entryImageChars <= FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET
+    ) {
+      imageChars += entryImageChars;
+      return keepEntryImagesForStorage(entry);
+    }
+
+    return stripEntryImagesForStorage(entry);
+  });
+}
+
 function removeLegacyKnowledgeFeedStorageCaches() {
   if (typeof window === "undefined") {
     return;
@@ -706,12 +890,9 @@ function writeKnowledgeFeedStorageCache(
     return;
   }
 
-  const storageEntries = cache.entries
-    .slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT)
-    .map(stripEntryImagesForStorage);
   const storageCache: CachedKnowledgeFeed = {
     ...cache,
-    entries: storageEntries,
+    entries: prepareEntriesForStorageCache(cache.entries),
     visibleLikedEntryIds: [],
   };
 
@@ -721,7 +902,15 @@ function writeKnowledgeFeedStorageCache(
     removeLegacyKnowledgeFeedStorageCaches();
 
     try {
-      window.localStorage.setItem(cacheKey, JSON.stringify(storageCache));
+      window.localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          ...storageCache,
+          entries: cache.entries
+            .slice(0, FEED_CACHE_STORAGE_ENTRY_LIMIT)
+            .map(stripEntryImagesForStorage),
+        }),
+      );
     } catch {
       // Memory cache still covers tab switches when local storage is full.
     }
@@ -785,13 +974,10 @@ function writeKnowledgeFeedCache(
 
   const cacheKey = getKnowledgeFeedCacheKey(authorId);
   const memoryEntries = cache.entries.slice(0, FEED_CACHE_MEMORY_ENTRY_LIMIT);
-  const entryIds = new Set(memoryEntries.map((entry) => entry.id));
   const nextCache: CachedKnowledgeFeed = {
     ...cache,
     entries: memoryEntries,
-    visibleLikedEntryIds: cache.visibleLikedEntryIds.filter((entryId) =>
-      entryIds.has(entryId),
-    ),
+    visibleLikedEntryIds: [],
     cachedAt: Date.now(),
   };
 
@@ -955,9 +1141,7 @@ export function KnowledgeFeed({
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] =
     useState<string[]>(initialFeedOrder);
-  const [visibleLikedEntryIds, setVisibleLikedEntryIds] = useState<string[]>(
-    () => initialFeedCache?.visibleLikedEntryIds || [],
-  );
+  const [visibleLikedEntryIds, setVisibleLikedEntryIds] = useState<string[]>([]);
   const [hasMoreServerEntries, setHasMoreServerEntries] = useState(
     () => initialFeedCache?.hasMoreServerEntries ?? true,
   );
@@ -1015,9 +1199,8 @@ export function KnowledgeFeed({
     hasAppliedInitialRealtimeRankRef.current = false;
 
     const cachedFeed = readKnowledgeFeedCache(identity?.authorId);
-    const nextVisibleLikedEntryIds = cachedFeed?.visibleLikedEntryIds || [];
-    visibleLikedEntryIdsRef.current = nextVisibleLikedEntryIds;
-    setVisibleLikedEntryIds(nextVisibleLikedEntryIds);
+    visibleLikedEntryIdsRef.current = [];
+    setVisibleLikedEntryIds([]);
 
     if (cachedFeed && entriesRef.current.length === 0) {
       entriesRef.current = cachedFeed.entries;
@@ -1061,6 +1244,7 @@ export function KnowledgeFeed({
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
         refreshSeed: feedRefreshSeedRef.current,
+        shuffleOnRefresh: true,
       }).map((entry) => entry.id),
     );
     setShowRefreshFeedback(true);
@@ -1554,6 +1738,19 @@ export function KnowledgeFeed({
   const activeFeedTopic =
     FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
     FEED_TOPIC_FILTERS[0];
+  const feedTopicCounts = useMemo(
+    () =>
+      new Map(
+        FEED_TOPIC_FILTERS.map(
+          (topic) =>
+            [
+              topic.id,
+              getKnowledgeEntriesForTopic(visibleEntries, topic).length,
+            ] as const,
+        ),
+      ),
+    [visibleEntries],
+  );
   const topicFilteredEntries = useMemo(
     () => getKnowledgeEntriesForTopic(visibleEntries, activeFeedTopic),
     [activeFeedTopic, visibleEntries],
@@ -2035,8 +2232,7 @@ export function KnowledgeFeed({
 
       {isLoading ? (
         <div className="flex flex-col items-center gap-3 py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
-          <p className="text-sm text-slate-400">Loading posts...</p>
+          <ReadativeLoader size="md" label="Loading posts..." />
         </div>
       ) : (
         <div className="space-y-6">
@@ -2069,6 +2265,7 @@ export function KnowledgeFeed({
                 {FEED_TOPIC_FILTERS.map((topic) => {
                   const TopicIcon = topic.icon;
                   const isActive = topic.id === activeFeedTopic.id;
+                  const topicCount = feedTopicCounts.get(topic.id) || 0;
 
                   return (
                     <button
@@ -2089,6 +2286,15 @@ export function KnowledgeFeed({
                     >
                       <TopicIcon className="h-3.5 w-3.5" />
                       <span>{topic.label}</span>
+                      <span
+                        className={`ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {topicCount}
+                      </span>
                     </button>
                   );
                 })}
@@ -2098,7 +2304,7 @@ export function KnowledgeFeed({
 
           {showRefreshFeedback && (
             <p className="text-center text-xs font-medium text-emerald-700">
-              Latest posts refreshed
+              Posts refreshed and reshuffled
             </p>
           )}
 
@@ -2130,8 +2336,7 @@ export function KnowledgeFeed({
           {filteredEntries.length === 0 ? (
             shouldKeepLoadingEmptyFeed ? (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
-                <p className="mt-3 text-sm text-slate-400">Loading posts...</p>
+                <ReadativeLoader size="md" label="Loading posts..." />
               </div>
             ) : (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
@@ -2557,7 +2762,7 @@ function ComposerModal({
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
             >
               {isPosting || isModerating || isPreparingImage ? (
-                <Sparkles className="h-4 w-4 animate-spin" />
+                <ReadativeLoader size="xs" tone="light" />
               ) : (
                 <Send className="h-4 w-4" />
               )}

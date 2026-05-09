@@ -39,6 +39,9 @@ export function KnowledgeImageCarousel({
         {images.map((image, index) => {
           const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
           const isLoaded = Boolean(loadedImages[imageKey]);
+          const canShowImmediately =
+            mode === "composer" || image.dataUrl.startsWith("data:image/");
+          const shouldShowImage = isLoaded || canShowImmediately;
 
           return (
             <figure
@@ -47,21 +50,21 @@ export function KnowledgeImageCarousel({
             >
               <div
                 className={`absolute inset-0 scale-110 bg-cover bg-center blur-xl transition-opacity duration-500 ${
-                  isLoaded ? "opacity-0" : "opacity-70"
+                  shouldShowImage ? "opacity-0" : "opacity-70"
                 }`}
                 style={{ backgroundImage: `url(${image.dataUrl})` }}
                 aria-hidden="true"
               />
               <div
                 className={`absolute inset-0 animate-pulse bg-slate-200 transition-opacity duration-500 ${
-                  isLoaded ? "opacity-0" : "opacity-100"
+                  shouldShowImage ? "opacity-0" : "opacity-100"
                 }`}
                 aria-hidden="true"
               />
               <img
                 src={image.dataUrl}
                 alt={`${altBase} ${index + 1}`}
-                loading={mode === "feed" ? "lazy" : undefined}
+                loading={mode === "feed" && index > 0 ? "lazy" : "eager"}
                 decoding="async"
                 width={image.width}
                 height={image.height}
@@ -77,7 +80,7 @@ export function KnowledgeImageCarousel({
                   }))
                 }
                 className={`relative h-full w-full object-cover transition-opacity duration-500 ${
-                  isLoaded ? "opacity-100" : "opacity-0"
+                  shouldShowImage ? "opacity-100" : "opacity-0"
                 }`}
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />

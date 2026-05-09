@@ -8,7 +8,6 @@ import {
   Linkedin,
   Pencil,
   Save,
-  Sparkles,
   User,
   X,
   Youtube,
@@ -36,6 +35,7 @@ import { GoogleSignInPrompt } from "./Auth";
 import { KnowledgeCardList } from "./KnowledgeCardList";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
+import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
 import {
   changeProfilePhoto,
   changeProfileUsername,
@@ -113,22 +113,6 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
           ? updatedAt
           : null,
   } as KnowledgeEntry;
-}
-
-function mergeProfileEntries(
-  currentEntries: KnowledgeEntry[],
-  nextEntries: KnowledgeEntry[],
-  limitCount = PROFILE_POST_LIMIT,
-) {
-  const entryMap = new Map(
-    currentEntries.map((entry) => [entry.id, entry] as const),
-  );
-
-  nextEntries.forEach((entry) => {
-    entryMap.set(entry.id, entry);
-  });
-
-  return sortKnowledge([...entryMap.values()]).slice(0, limitCount);
 }
 
 function chunkItems<T>(items: T[], size: number) {
@@ -238,6 +222,8 @@ export function Profile({
     }
 
     setIsLoadingProfile(true);
+    setSharedEntries([]);
+    setLikedEntries([]);
 
     const unsubscribers: Array<() => void> = [];
     const hydrateEntries = (snapshot: {
@@ -364,25 +350,6 @@ export function Profile({
       })
     );
 
-    unsubscribers.push(
-      startProfileEntriesListener({
-        orderedQuery: query(
-          collection(db, "knowledge"),
-          where("likes", "array-contains", activeAuthorId),
-          orderBy("createdAt", "desc"),
-          limit(PROFILE_POST_LIMIT),
-        ),
-        fallbackQuery: query(
-          collection(db, "knowledge"),
-          where("likes", "array-contains", activeAuthorId),
-          limit(PROFILE_POST_FALLBACK_LIMIT),
-        ),
-        label: "Liked knowledge",
-        onEntries: setLikedEntries,
-        errorMessage: "Could not load liked posts for this profile right now.",
-      })
-    );
-
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
@@ -465,80 +432,140 @@ export function Profile({
     : undefined;
 
   useEffect(() => {
-    if (!activeAuthorId || trackedLikedEntryIds.length === 0) {
+    if (!activeAuthorId || !profile) {
+      setLikedEntries([]);
       return;
     }
 
     const targetAuthorId = activeAuthorId;
-    const loadedEntryIds = new Set(likedEntries.map((entry) => entry.id));
-    const missingEntryIds = [...new Set(trackedLikedEntryIds)]
-      .filter((entryId) => !loadedEntryIds.has(entryId))
+    const visibleAuthorId = currentIdentity?.authorId;
+    const trackedEntryIds = [...new Set(trackedLikedEntryIds)]
       .slice(-PROFILE_TRACKED_LIKE_LOOKUP_LIMIT);
-    if (missingEntryIds.length === 0) {
-      return;
+
+    if (trackedEntryIds.length > 0) {
+      const chunkEntries = new Map<number, KnowledgeEntry[]>();
+      const likedEntryChunks = chunkItems(trackedEntryIds, FIRESTORE_IN_QUERY_LIMIT);
+      const unsubscribers = likedEntryChunks.map((entryIds, chunkIndex) =>
+        onSnapshot(
+          query(
+            collection(db, "knowledge"),
+            where(documentId(), "in", entryIds),
+          ),
+          (snapshot) => {
+            chunkEntries.set(
+              chunkIndex,
+              snapshot.docs
+                .map((item) =>
+                  hydrateKnowledgeFromSnapshot(
+                    item.id,
+                    item.data() as Partial<KnowledgeEntry>,
+                  ),
+                )
+                .filter(
+                  (entry) =>
+                    (entry.likes || []).includes(targetAuthorId) &&
+                    canViewKnowledgeEntry(entry, visibleAuthorId),
+                ),
+            );
+
+            setLikedEntries(
+              sortProfileLikedEntries(
+                [...chunkEntries.values()].flat(),
+                trackedEntryIds,
+              ).slice(0, PROFILE_TRACKED_LIKE_LOOKUP_LIMIT),
+            );
+            setProfileLoadError(null);
+          },
+          (error) => {
+            console.error("Liked knowledge ID listener error:", error);
+            setProfileLoadError(
+              "Could not load liked posts for this profile right now.",
+            );
+          },
+        ),
+      );
+
+      return () => {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      };
     }
 
-    let cancelled = false;
-
-    const loadTrackedLikedEntries = async () => {
-      try {
-        const snapshots = await Promise.all(
-          chunkItems(missingEntryIds, FIRESTORE_IN_QUERY_LIMIT).map((entryIds) =>
-            getDocs(
-              query(
-                collection(db, "knowledge"),
-                where(documentId(), "in", entryIds),
-              ),
+    let activeUnsubscribe: (() => void) | null = null;
+    const hydrateLikedEntries = (snapshot: {
+      docs: Array<{
+        id: string;
+        data: () => Partial<KnowledgeEntry>;
+      }>;
+    }) =>
+      sortKnowledge(
+        snapshot.docs
+          .map((item) =>
+            hydrateKnowledgeFromSnapshot(
+              item.id,
+              item.data() as Partial<KnowledgeEntry>,
             ),
-          ),
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const trackedEntries = snapshots.flatMap((snapshot) =>
-          snapshot.docs
-            .map((item) =>
-              hydrateKnowledgeFromSnapshot(
-                item.id,
-                item.data() as Partial<KnowledgeEntry>,
-              ),
-            )
-            .filter((entry) =>
+          )
+          .filter(
+            (entry) =>
               (entry.likes || []).includes(targetAuthorId) &&
-              canViewKnowledgeEntry(entry, currentIdentity?.authorId),
-            ),
-        );
-
-        if (trackedEntries.length === 0) {
-          return;
-        }
-
-        setLikedEntries((currentEntries) =>
-          mergeProfileEntries(
-            currentEntries,
-            trackedEntries,
-            PROFILE_TRACKED_LIKE_LOOKUP_LIMIT,
+              canViewKnowledgeEntry(entry, visibleAuthorId),
           ),
-        );
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("Tracked liked knowledge lookup failed:", error);
-        }
-      }
+      ).slice(0, PROFILE_POST_LIMIT);
+
+    const startFallbackLikedListener = () => {
+      activeUnsubscribe = onSnapshot(
+        query(
+          collection(db, "knowledge"),
+          where("likes", "array-contains", targetAuthorId),
+          limit(PROFILE_POST_FALLBACK_LIMIT),
+        ),
+        (snapshot) => {
+          setLikedEntries(hydrateLikedEntries(snapshot));
+          setProfileLoadError(null);
+        },
+        (error) => {
+          console.error("Liked knowledge fallback listener error:", error);
+          setLikedEntries([]);
+          setProfileLoadError("Could not load liked posts for this profile right now.");
+        },
+      );
     };
 
-    void loadTrackedLikedEntries();
+    activeUnsubscribe = onSnapshot(
+      query(
+        collection(db, "knowledge"),
+        where("likes", "array-contains", targetAuthorId),
+        orderBy("createdAt", "desc"),
+        limit(PROFILE_POST_LIMIT),
+      ),
+      (snapshot) => {
+        setLikedEntries(hydrateLikedEntries(snapshot));
+        setProfileLoadError(null);
+      },
+      (error) => {
+        if (isMissingFirestoreIndexError(error)) {
+          console.warn(
+            "Liked knowledge ordered listener needs an index; using limited fallback listener.",
+            error,
+          );
+          activeUnsubscribe?.();
+          startFallbackLikedListener();
+          return;
+        }
+
+        console.error("Liked knowledge listener error:", error);
+        setLikedEntries([]);
+        setProfileLoadError("Could not load liked posts for this profile right now.");
+      },
+    );
 
     return () => {
-      cancelled = true;
+      activeUnsubscribe?.();
     };
   }, [
     activeAuthorId,
     currentIdentity?.authorId,
-    likedEntries,
-    trackedLikedEntryIds,
+    profile,
     trackedLikedEntryIdsKey,
   ]);
 
@@ -637,7 +664,7 @@ export function Profile({
 
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-            <Sparkles className="h-7 w-7" />
+            <ReadativeRMark className="h-7 w-7 text-2xl tracking-tight" />
           </div>
           <h2 className="text-2xl font-black tracking-tight text-slate-950">
             Sign in with Google
@@ -691,7 +718,7 @@ export function Profile({
 
       {isLoadingProfile ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
+          <ReadativeLoader size="md" label="Loading profile..." />
         </div>
       ) : !profile ? (
         <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
@@ -706,32 +733,36 @@ export function Profile({
       ) : (
         <>
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-              <div>
-                <ProfileAvatar
-                  authorId={profile.id}
-                  image={profile.profileImage}
-                  photoUrl={profile.photoUrl}
-                  username={profile.username}
-                  size="xl"
-                  className="mb-4 border-slate-200 bg-white"
-                />
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
-                  {isOwnProfile ? "Your Profile" : "Community Profile"}
-                </p>
-                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
-                  @{profile.username}
-                </h2>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),320px] lg:items-start">
+              <div className="min-w-0">
+                <div className="flex items-start gap-4 sm:gap-5">
+                  <ProfileAvatar
+                    authorId={profile.id}
+                    image={profile.profileImage}
+                    photoUrl={profile.photoUrl}
+                    username={profile.username}
+                    size="xl"
+                    className="shrink-0 border-slate-200 bg-white"
+                  />
+                  <div className="min-w-0 pt-1">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
+                      {isOwnProfile ? "Your Profile" : "Community Profile"}
+                    </p>
+                    <h2 className="mt-2 break-words text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                      @{profile.username}
+                    </h2>
+                    <ProfileSocialLinks socialLinks={profile.socialLinks} />
+                  </div>
+                </div>
                 <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">
                   {profile.bio || "Building a strong knowledge trail on Readative."}
                 </p>
                 <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                   Joined {new Date(profile.createdAt).toLocaleDateString()}
                 </p>
-                <ProfileSocialLinks socialLinks={profile.socialLinks} />
               </div>
 
-              <div className="grid grid-cols-3 gap-3 md:min-w-[320px]">
+              <div className="grid grid-cols-3 gap-3">
                 <ProfileStat label="Shared" value={sharedEntries.length} />
                 <ProfileStat label="Liked" value={likedEntryCount} />
                 <ProfileStat label="Engagement" value={engagementCount} />
@@ -867,25 +898,27 @@ export function Profile({
   );
 }
 
+type ProfileSocialPlatform = "linkedin" | "instagram" | "youtube";
+
 function ProfileSocialLinks({ socialLinks }: { socialLinks: UserSocialLinks }) {
   const links = [
     {
       key: "linkedin",
-      label: "Open LinkedIn profile",
+      label: "LinkedIn",
       href: socialLinks.linkedin,
-      icon: <Linkedin className="h-4 w-4" />,
+      platform: "linkedin" as const,
     },
     {
       key: "instagram",
-      label: "Open Instagram profile",
+      label: "Instagram",
       href: socialLinks.instagram,
-      icon: <Instagram className="h-4 w-4" />,
+      platform: "instagram" as const,
     },
     {
       key: "youtube",
-      label: "Open YouTube channel",
+      label: "YouTube",
       href: socialLinks.youtube,
-      icon: <Youtube className="h-4 w-4" />,
+      platform: "youtube" as const,
     },
   ].filter((link) => Boolean(link.href));
 
@@ -894,21 +927,73 @@ function ProfileSocialLinks({ socialLinks }: { socialLinks: UserSocialLinks }) {
   }
 
   return (
-    <div className="mt-4 flex flex-wrap gap-2">
+    <div className="mt-3 flex flex-wrap items-center gap-2">
       {links.map((link) => (
         <a
           key={link.key}
           href={link.href}
           target="_blank"
           rel="noreferrer"
-          aria-label={link.label}
-          title={link.label}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+          aria-label={`Open ${link.label} profile`}
+          title={`Open ${link.label} profile`}
+          className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 pr-3 text-xs font-bold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
         >
-          {link.icon}
+          <SocialBrandIcon platform={link.platform} />
+          <span className="hidden sm:inline">{link.label}</span>
         </a>
       ))}
     </div>
+  );
+}
+
+function SocialBrandIcon({ platform }: { platform: ProfileSocialPlatform }) {
+  if (platform === "linkedin") {
+    return (
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#0A66C2] text-white">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M6.9 8.7H3.7v11h3.2v-11Zm.2-3.4c0-1-.8-1.8-1.9-1.8S3.3 4.3 3.3 5.3s.8 1.8 1.9 1.8 1.9-.8 1.9-1.8Zm13.6 8.1c0-3.4-1.8-5-4.2-5-1.9 0-2.8 1.1-3.3 1.8V8.7h-3.1v11h3.2v-5.4c0-1.4.3-2.8 2.1-2.8 1.7 0 1.7 1.6 1.7 2.9v5.3h3.2v-6.3Z"
+          />
+        </svg>
+      </span>
+    );
+  }
+
+  if (platform === "instagram") {
+    return (
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-[radial-gradient(circle_at_30%_105%,#feda75_0%,#fa7e1e_28%,#d62976_52%,#962fbf_74%,#4f5bd5_100%)] text-white">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
+          <rect
+            x="5"
+            y="5"
+            width="14"
+            height="14"
+            rx="4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r="3.3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+          <circle cx="16.4" cy="7.7" r="1.1" fill="currentColor" />
+        </svg>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#FF0000] text-white">
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
+        <path fill="currentColor" d="M10 8.4v7.2l6.1-3.6L10 8.4Z" />
+      </svg>
+    </span>
   );
 }
 

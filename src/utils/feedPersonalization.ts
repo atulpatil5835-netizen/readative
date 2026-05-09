@@ -97,6 +97,7 @@ interface ScoredKnowledgeEntry {
 
 interface KnowledgeRankOptions {
   refreshSeed?: number;
+  shuffleOnRefresh?: boolean;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -953,6 +954,78 @@ function putRefreshDiscoveryEntriesFirst(
   ];
 }
 
+function areEntryOrdersEqualById(left: KnowledgeEntry[], right: KnowledgeEntry[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((entry, index) => entry.id === right[index]?.id);
+}
+
+function shuffleRefreshWindow(
+  entries: KnowledgeEntry[],
+  refreshSeed: number,
+  windowIndex: number,
+) {
+  return [...entries].sort((left, right) => {
+    const leftNoise = getStableRefreshNoise(
+      `refresh-window:${windowIndex}:${left.id}`,
+      refreshSeed,
+    );
+    const rightNoise = getStableRefreshNoise(
+      `refresh-window:${windowIndex}:${right.id}`,
+      refreshSeed,
+    );
+
+    if (leftNoise !== rightNoise) {
+      return rightNoise - leftNoise;
+    }
+
+    return right.createdAt - left.createdAt;
+  });
+}
+
+function shuffleRankedEntriesForManualRefresh(
+  entries: KnowledgeEntry[],
+  refreshSeed?: number,
+) {
+  if (
+    typeof refreshSeed !== "number" ||
+    !Number.isFinite(refreshSeed) ||
+    entries.length < 3
+  ) {
+    return entries;
+  }
+
+  const windowSize = 5;
+  const shuffledEntries: KnowledgeEntry[] = [];
+
+  for (let index = 0; index < entries.length; index += windowSize) {
+    const windowEntries = entries.slice(index, index + windowSize);
+    shuffledEntries.push(
+      ...shuffleRefreshWindow(windowEntries, refreshSeed, index / windowSize),
+    );
+  }
+
+  if (!areEntryOrdersEqualById(entries, shuffledEntries)) {
+    return shuffledEntries;
+  }
+
+  const leadWindowSize = Math.min(windowSize, entries.length);
+  const rotation =
+    1 +
+    Math.floor(
+      getStableRefreshNoise("refresh-fallback-rotation", refreshSeed) *
+        Math.max(1, leadWindowSize - 1),
+    );
+
+  return [
+    ...entries.slice(rotation, leadWindowSize),
+    ...entries.slice(0, rotation),
+    ...entries.slice(leadWindowSize),
+  ];
+}
+
 export function getKnowledgeFeedSnapshot(): KnowledgeFeedSnapshot {
   if (typeof window === "undefined") {
     return {
@@ -1143,7 +1216,9 @@ export function rankKnowledgeEntries(
     options.refreshSeed,
   );
 
-  return refreshedEntries;
+  return options.shuffleOnRefresh
+    ? shuffleRankedEntriesForManualRefresh(refreshedEntries, options.refreshSeed)
+    : refreshedEntries;
 }
 
 function areEntryOrdersEqual(left: string[], right: string[]) {

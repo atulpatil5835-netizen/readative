@@ -6,10 +6,10 @@ import {
   ThumbsDown,
   Trophy,
   Send,
-  Sparkles,
   User,
 } from "lucide-react";
 import { SEO } from "./SEO";
+import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
 import {
   collection,
   addDoc,
@@ -604,7 +604,7 @@ export function SmartTalk({
         <div className="mb-4 flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">
-              <Sparkles className="h-5 w-5" />
+              <ReadativeRMark className="h-5 w-5 text-xl tracking-tight" />
             </span>
             <div className="min-w-0">
               <h2 className="text-2xl font-black tracking-tight text-slate-950">
@@ -649,7 +649,11 @@ export function SmartTalk({
               disabled={isAsking || isModeratingQuestion || !newQuestion.trim()}
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
             >
-              <Send className="h-4 w-4" />
+              {isAsking || isModeratingQuestion ? (
+                <ReadativeLoader size="xs" tone="light" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
               {isAsking || isModeratingQuestion ? "Posting..." : "Ask"}
             </button>
           </div>
@@ -667,8 +671,12 @@ export function SmartTalk({
 
       {isLoading ? (
         <div className="flex flex-col items-center py-16 gap-3">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-400">Loading questions...</p>
+          <ReadativeLoader
+            size="md"
+            tone="indigo"
+            label="Loading questions..."
+            labelClassName="text-sm text-gray-400"
+          />
         </div>
       ) : questions.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm">
@@ -824,7 +832,7 @@ export function SmartTalk({
                     >
                       {isAnswering[question.id] ||
                       moderatingAnswerId === question.id ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <ReadativeLoader size="xs" tone="light" />
                       ) : (
                         <>
                           <Send className="w-4 h-4" />

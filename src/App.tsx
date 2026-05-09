@@ -5,6 +5,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Header } from "./components/Header";
+import { ReadativeLoader } from "./components/ReadativeLoader";
 import { GoogleSignInPrompt } from "./components/Auth";
 import {
   getKnowledgeIdentity,
@@ -482,16 +483,11 @@ export default function App() {
           </button>
           <button
             onClick={() => handleTabChange("profile")}
-            className={`relative p-2 ${
+            className={`p-2 ${
               activeTab === "profile" ? "text-emerald-600" : "text-gray-400"
             }`}
           >
             <UserIcon />
-            {unreadNotificationCount > 0 && (
-              <span className="absolute right-0 top-0 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
-              </span>
-            )}
           </button>
         </nav>
       </div>
@@ -502,8 +498,7 @@ export default function App() {
 function SectionSkeleton({ label }: { label: string }) {
   return (
     <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-      <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
-      <p className="mt-4 text-sm text-slate-400">{label}</p>
+      <ReadativeLoader size="lg" label={label} />
     </div>
   );
 }
