@@ -343,6 +343,14 @@ function createKnowledgeFeedRefreshSeed() {
   return Date.now() + Math.floor(Math.random() * 1_000_000);
 }
 
+function scrollKnowledgeFeedToTop() {
+  if (typeof window === "undefined") return;
+
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
@@ -1241,6 +1249,7 @@ export function KnowledgeFeed({
     visibleLikedEntryIdsRef.current = [];
     setVisibleLikedEntryIds([]);
     feedRefreshSeedRef.current = createKnowledgeFeedRefreshSeed();
+    scrollKnowledgeFeedToTop();
     setFeedEntryOrder(
       rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
         refreshSeed: feedRefreshSeedRef.current,
@@ -1248,13 +1257,16 @@ export function KnowledgeFeed({
       }).map((entry) => entry.id),
     );
     setShowRefreshFeedback(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const animationFrameId = window.requestAnimationFrame(scrollKnowledgeFeedToTop);
 
     const timeoutId = window.setTimeout(() => {
       setShowRefreshFeedback(false);
     }, 2400);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      window.clearTimeout(timeoutId);
+    };
   }, [refreshSignal]);
 
   useEffect(() => {
@@ -1738,19 +1750,6 @@ export function KnowledgeFeed({
   const activeFeedTopic =
     FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
     FEED_TOPIC_FILTERS[0];
-  const feedTopicCounts = useMemo(
-    () =>
-      new Map(
-        FEED_TOPIC_FILTERS.map(
-          (topic) =>
-            [
-              topic.id,
-              getKnowledgeEntriesForTopic(visibleEntries, topic).length,
-            ] as const,
-        ),
-      ),
-    [visibleEntries],
-  );
   const topicFilteredEntries = useMemo(
     () => getKnowledgeEntriesForTopic(visibleEntries, activeFeedTopic),
     [activeFeedTopic, visibleEntries],
@@ -2171,19 +2170,8 @@ export function KnowledgeFeed({
         return nextIds;
       });
 
-      const nextEntries = entriesRef.current.map((entry) =>
+      entriesRef.current = entriesRef.current.map((entry) =>
         entry.id === entryId ? { ...entry, likes } : entry,
-      );
-
-      entriesRef.current = nextEntries;
-      setEntries(nextEntries);
-      setFeedEntryOrder((currentOrder) =>
-        reconcileKnowledgeFeedOrder(
-          nextEntries,
-          currentOrder,
-          getKnowledgeFeedSnapshot(),
-          { refreshSeed: feedRefreshSeedRef.current },
-        ),
       );
     },
     [currentAuthorId],
@@ -2265,7 +2253,6 @@ export function KnowledgeFeed({
                 {FEED_TOPIC_FILTERS.map((topic) => {
                   const TopicIcon = topic.icon;
                   const isActive = topic.id === activeFeedTopic.id;
-                  const topicCount = feedTopicCounts.get(topic.id) || 0;
 
                   return (
                     <button
@@ -2286,15 +2273,6 @@ export function KnowledgeFeed({
                     >
                       <TopicIcon className="h-3.5 w-3.5" />
                       <span>{topic.label}</span>
-                      <span
-                        className={`ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] ${
-                          isActive
-                            ? "bg-white/20 text-white"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {topicCount}
-                      </span>
                     </button>
                   );
                 })}
