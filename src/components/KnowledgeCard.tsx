@@ -684,7 +684,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       ref={articleRef}
       id={`knowledge-${entry.id}`}
       className={cn(
-        "overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]",
+        "overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]",
         highlighted &&
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]",
       )}
@@ -697,8 +697,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         />
       )}
 
-      <div className="p-6">
-        <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="p-5">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => handleOpenAuthorProfile(entry.authorId)}
@@ -735,11 +735,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">
               Insight
             </span>
             {entryVisibility === "private" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
                 <Lock className="h-3 w-3" />
                 Private
               </span>
@@ -772,11 +772,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           onClick={handleOpenEntryDetails}
           className="text-left transition-colors hover:text-emerald-700"
         >
-          <h3 className="text-2xl font-black leading-tight tracking-tight text-slate-950">
+          <h3 className="text-xl font-black leading-tight tracking-tight text-slate-950 sm:text-2xl">
             {entry.title}
           </h3>
         </button>
-        <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-slate-600">
+        <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-600">
           {renderRichText({
             text: entry.content,
             mentions,
@@ -785,7 +785,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         </p>
 
         {entry.hashtags.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {entry.hashtags.map((tag) => (
               <button
                 key={tag}
@@ -799,7 +799,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         )}
 
         {mentions.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {mentions.map((mention) => (
               <button
                 key={`${mention.authorId}-${mention.username}`}
@@ -813,7 +813,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         )}
 
         {topComment && (
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Top comment
             </p>
@@ -859,7 +859,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           </div>
         )}
 
-        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
           <div className="flex items-center gap-5">
             <button
               onClick={handleLike}
@@ -954,7 +954,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       </div>
 
       {showComments && (
-        <div className="border-t border-slate-100 bg-slate-50/70 p-6">
+        <div className="border-t border-slate-100 bg-slate-50/70 p-5">
           {activeIdentity && (
             <p className="mb-3 text-xs text-slate-400">
               Commenting as{" "}

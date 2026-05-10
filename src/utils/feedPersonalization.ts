@@ -998,14 +998,10 @@ function shuffleRankedEntriesForManualRefresh(
   }
 
   const windowSize = 5;
-  const shuffledEntries: KnowledgeEntry[] = [];
-
-  for (let index = 0; index < entries.length; index += windowSize) {
-    const windowEntries = entries.slice(index, index + windowSize);
-    shuffledEntries.push(
-      ...shuffleRefreshWindow(windowEntries, refreshSeed, index / windowSize),
-    );
-  }
+  const leadEntries = entries.slice(0, windowSize);
+  const tailEntries = entries.slice(windowSize);
+  const shuffledLeadEntries = shuffleRefreshWindow(leadEntries, refreshSeed, 0);
+  const shuffledEntries = [...shuffledLeadEntries, ...tailEntries];
 
   if (!areEntryOrdersEqualById(entries, shuffledEntries)) {
     return shuffledEntries;

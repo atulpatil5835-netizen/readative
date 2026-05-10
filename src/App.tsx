@@ -30,6 +30,7 @@ import {
   type AppTab,
 } from "./utils/routes";
 import { trackPageView } from "./utils/analytics";
+import type { InfoSection } from "./components/AppPanels";
 
 const KnowledgeFeed = lazy(() =>
   import("./components/KnowledgeFeed").then((module) => ({
@@ -84,6 +85,8 @@ export default function App() {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [composerOpenSignal, setComposerOpenSignal] = useState(0);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [infoPanelSection, setInfoPanelSection] =
+    useState<InfoSection>("about");
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
@@ -147,6 +150,12 @@ export default function App() {
   const handleOpenNotifications = useCallback(() => {
     setShowInfoPanel(false);
     setShowNotificationsPanel((current) => !current);
+  }, []);
+
+  const handleOpenInfoPanel = useCallback((section: InfoSection = "about") => {
+    setInfoPanelSection(section);
+    setShowNotificationsPanel(false);
+    setShowInfoPanel(true);
   }, []);
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -359,10 +368,7 @@ export default function App() {
           unreadNotificationCount={unreadNotificationCount}
           onOpenComposer={handleOpenComposer}
           onOpenNotifications={handleOpenNotifications}
-          onOpenInfo={() => {
-            setShowNotificationsPanel(false);
-            setShowInfoPanel((current) => !current);
-          }}
+          onOpenInfo={() => handleOpenInfoPanel("about")}
           onOpenSignIn={() => setShowGoogleSignInPrompt(true)}
           onSignOut={() => void handleGoogleSignOut()}
         />
@@ -432,9 +438,14 @@ export default function App() {
           )}
         </main>
 
+        <AppFooter onOpenInfo={handleOpenInfoPanel} />
+
         {showInfoPanel && (
           <Suspense fallback={null}>
-            <InfoPanel onClose={() => setShowInfoPanel(false)} />
+            <InfoPanel
+              initialSection={infoPanelSection}
+              onClose={() => setShowInfoPanel(false)}
+            />
           </Suspense>
         )}
         {showNotificationsPanel && (
@@ -536,6 +547,55 @@ function BannerNotice({
         </div>
       </div>
     </div>
+  );
+}
+
+const FOOTER_LINKS: Array<{ label: string; section: InfoSection }> = [
+  { label: "About", section: "about" },
+  { label: "Contact", section: "contact" },
+  { label: "Privacy", section: "privacy" },
+  { label: "Terms", section: "terms" },
+  { label: "Community", section: "guidelines" },
+  { label: "Disclaimer", section: "disclaimer" },
+];
+
+function AppFooter({
+  onOpenInfo,
+}: {
+  onOpenInfo: (section: InfoSection) => void;
+}) {
+  return (
+    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10">
+      <div className="border-t border-slate-200/80 pt-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-black tracking-tight text-slate-800">
+              Readative
+            </p>
+            <p className="mt-1 text-xs leading-5">
+              Practical knowledge, creator posts, and SmartTalk discussions.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {FOOTER_LINKS.map((link) => (
+              <button
+                key={link.section}
+                type="button"
+                onClick={() => onOpenInfo(link.section)}
+                className="text-xs font-semibold text-slate-500 transition-colors hover:text-emerald-700"
+              >
+                {link.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-4 text-xs">
+          Copyright {new Date().getFullYear()} Readative. All rights reserved.
+        </p>
+      </div>
+    </footer>
   );
 }
 

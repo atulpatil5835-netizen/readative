@@ -361,9 +361,9 @@ function MeasuredVirtualRow({
 
 function KnowledgeCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+    <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
       <div className="aspect-video animate-pulse bg-slate-200" />
-      <div className="space-y-4 p-6">
+      <div className="space-y-4 p-5">
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 animate-pulse rounded-2xl bg-slate-200" />
           <div className="space-y-2">

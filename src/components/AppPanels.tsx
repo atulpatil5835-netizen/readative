@@ -1,11 +1,14 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   AtSign,
+  FileText,
   Heart,
   Linkedin,
   Mail,
   MessageCircle,
+  Scale,
   ShieldCheck,
+  Users,
   X,
 } from "lucide-react";
 import { type UserNotification } from "../types";
@@ -15,10 +18,27 @@ import {
   markNotificationsAsRead,
 } from "../utils/notifications";
 
-type InfoSection = "about" | "contact" | "privacy";
+export type InfoSection =
+  | "about"
+  | "contact"
+  | "privacy"
+  | "terms"
+  | "guidelines"
+  | "disclaimer";
 
-export function InfoPanel({ onClose }: { onClose: () => void }) {
-  const [activeSection, setActiveSection] = useState<InfoSection>("about");
+export function InfoPanel({
+  onClose,
+  initialSection = "about",
+}: {
+  onClose: () => void;
+  initialSection?: InfoSection;
+}) {
+  const [activeSection, setActiveSection] =
+    useState<InfoSection>(initialSection);
+
+  useEffect(() => {
+    setActiveSection(initialSection);
+  }, [initialSection]);
 
   return (
     <div
@@ -36,7 +56,7 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                 Readative Info
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-tight">
-                About, contact, and privacy
+                About, policies, and contact
               </h2>
               <p className="mt-2 text-sm text-emerald-50">
                 Open the section you need from the buttons below.
@@ -50,7 +70,7 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <InfoSectionButton
               active={activeSection === "about"}
               label="About Us"
@@ -65,6 +85,21 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
               active={activeSection === "privacy"}
               label="Privacy Policy"
               onClick={() => setActiveSection("privacy")}
+            />
+            <InfoSectionButton
+              active={activeSection === "terms"}
+              label="Terms"
+              onClick={() => setActiveSection("terms")}
+            />
+            <InfoSectionButton
+              active={activeSection === "guidelines"}
+              label="Rules"
+              onClick={() => setActiveSection("guidelines")}
+            />
+            <InfoSectionButton
+              active={activeSection === "disclaimer"}
+              label="Disclaimer"
+              onClick={() => setActiveSection("disclaimer")}
             />
           </div>
         </div>
@@ -112,7 +147,7 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                     rel="noreferrer"
                     className="inline-flex items-center rounded-full border border-amber-300 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-950 transition-colors hover:border-amber-400 hover:bg-amber-400"
                   >
-                    Buy Me a Coffee ☕
+                    Buy Me a Coffee
                   </a>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -172,6 +207,10 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                   body="Readative may store usernames, posts, comments, likes, notifications, and basic usage information needed to run the community experience."
                 />
                 <PolicyBlock
+                  title="Cookies and local preferences"
+                  body="Readative may use local storage and cookies to keep you signed in, remember feed preferences, reduce repeated posts, and improve loading performance."
+                />
+                <PolicyBlock
                   title="Google cookies for ads"
                   body="Readative uses Google cookies and related advertising technology for ads and monetization. Google and its partners may use cookies to serve and personalize ads based on your visits to this site and other websites."
                 />
@@ -186,6 +225,105 @@ export function InfoPanel({ onClose }: { onClose: () => void }) {
                 <PolicyBlock
                   title="Updates and contact"
                   body="These policies may be updated as Readative grows. For privacy or policy questions, contact reader@readative.com."
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSection === "terms" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-sky-100 p-2 text-sky-700">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Terms of Use
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Basic rules for using Readative
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+                <PolicyBlock
+                  title="Use the platform responsibly"
+                  body="You are responsible for the posts, comments, images, profile details, and links you publish on Readative."
+                />
+                <PolicyBlock
+                  title="Respect ownership"
+                  body="Only share content you created, have permission to use, or can legally quote or reference."
+                />
+                <PolicyBlock
+                  title="Service changes"
+                  body="Readative may improve, limit, remove, or update features to keep the platform useful, reliable, and safe."
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSection === "guidelines" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <Users className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Community Guidelines
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Keep learning useful and respectful
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+                <PolicyBlock
+                  title="Share practical knowledge"
+                  body="Posts should help people learn, discover tools, understand ideas, or discuss useful questions."
+                />
+                <PolicyBlock
+                  title="No spam or abuse"
+                  body="Spam, harassment, impersonation, scams, hateful content, and sexual content are not allowed."
+                />
+                <PolicyBlock
+                  title="Moderation"
+                  body="Readative may block, hide, or remove content that harms the quality or safety of the community."
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSection === "disclaimer" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-amber-100 p-2 text-amber-700">
+                  <Scale className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Disclaimer
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Important limits on platform content
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+                <PolicyBlock
+                  title="Educational content"
+                  body="Readative posts are for general information and learning. They are not professional legal, medical, financial, or safety advice."
+                />
+                <PolicyBlock
+                  title="User-created posts"
+                  body="Creators are responsible for their own posts and comments. Readative does not guarantee that every user post is complete, current, or error-free."
+                />
+                <PolicyBlock
+                  title="External links"
+                  body="Links to external websites are provided for convenience. Those websites are controlled by their own owners and policies."
                 />
               </div>
             </div>
