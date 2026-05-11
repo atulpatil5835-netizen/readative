@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import {
+  ArrowUp,
   BookOpenText,
   Bot,
   Code2,
@@ -20,6 +21,7 @@ import {
   Lock,
   Megaphone,
   Palette,
+  RefreshCw,
   Rocket,
   Send,
   Smartphone,
@@ -1392,6 +1394,7 @@ export function KnowledgeFeed({
   const [selectedFeedTopic, setSelectedFeedTopic] =
     useState<FeedTopicId>("all");
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
+  const [showBackToTopRefresh, setShowBackToTopRefresh] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] =
     useState<string[]>(initialFeedOrder);
   const [visibleLikedEntryIds, setVisibleLikedEntryIds] = useState<string[]>([]);
@@ -1409,6 +1412,7 @@ export function KnowledgeFeed({
   const entriesRef = useRef<KnowledgeEntry[]>(entries);
   const visibleLikedEntryIdsRef = useRef<string[]>(visibleLikedEntryIds);
   const feedRefreshSeedRef = useRef(initialRefreshSeed);
+  const refreshFeedbackTimeoutRef = useRef<number | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
     useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -1420,6 +1424,83 @@ export function KnowledgeFeed({
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
+
+  const showRefreshFeedbackTemporarily = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    setShowRefreshFeedback(true);
+
+    if (refreshFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(refreshFeedbackTimeoutRef.current);
+    }
+
+    refreshFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setShowRefreshFeedback(false);
+      refreshFeedbackTimeoutRef.current = null;
+    }, 2400);
+  }, []);
+
+  const handleBackToTopRefresh = useCallback(() => {
+    const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
+    const normalizedRefreshHashtag = selectedHashtag
+      ? normalizeStoredHashtagValue(selectedHashtag)
+      : null;
+    const refreshTopic =
+      FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
+      FEED_TOPIC_FILTERS[0];
+    const shouldRefreshIndependentFeed =
+      !focusedEntryId &&
+      (Boolean(normalizedRefreshHashtag) || refreshTopic.id !== "all");
+
+    setFeedSearchQuery("");
+    setFeedMessage(null);
+    visibleLikedEntryIdsRef.current = [];
+    setVisibleLikedEntryIds([]);
+    feedRefreshSeedRef.current = nextRefreshSeed;
+
+    if (shouldRefreshIndependentFeed) {
+      const refreshFeedKey = getIndependentFeedKey(
+        refreshTopic.id,
+        normalizedRefreshHashtag,
+      );
+
+      setTopicFeedStates((current) => {
+        const existing = current[refreshFeedKey];
+        if (!existing || existing.entries.length <= 1) return current;
+
+        return {
+          ...current,
+          [refreshFeedKey]: {
+            ...existing,
+            entries: rankKnowledgeEntries(
+              existing.entries,
+              getKnowledgeFeedSnapshot(),
+              {
+                refreshSeed: nextRefreshSeed,
+                shuffleOnRefresh: true,
+              },
+            ),
+          },
+        };
+      });
+    } else {
+      setFeedEntryOrder(
+        rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
+          refreshSeed: nextRefreshSeed,
+          shuffleOnRefresh: true,
+        }).map((entry) => entry.id),
+      );
+    }
+
+    setShowBackToTopRefresh(false);
+    scrollKnowledgeFeedToTop();
+    showRefreshFeedbackTemporarily();
+  }, [
+    focusedEntryId,
+    selectedFeedTopic,
+    selectedHashtag,
+    showRefreshFeedbackTemporarily,
+  ]);
 
   const updateHasMoreServerEntries = useCallback((hasMoreEntries: boolean) => {
     hasMoreServerEntriesRef.current = hasMoreEntries;
@@ -1433,6 +1514,39 @@ export function KnowledgeFeed({
   useEffect(() => {
     visibleLikedEntryIdsRef.current = visibleLikedEntryIds;
   }, [visibleLikedEntryIds]);
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        refreshFeedbackTimeoutRef.current !== null
+      ) {
+        window.clearTimeout(refreshFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isActive || typeof window === "undefined") {
+      setShowBackToTopRefresh(false);
+      return;
+    }
+
+    const updateBackToTopVisibility = () => {
+      setShowBackToTopRefresh(window.scrollY > 420);
+    };
+
+    updateBackToTopVisibility();
+    window.addEventListener("scroll", updateBackToTopVisibility, {
+      passive: true,
+    });
+    window.addEventListener("resize", updateBackToTopVisibility);
+
+    return () => {
+      window.removeEventListener("scroll", updateBackToTopVisibility);
+      window.removeEventListener("resize", updateBackToTopVisibility);
+    };
+  }, [isActive]);
 
   useEffect(() => {
     if (entries.length === 0) return;
@@ -2761,6 +2875,8 @@ export function KnowledgeFeed({
   const isPaginationBusy = shouldUseIndependentFeed
     ? activeTopicFeedState.isLoading || activeTopicFeedState.isLoadingMore
     : isLoadingMoreEntries || isBackgroundLoadingEntries;
+  const shouldShowBackToTopRefresh =
+    isActive && !showComposer && showBackToTopRefresh;
 
   return (
     <div className="pb-20">
@@ -2965,6 +3081,25 @@ export function KnowledgeFeed({
           )}
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={handleBackToTopRefresh}
+        aria-label="Back to top, refresh, and shuffle posts"
+        aria-hidden={!shouldShowBackToTopRefresh}
+        tabIndex={shouldShowBackToTopRefresh ? 0 : -1}
+        title="Back to top, refresh, and shuffle posts"
+        className={`fixed bottom-24 right-4 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-emerald-200 bg-white text-emerald-700 shadow-[0_16px_40px_rgba(15,23,42,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 md:bottom-6 md:right-6 ${
+          shouldShowBackToTopRefresh
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        <span className="relative flex h-6 w-6 items-center justify-center">
+          <ArrowUp className="h-5 w-5" />
+          <RefreshCw className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-white p-0.5 text-emerald-600" />
+        </span>
+      </button>
 
       {showComposer && (
         <ComposerModal
