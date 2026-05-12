@@ -58,11 +58,15 @@ export interface UserSocialLinks {
 export interface UserProfile {
   id: string;
   email: string;
+  displayName: string;
   username: string;
   usernameLower: string;
+  jobTitle: string;
   bio: string;
   socialLinks: UserSocialLinks;
+  showSocialLinksOnPosts: boolean;
   likedKnowledgeIds: string[];
+  bannerImage?: KnowledgeImageAsset | null;
   profileImage?: KnowledgeImageAsset | null;
   photoUrl?: string | null;
   createdAt: number;

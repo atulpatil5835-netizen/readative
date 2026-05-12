@@ -7,6 +7,7 @@ import { ReadativeLoader } from "./ReadativeLoader";
 interface ProfileAvatarPickerProps {
   currentImage?: KnowledgeImageAsset | null;
   username: string;
+  variant?: "avatar" | "banner";
   isSaving?: boolean;
   errorMessage?: string | null;
   onSave: (image: KnowledgeImageAsset) => void | Promise<void>;
@@ -16,6 +17,7 @@ interface ProfileAvatarPickerProps {
 export function ProfileAvatarPicker({
   currentImage = null,
   username,
+  variant = "avatar",
   isSaving = false,
   errorMessage,
   onSave,
@@ -57,10 +59,13 @@ export function ProfileAvatarPicker({
     setLocalError(null);
 
     try {
-      const { optimizeProfileImageFile } = await import(
+      const { optimizeProfileBannerFile, optimizeProfileImageFile } = await import(
         "../utils/profileImageOptimizer"
       );
-      const optimizedImage = await optimizeProfileImageFile(file);
+      const optimizedImage =
+        variant === "banner"
+          ? await optimizeProfileBannerFile(file)
+          : await optimizeProfileImageFile(file);
       setSelectedImage(optimizedImage);
       setPreviewImage(optimizedImage);
     } catch (error) {
@@ -87,14 +92,17 @@ export function ProfileAvatarPicker({
           </button>
 
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-100">
-            Profile Picture
+            {variant === "banner" ? "Profile Banner" : "Profile Picture"}
           </p>
           <h2 className="mt-2 text-3xl font-black tracking-tight">
-            Upload a square profile photo
+            {variant === "banner"
+              ? "Upload a wide profile banner"
+              : "Upload a square profile photo"}
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50">
-            Choose one image and we will center-crop it to a square, compress it,
-            and keep it lightweight for faster loading across the app.
+            {variant === "banner"
+              ? "Choose one image and we will crop it to a LinkedIn-style wide cover, compress it, and keep it lightweight."
+              : "Choose one image and we will center-crop it to a square, compress it, and keep it lightweight for faster loading across the app."}
           </p>
         </div>
 
@@ -104,17 +112,33 @@ export function ProfileAvatarPicker({
               Live Preview
             </p>
             <div className="mt-4 flex flex-col items-center rounded-[28px] bg-white px-5 py-6 text-center shadow-sm">
-              <ProfileAvatar
-                image={previewImage}
-                username={username}
-                size="2xl"
-                className="border-slate-200"
-              />
-              <p className="mt-4 text-lg font-black text-slate-900">@{username}</p>
+              {variant === "banner" ? (
+                <div className="w-full overflow-hidden rounded-[22px] border border-slate-200 bg-slate-100">
+                  {previewImage ? (
+                    <img
+                      src={previewImage.dataUrl}
+                      alt=""
+                      className="aspect-[4.2/1] w-full object-cover"
+                    />
+                  ) : (
+                    <div className="aspect-[4.2/1] w-full bg-[linear-gradient(135deg,#0f172a_0%,#0f766e_48%,#2563eb_100%)]" />
+                  )}
+                </div>
+              ) : (
+                <ProfileAvatar
+                  image={previewImage}
+                  username={username}
+                  size="2xl"
+                  className="border-slate-200"
+                />
+              )}
+              <p className="mt-4 text-lg font-black text-slate-900">{username}</p>
               <p className="mt-1 text-sm text-slate-500">
                 {previewImage
                   ? `${previewImage.width} x ${previewImage.height} optimized`
-                  : "No uploaded photo yet. Your initials will be shown until you add one."}
+                  : variant === "banner"
+                    ? "No uploaded banner yet. A clean default cover will be shown until you add one."
+                    : "No uploaded photo yet. Your initials will be shown until you add one."}
               </p>
             </div>
 
@@ -131,7 +155,11 @@ export function ProfileAvatarPicker({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-55"
               >
                 <Check className="h-4 w-4" />
-                {isSaving ? "Saving..." : "Save photo"}
+                {isSaving
+                  ? "Saving..."
+                  : variant === "banner"
+                    ? "Save banner"
+                    : "Save photo"}
               </button>
               <button
                 onClick={handleClose}
@@ -161,7 +189,13 @@ export function ProfileAvatarPicker({
                 ) : (
                   <ImagePlus className="h-4 w-4" />
                 )}
-                {previewImage ? "Replace photo" : "Upload photo"}
+                {previewImage
+                  ? variant === "banner"
+                    ? "Replace banner"
+                    : "Replace photo"
+                  : variant === "banner"
+                    ? "Upload banner"
+                    : "Upload photo"}
                 <input
                   type="file"
                   accept="image/*"
@@ -174,8 +208,12 @@ export function ProfileAvatarPicker({
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <InfoCard
-                title="Square crop"
-                body="The image is center-cropped to 1:1 so every avatar stays neat in cards, comments, and profile pages."
+                title={variant === "banner" ? "Wide crop" : "Square crop"}
+                body={
+                  variant === "banner"
+                    ? "The image is cropped to a clean cover ratio so it frames neatly above your profile."
+                    : "The image is center-cropped to 1:1 so every avatar stays neat in cards, comments, and profile pages."
+                }
               />
               <InfoCard
                 title="Fast loading"

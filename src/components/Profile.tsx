@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpenText,
+  Check,
   Clock3,
   Heart,
   ImagePlus,
@@ -37,10 +38,11 @@ import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
 import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
 import {
+  changeProfileBanner,
   changeProfilePhoto,
   changeProfileUsername,
   getUsernameChangeRemaining,
-  updateProfileSocialLinks,
+  updateProfileDetails,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { buildAbsoluteRouteUrl } from "../utils/routes";
@@ -50,6 +52,7 @@ import {
   canViewKnowledgeEntry,
   normalizeKnowledgeVisibility,
 } from "../utils/knowledgePrivacy";
+import { ProfileSocialLinks } from "./ProfileSocialLinks";
 
 type ProfileSection = "shared" | "liked";
 
@@ -76,6 +79,10 @@ function formatCooldown(remainingMs: number) {
 
   const days = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
   return `Username can be changed again in about ${days} day${days === 1 ? "" : "s"}.`;
+}
+
+function getProfileDisplayName(profile: UserProfile) {
+  return profile.displayName?.trim() || profile.username;
 }
 
 function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>) {
@@ -181,8 +188,11 @@ export function Profile({
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showBannerPicker, setShowBannerPicker] = useState(false);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const [isSavingBanner, setIsSavingBanner] = useState(false);
   const [avatarSaveError, setAvatarSaveError] = useState<string | null>(null);
+  const [bannerSaveError, setBannerSaveError] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileEditError, setProfileEditError] = useState<string | null>(null);
   const [section, setSection] = useState<ProfileSection>("shared");
@@ -410,20 +420,17 @@ export function Profile({
       ),
     [likedEntries, trackedLikedEntryIdsKey],
   );
-  const engagementCount = sharedEntries.reduce(
-    (sum, entry) =>
-      sum + (entry.likes?.length || 0) + (entry.comments?.length || 0),
-    0
-  );
+  const profileDisplayName = profile ? getProfileDisplayName(profile) : "";
   const profileUrl =
     profile
       ? buildAbsoluteRouteUrl("profile", { profileAuthorId: profile.id })
       : buildAbsoluteRouteUrl("profile");
   const profileSchema = profile
-    ? {
+      ? {
         "@context": "https://schema.org",
         "@type": "Person",
-        name: `@${profile.username}`,
+        name: profileDisplayName,
+        alternateName: `@${profile.username}`,
         description:
           profile.bio || "A Readative member publishing and curating knowledge.",
         url: profileUrl,
@@ -576,11 +583,19 @@ export function Profile({
   };
 
   const handleSaveProfileSettings = async ({
+    displayName,
     username,
+    jobTitle,
+    bio,
     socialLinks,
+    showSocialLinksOnPosts,
   }: {
+    displayName: string;
     username: string;
+    jobTitle: string;
+    bio: string;
     socialLinks: UserSocialLinks;
+    showSocialLinksOnPosts: boolean;
   }) => {
     if (!profile || !isOwnProfile) return;
 
@@ -588,19 +603,22 @@ export function Profile({
     setProfileEditError(null);
 
     try {
-      let updatedProfile = profile;
+      let updatedProfile = await updateProfileDetails(profile, {
+        displayName,
+        jobTitle,
+        bio,
+        socialLinks,
+        showSocialLinksOnPosts,
+      });
+
       if (username.trim().toLowerCase() !== profile.usernameLower) {
-        updatedProfile = await changeProfileUsername(profile, username);
+        updatedProfile = await changeProfileUsername(updatedProfile, username);
         onIdentityChange({
           displayName: updatedProfile.username,
           authorId: updatedProfile.id,
         });
       }
 
-      updatedProfile = await updateProfileSocialLinks(
-        updatedProfile,
-        socialLinks,
-      );
       setProfile(updatedProfile);
       setShowEditProfile(false);
     } catch (error) {
@@ -633,6 +651,28 @@ export function Profile({
       );
     } finally {
       setIsSavingAvatar(false);
+    }
+  };
+
+  const handleChangeBanner = async (nextBannerImage: KnowledgeImageAsset) => {
+    if (!profile || !isOwnProfile) return;
+
+    setBannerSaveError(null);
+    setIsSavingBanner(true);
+
+    try {
+      const updatedProfile = await changeProfileBanner(profile, nextBannerImage);
+      setProfile(updatedProfile);
+      setShowBannerPicker(false);
+    } catch (error) {
+      console.error("Failed to save banner:", error);
+      setBannerSaveError(
+        error instanceof Error
+          ? error.message
+          : "Could not save your banner photo right now.",
+      );
+    } finally {
+      setIsSavingBanner(false);
     }
   };
 
@@ -695,7 +735,7 @@ export function Profile({
   return (
     <div className="space-y-6 pb-20">
       <SEO
-        title={profile ? `@${profile.username} | Readative` : "Profile | Readative"}
+        title={profile ? `${profileDisplayName} | Readative` : "Profile | Readative"}
         description="Explore user profiles, shared knowledge, and liked posts on Readative."
         type="profile"
         url={profileUrl}
@@ -732,73 +772,104 @@ export function Profile({
         </div>
       ) : (
         <>
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),320px] lg:items-start">
-              <div className="min-w-0">
-                <div className="flex items-start gap-4 sm:gap-5">
+          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+            <div className="relative h-36 bg-[linear-gradient(135deg,#0f172a_0%,#0f766e_48%,#2563eb_100%)] sm:h-44">
+              {profile.bannerImage && (
+                <img
+                  src={profile.bannerImage.dataUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
+            </div>
+
+            <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+              <div className="-mt-12 flex flex-wrap items-end justify-between gap-3 sm:-mt-14">
+                <div className="relative">
                   <ProfileAvatar
                     authorId={profile.id}
                     image={profile.profileImage}
                     photoUrl={profile.photoUrl}
-                    username={profile.username}
+                    username={profileDisplayName}
                     size="xl"
-                    className="shrink-0 border-slate-200 bg-white"
+                    className="border-slate-200 bg-white ring-4 ring-white"
                   />
-                  <div className="min-w-0 pt-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
-                      {isOwnProfile ? "Your Profile" : "Community Profile"}
-                    </p>
-                    <h2 className="mt-2 break-words text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                      @{profile.username}
-                    </h2>
-                    <ProfileSocialLinks socialLinks={profile.socialLinks} />
-                  </div>
                 </div>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">
-                  {profile.bio || "Building a strong knowledge trail on Readative."}
-                </p>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Joined {new Date(profile.createdAt).toLocaleDateString()}
-                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">
+                    {isOwnProfile ? "Your Profile" : "Community Profile"}
+                  </span>
+                  {isOwnProfile && (
+                    <button
+                      onClick={() => {
+                        setProfileEditError(null);
+                        setShowEditProfile(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-700"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <ProfileStat label="Shared" value={sharedEntries.length} />
-                <ProfileStat label="Liked" value={likedEntryCount} />
-                <ProfileStat label="Engagement" value={engagementCount} />
+              <div className="mt-4 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="break-words text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                    {profileDisplayName}
+                  </h2>
+                  <ProfileSocialLinks
+                    socialLinks={profile.socialLinks}
+                    compact
+                    className="pt-1"
+                  />
+                </div>
+
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  @{profile.username}
+                </p>
+
+                {profile.jobTitle && (
+                  <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-800">
+                    {profile.jobTitle}
+                  </p>
+                )}
+
+                {profile.bio && (
+                  <p className="mt-2 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {profile.bio}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
+                  <span>Joined {new Date(profile.createdAt).toLocaleDateString()}</span>
+                  {isOwnProfile && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {formatCooldown(usernameCooldown)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-
-            {isOwnProfile && (
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={() => {
-                    setProfileEditError(null);
-                    setShowEditProfile(true);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Edit profile
-                </button>
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500">
-                  <Clock3 className="h-4 w-4" />
-                  {formatCooldown(usernameCooldown)}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm">
             <SectionButton
               active={section === "shared"}
               onClick={() => setSection("shared")}
-              label={`Shared (${sharedEntries.length})`}
+              label="Shared"
+              count={sharedEntries.length}
             />
             <SectionButton
               active={section === "liked"}
               onClick={() => setSection("liked")}
-              label={`Liked (${likedEntryCount})`}
+              label="Liked"
+              count={likedEntryCount}
             />
           </div>
 
@@ -807,7 +878,7 @@ export function Profile({
               title={
                 isOwnProfile
                   ? "Your shared knowledge"
-                  : `@${profile.username}'s shared knowledge`
+                  : `${profileDisplayName}'s shared knowledge`
               }
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
@@ -824,7 +895,7 @@ export function Profile({
               title={
                 isOwnProfile
                   ? "Posts you liked"
-                  : `Knowledge liked by @${profile.username}`
+                  : `Knowledge liked by ${profileDisplayName}`
               }
               emptyMessage="No liked knowledge yet."
               entries={orderedLikedEntries}
@@ -857,6 +928,10 @@ export function Profile({
             setAvatarSaveError(null);
             setShowAvatarPicker(true);
           }}
+          onChangeBanner={() => {
+            setBannerSaveError(null);
+            setShowBannerPicker(true);
+          }}
           onSave={handleSaveProfileSettings}
           onClose={() => {
             if (isSavingProfile) return;
@@ -869,7 +944,7 @@ export function Profile({
       {showAvatarPicker && profile && (
         <ProfileAvatarPicker
           currentImage={profile.profileImage}
-          username={profile.username}
+          username={profileDisplayName || profile.username}
           isSaving={isSavingAvatar}
           errorMessage={avatarSaveError}
           onSave={handleChangeAvatar}
@@ -877,6 +952,22 @@ export function Profile({
             if (isSavingAvatar) return;
             setAvatarSaveError(null);
             setShowAvatarPicker(false);
+          }}
+        />
+      )}
+
+      {showBannerPicker && profile && (
+        <ProfileAvatarPicker
+          currentImage={profile.bannerImage}
+          username={profileDisplayName || profile.username}
+          variant="banner"
+          isSaving={isSavingBanner}
+          errorMessage={bannerSaveError}
+          onSave={handleChangeBanner}
+          onClose={() => {
+            if (isSavingBanner) return;
+            setBannerSaveError(null);
+            setShowBannerPicker(false);
           }}
         />
       )}
@@ -898,111 +989,13 @@ export function Profile({
   );
 }
 
-type ProfileSocialPlatform = "linkedin" | "instagram" | "youtube";
-
-function ProfileSocialLinks({ socialLinks }: { socialLinks: UserSocialLinks }) {
-  const links = [
-    {
-      key: "linkedin",
-      label: "LinkedIn",
-      href: socialLinks.linkedin,
-      platform: "linkedin" as const,
-    },
-    {
-      key: "instagram",
-      label: "Instagram",
-      href: socialLinks.instagram,
-      platform: "instagram" as const,
-    },
-    {
-      key: "youtube",
-      label: "YouTube",
-      href: socialLinks.youtube,
-      platform: "youtube" as const,
-    },
-  ].filter((link) => Boolean(link.href));
-
-  if (links.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      {links.map((link) => (
-        <a
-          key={link.key}
-          href={link.href}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`Open ${link.label} profile`}
-          title={`Open ${link.label} profile`}
-          className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 pr-3 text-xs font-bold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
-        >
-          <SocialBrandIcon platform={link.platform} />
-          <span className="hidden sm:inline">{link.label}</span>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function SocialBrandIcon({ platform }: { platform: ProfileSocialPlatform }) {
-  if (platform === "linkedin") {
-    return (
-      <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#0A66C2] text-white">
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M6.9 8.7H3.7v11h3.2v-11Zm.2-3.4c0-1-.8-1.8-1.9-1.8S3.3 4.3 3.3 5.3s.8 1.8 1.9 1.8 1.9-.8 1.9-1.8Zm13.6 8.1c0-3.4-1.8-5-4.2-5-1.9 0-2.8 1.1-3.3 1.8V8.7h-3.1v11h3.2v-5.4c0-1.4.3-2.8 2.1-2.8 1.7 0 1.7 1.6 1.7 2.9v5.3h3.2v-6.3Z"
-          />
-        </svg>
-      </span>
-    );
-  }
-
-  if (platform === "instagram") {
-    return (
-      <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-[radial-gradient(circle_at_30%_105%,#feda75_0%,#fa7e1e_28%,#d62976_52%,#962fbf_74%,#4f5bd5_100%)] text-white">
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
-          <rect
-            x="5"
-            y="5"
-            width="14"
-            height="14"
-            rx="4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <circle
-            cx="12"
-            cy="12"
-            r="3.3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <circle cx="16.4" cy="7.7" r="1.1" fill="currentColor" />
-        </svg>
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#FF0000] text-white">
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
-        <path fill="currentColor" d="M10 8.4v7.2l6.1-3.6L10 8.4Z" />
-      </svg>
-    </span>
-  );
-}
-
 function EditProfileModal({
   profile,
   usernameCooldown,
   isSaving,
   errorMessage,
   onChangePhoto,
+  onChangeBanner,
   onSave,
   onClose,
 }: {
@@ -1011,33 +1004,48 @@ function EditProfileModal({
   isSaving: boolean;
   errorMessage: string | null;
   onChangePhoto: () => void;
+  onChangeBanner: () => void;
   onSave: (input: {
+    displayName: string;
     username: string;
+    jobTitle: string;
+    bio: string;
     socialLinks: UserSocialLinks;
+    showSocialLinksOnPosts: boolean;
   }) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const [displayName, setDisplayName] = useState(getProfileDisplayName(profile));
   const [username, setUsername] = useState(profile.username);
+  const [jobTitle, setJobTitle] = useState(profile.jobTitle || "");
+  const [bio, setBio] = useState(profile.bio || "");
   const [linkedin, setLinkedin] = useState(profile.socialLinks.linkedin || "");
   const [instagram, setInstagram] = useState(
     profile.socialLinks.instagram || "",
   );
   const [youtube, setYoutube] = useState(profile.socialLinks.youtube || "");
+  const [showSocialLinksOnPosts, setShowSocialLinksOnPosts] = useState(
+    profile.showSocialLinksOnPosts,
+  );
 
   const handleSave = () => {
     void onSave({
+      displayName,
       username,
+      jobTitle,
+      bio,
       socialLinks: {
         linkedin,
         instagram,
         youtube,
       },
+      showSocialLinksOnPosts,
     });
   };
 
   return (
     <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
         <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
           <button
             type="button"
@@ -1057,44 +1065,96 @@ function EditProfileModal({
         </div>
 
         <div className="space-y-5 p-5 sm:p-6">
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <ProfileAvatar
-              authorId={profile.id}
-              image={profile.profileImage}
-              photoUrl={profile.photoUrl}
-              username={profile.username}
-              size="lg"
-              className="border-slate-200 bg-white"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-slate-900">
-                @{profile.username}
-              </p>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+            <div className="relative h-24 bg-[linear-gradient(135deg,#0f172a_0%,#0f766e_48%,#2563eb_100%)]">
+              {profile.bannerImage && (
+                <img
+                  src={profile.bannerImage.dataUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              )}
+              <button
+                type="button"
+                onClick={onChangeBanner}
+                disabled={isSaving}
+                className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-colors hover:bg-white disabled:opacity-50"
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+                Banner
+              </button>
+            </div>
+
+            <div className="-mt-9 flex items-end gap-4 px-4 pb-4">
+              <ProfileAvatar
+                authorId={profile.id}
+                image={profile.profileImage}
+                photoUrl={profile.photoUrl}
+                username={displayName}
+                size="lg"
+                className="border-slate-200 bg-white ring-4 ring-white"
+              />
+              <div className="min-w-0 flex-1 pb-1">
+                <p className="truncate text-sm font-bold text-slate-900">
+                  {displayName || profile.username}
+                </p>
+                <p className="text-xs font-semibold text-slate-500">
+                  @{profile.username}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={onChangePhoto}
                 disabled={isSaving}
-                className="mt-2 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                className="mb-1 inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
-                <ImagePlus className="h-4 w-4" />
-                Change photo
+                <ImagePlus className="h-3.5 w-3.5" />
+                Photo
               </button>
             </div>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextInput
+              label="Name"
+              value={displayName}
+              onChange={setDisplayName}
+              placeholder="Your public name"
+            />
+            <div>
+              <TextInput
+                label="Username"
+                value={username}
+                onChange={setUsername}
+                placeholder="username"
+              />
+              <p className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+                <Clock3 className="h-4 w-4" />
+                {formatCooldown(usernameCooldown)}
+              </p>
+            </div>
+          </div>
+
+          <TextInput
+            label="Job title / headline"
+            value={jobTitle}
+            onChange={setJobTitle}
+            placeholder="Founder, Product Designer, Student..."
+          />
+
           <div>
             <label className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-              Username
+              Bio
             </label>
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="username"
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            <textarea
+              value={bio}
+              onChange={(event) => setBio(event.target.value)}
+              placeholder="A short intro for your profile"
+              maxLength={220}
+              className="mt-2 min-h-[92px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
             />
-            <p className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
-              <Clock3 className="h-4 w-4" />
-              {formatCooldown(usernameCooldown)}
+            <p className="mt-1 text-right text-[11px] font-semibold text-slate-400">
+              {bio.length}/220
             </p>
           </div>
 
@@ -1122,6 +1182,33 @@ function EditProfileModal({
             />
           </div>
 
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={showSocialLinksOnPosts}
+              onChange={(event) => setShowSocialLinksOnPosts(event.target.checked)}
+              className="sr-only"
+            />
+            <span
+              className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                showSocialLinksOnPosts
+                  ? "border-emerald-600 bg-emerald-600 text-white"
+                  : "border-slate-300 bg-white text-transparent"
+              }`}
+            >
+              <Check className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-slate-900">
+                Show social buttons on my posts
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">
+                When checked, readers can open your added social links directly
+                from your post cards on Home.
+              </span>
+            </span>
+          </label>
+
           {errorMessage && (
             <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {errorMessage}
@@ -1133,7 +1220,11 @@ function EditProfileModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving || username.trim().length < 3}
+            disabled={
+              isSaving ||
+              username.trim().length < 3 ||
+              displayName.trim().length < 2
+            }
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50 sm:w-auto"
           >
             <Save className="h-4 w-4" />
@@ -1142,6 +1233,32 @@ function EditProfileModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+      />
+    </label>
   );
 }
 
@@ -1178,39 +1295,24 @@ function SectionButton({
   active,
   onClick,
   label,
+  count,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  count: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-all ${
+      className={`rounded-full px-3.5 py-2 text-xs font-bold transition-all ${
         active
           ? "bg-slate-900 text-white"
-          : "bg-white text-slate-500 hover:bg-slate-100"
+          : "text-slate-500 hover:bg-slate-100"
       }`}
     >
-      {label}
+      {label} <span className={active ? "text-white/80" : "text-slate-400"}>({count})</span>
     </button>
-  );
-}
-
-function ProfileStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-      <p className="text-2xl font-black text-slate-950">{value}</p>
-      <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
-        {label}
-      </p>
-    </div>
   );
 }
 

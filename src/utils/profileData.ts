@@ -64,18 +64,39 @@ function normalizeProfileKnowledgeIds(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function normalizeProfileText(value: unknown, maxLength: number): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
 export function hydrateUserProfile(
   data: Partial<UserProfile>,
   id: string,
 ): UserProfile {
+  const username = data.username || "";
+  const displayName =
+    normalizeProfileText(data.displayName, 64) ||
+    normalizeProfileText(
+      (data as Partial<UserProfile> & { googleDisplayName?: unknown }).googleDisplayName,
+      64,
+    ) ||
+    username;
+
   return {
     id,
     email: data.email || "",
-    username: data.username || "",
+    displayName,
+    username,
     usernameLower: data.usernameLower || "",
-    bio: data.bio || "",
+    jobTitle: normalizeProfileText(data.jobTitle, 90),
+    bio: typeof data.bio === "string" ? data.bio.trim().slice(0, 220) : "",
     socialLinks: normalizeProfileSocialLinks(data.socialLinks),
+    showSocialLinksOnPosts: data.showSocialLinksOnPosts === true,
     likedKnowledgeIds: normalizeProfileKnowledgeIds(data.likedKnowledgeIds),
+    bannerImage: normalizeProfileImage(data.bannerImage),
     profileImage: normalizeProfileImage(data.profileImage),
     photoUrl: normalizeProfilePhotoUrl(data.photoUrl),
     createdAt: data.createdAt || Date.now(),

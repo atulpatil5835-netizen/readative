@@ -37,6 +37,7 @@ import {
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { ProfileSocialLinks } from "./ProfileSocialLinks";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { normalizeKnowledgeVisibility } from "../utils/knowledgePrivacy";
 import {
@@ -50,6 +51,10 @@ import {
 
 function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(" ");
+}
+
+function getProfileDisplayName(profile: UserProfile | undefined, fallback: string) {
+  return profile?.displayName?.trim() || fallback;
 }
 
 function isShareAbortError(error: unknown) {
@@ -228,6 +233,18 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     [profiles],
   );
   const authorProfile = profileMap.get(entry.authorId);
+  const authorDisplayName = getProfileDisplayName(authorProfile, entry.author);
+  const authorUsername = authorProfile?.username || entry.author;
+  const shouldShowAuthorSocialLinks =
+    authorProfile?.showSocialLinksOnPosts &&
+    Object.values(authorProfile.socialLinks || {}).some(Boolean);
+  const topCommentProfile = topComment?.authorId
+    ? profileMap.get(topComment.authorId)
+    : undefined;
+  const topCommentDisplayName = topComment
+    ? getProfileDisplayName(topCommentProfile, topComment.author)
+    : "";
+  const topCommentUsername = topCommentProfile?.username || topComment?.author || "";
   const filteredCommentMentionProfiles = useMemo(() => {
     if (!activeCommentMention) return [];
 
@@ -703,25 +720,27 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             <button
               onClick={() => handleOpenAuthorProfile(entry.authorId)}
               className="rounded-full transition-transform hover:scale-[1.02]"
-              aria-label={`Open @${entry.author}'s profile`}
+              aria-label={`Open ${authorDisplayName}'s profile`}
             >
               <ProfileAvatar
                 authorId={entry.authorId}
                 image={authorProfile?.profileImage}
                 photoUrl={authorProfile?.photoUrl}
-                username={entry.author}
+                username={authorDisplayName}
                 size="sm"
                 className="border-slate-200"
               />
             </button>
-            <div>
+            <div className="min-w-0">
               <button
                 onClick={() => handleOpenAuthorProfile(entry.authorId)}
                 className="text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
               >
-                @{entry.author}
+                {authorDisplayName}
               </button>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span>@{authorUsername}</span>
+                <span>&bull;</span>
                 <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
                 <span>&bull;</span>
                 <span>{readingMinutes} min read</span>
@@ -731,6 +750,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                   Knowledge
                 </span>
               </div>
+              {shouldShowAuthorSocialLinks && (
+                <ProfileSocialLinks
+                  socialLinks={authorProfile?.socialLinks || {}}
+                  compact
+                  iconOnly
+                  className="mt-2"
+                />
+              )}
             </div>
           </div>
 
@@ -821,16 +848,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               <ProfileAvatar
                 authorId={topComment.authorId || topComment.id}
                 image={
-                  topComment.authorId
-                    ? profileMap.get(topComment.authorId)?.profileImage
-                    : undefined
+                  topComment.authorId ? topCommentProfile?.profileImage : undefined
                 }
                 photoUrl={
-                  topComment.authorId
-                    ? profileMap.get(topComment.authorId)?.photoUrl
-                    : undefined
+                  topComment.authorId ? topCommentProfile?.photoUrl : undefined
                 }
-                username={topComment.author}
+                username={topCommentDisplayName}
                 size="xs"
                 className="border-slate-200"
               />
@@ -840,12 +863,17 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                     onClick={() => handleOpenAuthorProfile(topComment.authorId)}
                     className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                   >
-                    @{topComment.author}
+                    {topCommentDisplayName}
                   </button>
                 ) : (
                   <span className="text-xs font-bold text-slate-800">
-                    @{topComment.author}
+                    {topCommentDisplayName}
                   </span>
+                )}
+                {topCommentUsername && (
+                  <p className="text-[11px] font-semibold text-slate-400">
+                    @{topCommentUsername}
+                  </p>
                 )}
                 <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                   {renderRichText({
@@ -1048,57 +1076,65 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                 No comments yet. Start the discussion.
               </p>
             ) : (
-              localComments.map((comment) => (
-                <div
-                  key={comment.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="mb-1 flex items-start gap-3">
-                    <ProfileAvatar
-                      authorId={comment.authorId || comment.id}
-                      image={
-                        comment.authorId
-                          ? profileMap.get(comment.authorId)?.profileImage
-                          : undefined
-                      }
-                      photoUrl={
-                        comment.authorId
-                          ? profileMap.get(comment.authorId)?.photoUrl
-                          : undefined
-                      }
-                      username={comment.author}
-                      size="xs"
-                      className="border-slate-200"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {comment.authorId ? (
-                          <button
-                            onClick={() => handleOpenAuthorProfile(comment.authorId)}
-                            className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
-                          >
-                            @{comment.author}
-                          </button>
-                        ) : (
-                          <span className="text-xs font-bold text-slate-800">
-                            @{comment.author}
+              localComments.map((comment) => {
+                const commentProfile = comment.authorId
+                  ? profileMap.get(comment.authorId)
+                  : undefined;
+                const commentDisplayName = getProfileDisplayName(
+                  commentProfile,
+                  comment.author,
+                );
+                const commentUsername = commentProfile?.username || comment.author;
+
+                return (
+                  <div
+                    key={comment.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="mb-1 flex items-start gap-3">
+                      <ProfileAvatar
+                        authorId={comment.authorId || comment.id}
+                        image={commentProfile?.profileImage}
+                        photoUrl={commentProfile?.photoUrl}
+                        username={commentDisplayName}
+                        size="xs"
+                        className="border-slate-200"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {comment.authorId ? (
+                            <button
+                              onClick={() =>
+                                handleOpenAuthorProfile(comment.authorId)
+                              }
+                              className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
+                            >
+                              {commentDisplayName}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-800">
+                              {commentDisplayName}
+                            </span>
+                          )}
+                          <span className="text-[11px] font-semibold text-slate-400">
+                            @{commentUsername}
                           </span>
-                        )}
-                        <span className="text-[11px] text-slate-400">
-                          {new Date(comment.createdAt).toLocaleString()}
-                        </span>
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(comment.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm leading-6 text-slate-600">
+                          {renderRichText({
+                            text: comment.text,
+                            mentions: comment.mentions || [],
+                            onOpenProfile: handleOpenAuthorProfile,
+                          })}
+                        </p>
                       </div>
-                      <p className="text-sm leading-6 text-slate-600">
-                        {renderRichText({
-                          text: comment.text,
-                          mentions: comment.mentions || [],
-                          onOpenProfile: handleOpenAuthorProfile,
-                        })}
-                      </p>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

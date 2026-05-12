@@ -35,6 +35,14 @@ const SOCIAL_HOSTS: Record<keyof UserSocialLinks, string[]> = {
   youtube: ["youtube.com", "youtu.be"],
 };
 
+export interface UserProfileDetailsInput {
+  displayName: string;
+  jobTitle: string;
+  bio: string;
+  socialLinks: Partial<UserSocialLinks>;
+  showSocialLinksOnPosts: boolean;
+}
+
 function syncLocalProfileIdentity(profile: UserProfile) {
   saveGuestName(profile.username);
   saveKnowledgeIdentity(profile.username, profile.id);
@@ -113,6 +121,27 @@ export function validateUsername(rawInput: string): string {
   }
 
   return username;
+}
+
+function validateDisplayName(rawInput: string, fallbackUsername: string): string {
+  const displayName = rawInput.replace(/\s+/g, " ").trim();
+  if (!displayName) {
+    return fallbackUsername;
+  }
+
+  if (displayName.length < 2) {
+    throw new Error("Name must be at least 2 characters.");
+  }
+
+  if (displayName.length > 64) {
+    throw new Error("Name must be 64 characters or less.");
+  }
+
+  return displayName;
+}
+
+function normalizeProfileText(rawInput: string, maxLength: number): string {
+  return rawInput.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function normalizeSocialLink(
@@ -425,10 +454,16 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
   const photoUrl = normalizeGooglePhotoUrl(user.photoURL);
 
   if (existing.exists()) {
+    const existingData = existing.data() as Partial<UserProfile> & {
+      googleDisplayName?: string;
+    };
     const currentProfile = hydrateUserProfile(
-      existing.data() as Partial<UserProfile>,
+      existingData,
       existing.id,
     );
+    const hasSavedDisplayName =
+      typeof existingData.displayName === "string" &&
+      existingData.displayName.trim().length > 0;
     const payload: Record<string, unknown> = {
       email,
       photoUrl,
@@ -448,10 +483,22 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
       };
     }
 
+    if (!hasSavedDisplayName) {
+      payload.displayName = validateDisplayName(
+        user.displayName || profile.username,
+        profile.username,
+      );
+      profile = {
+        ...profile,
+        displayName: String(payload.displayName),
+      };
+    }
+
     const shouldUpdateProfile =
       profile.email !== email ||
       profile.photoUrl !== photoUrl ||
-      !currentProfile.usernameLower;
+      !currentProfile.usernameLower ||
+      !hasSavedDisplayName;
 
     if (shouldUpdateProfile) {
       payload.updatedAt = now;
@@ -479,11 +526,15 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
   const profile: UserProfile = {
     id: user.uid,
     email,
+    displayName: validateDisplayName(user.displayName || username, username),
     username,
     usernameLower: username,
+    jobTitle: "",
     bio: "",
     socialLinks: {},
+    showSocialLinksOnPosts: false,
     likedKnowledgeIds: [],
+    bannerImage: null,
     profileImage: null,
     photoUrl,
     createdAt: now,
@@ -532,11 +583,15 @@ export async function ensureGuestProfile(
   const profile: UserProfile = {
     id: authorId,
     email: "",
+    displayName: username,
     username,
     usernameLower: username,
+    jobTitle: "",
     bio: "",
     socialLinks: {},
+    showSocialLinksOnPosts: false,
     likedKnowledgeIds: [],
+    bannerImage: null,
     profileImage: null,
     createdAt: now,
     updatedAt: now,
@@ -613,6 +668,60 @@ export async function changeProfilePhoto(
     profileImage: updated.profileImage,
     updatedAt: updated.updatedAt,
     avatarId: deleteField(),
+  });
+
+  return updated;
+}
+
+export async function changeProfileBanner(
+  profile: UserProfile,
+  nextBannerImage: KnowledgeImageAsset,
+): Promise<UserProfile> {
+  if (profile.bannerImage?.dataUrl === nextBannerImage.dataUrl) {
+    return profile;
+  }
+
+  const updated: UserProfile = {
+    ...profile,
+    bannerImage: nextBannerImage,
+    updatedAt: Date.now(),
+  };
+
+  await updateDoc(doc(db, "userProfiles", profile.id), {
+    bannerImage: updated.bannerImage,
+    updatedAt: updated.updatedAt,
+  });
+
+  return updated;
+}
+
+export async function updateProfileDetails(
+  profile: UserProfile,
+  input: UserProfileDetailsInput,
+): Promise<UserProfile> {
+  const displayName = validateDisplayName(input.displayName, profile.username);
+  const jobTitle = normalizeProfileText(input.jobTitle, 90);
+  const bio = input.bio.trim().slice(0, 220);
+  const socialLinks = normalizeSocialLinksInput(input.socialLinks);
+  const showSocialLinksOnPosts =
+    input.showSocialLinksOnPosts && Object.keys(socialLinks).length > 0;
+  const updated: UserProfile = {
+    ...profile,
+    displayName,
+    jobTitle,
+    bio,
+    socialLinks,
+    showSocialLinksOnPosts,
+    updatedAt: Date.now(),
+  };
+
+  await updateDoc(doc(db, "userProfiles", profile.id), {
+    displayName,
+    jobTitle,
+    bio,
+    socialLinks,
+    showSocialLinksOnPosts,
+    updatedAt: updated.updatedAt,
   });
 
   return updated;

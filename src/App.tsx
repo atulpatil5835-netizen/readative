@@ -242,7 +242,7 @@ export default function App() {
         const applyNotificationSnapshot = (snapshot: {
           docs: Array<{
             id: string;
-            data: () => UserNotification;
+            data: () => unknown;
           }>;
         }) => {
           const nextNotifications = snapshot.docs

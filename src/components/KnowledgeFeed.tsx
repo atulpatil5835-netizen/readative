@@ -1627,7 +1627,9 @@ export function KnowledgeFeed({
       }).map((entry) => entry.id),
     );
     setShowRefreshFeedback(true);
-    const animationFrameId = window.requestAnimationFrame(scrollKnowledgeFeedToTop);
+    const animationFrameId = window.requestAnimationFrame(() =>
+      scrollKnowledgeFeedToTop(),
+    );
 
     const timeoutId = window.setTimeout(() => {
       setShowRefreshFeedback(false);

@@ -2,6 +2,9 @@ import { type KnowledgeImageAsset } from "../types";
 
 const PROFILE_IMAGE_DIMENSION = 176;
 const PROFILE_IMAGE_MAX_INLINE_CHARS = 48_000;
+const PROFILE_BANNER_RATIO = 4.2;
+const PROFILE_BANNER_DIMENSION = 1280;
+const PROFILE_BANNER_MAX_INLINE_CHARS = 120_000;
 
 export function normalizeProfileImage(
   value: unknown,
@@ -41,5 +44,19 @@ export async function optimizeProfileImageFile(
     targetRatio: 1,
     maxDimension: PROFILE_IMAGE_DIMENSION,
     maxInlineChars: PROFILE_IMAGE_MAX_INLINE_CHARS,
+  });
+}
+
+export async function optimizeProfileBannerFile(
+  file: File,
+): Promise<KnowledgeImageAsset> {
+  const { optimizeKnowledgeImageFile } = await import(
+    "./knowledgeImageOptimizer"
+  );
+
+  return optimizeKnowledgeImageFile(file, {
+    targetRatio: PROFILE_BANNER_RATIO,
+    maxDimension: PROFILE_BANNER_DIMENSION,
+    maxInlineChars: PROFILE_BANNER_MAX_INLINE_CHARS,
   });
 }
