@@ -13,7 +13,6 @@ import {
   UserProfile,
 } from "../types";
 import {
-  BookOpenText,
   Globe2,
   Heart,
   Lock,
@@ -220,7 +219,6 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const mentions = entry.mentions || [];
   const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
-  const readingMinutes = estimateReadMinutes(entry.content);
   const topComment = useMemo(
     () =>
       [...localComments].sort(
@@ -714,12 +712,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         />
       )}
 
-      <div className="p-5">
+      <div className="p-4 sm:p-5">
         <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => handleOpenAuthorProfile(entry.authorId)}
-              className="rounded-full transition-transform hover:scale-[1.02]"
+              className="shrink-0 rounded-full transition-transform hover:scale-[1.02]"
               aria-label={`Open ${authorDisplayName}'s profile`}
             >
               <ProfileAvatar
@@ -732,32 +730,26 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               />
             </button>
             <div className="min-w-0">
-              <button
-                onClick={() => handleOpenAuthorProfile(entry.authorId)}
-                className="text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-              >
-                {authorDisplayName}
-              </button>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <button
+                  onClick={() => handleOpenAuthorProfile(entry.authorId)}
+                  className="min-w-0 truncate text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
+                >
+                  {authorDisplayName}
+                </button>
+                {shouldShowAuthorSocialLinks && (
+                  <ProfileSocialLinks
+                    socialLinks={authorProfile?.socialLinks || {}}
+                    compact
+                    iconOnly
+                  />
+                )}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
                 <span>@{authorUsername}</span>
                 <span>&bull;</span>
                 <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
-                <span>&bull;</span>
-                <span>{readingMinutes} min read</span>
-                <span>&bull;</span>
-                <span className="inline-flex items-center gap-1">
-                  <BookOpenText className="h-3.5 w-3.5" />
-                  Knowledge
-                </span>
               </div>
-              {shouldShowAuthorSocialLinks && (
-                <ProfileSocialLinks
-                  socialLinks={authorProfile?.socialLinks || {}}
-                  compact
-                  iconOnly
-                  className="mt-2"
-                />
-              )}
             </div>
           </div>
 
