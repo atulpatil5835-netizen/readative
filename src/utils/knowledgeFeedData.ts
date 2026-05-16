@@ -41,14 +41,18 @@ export async function toggleKnowledgeEntryLike({
     await updateDoc(doc(db, "knowledge", entry.id), knowledgeLikeUpdate);
   }
 
-  const { notifyLikeOnKnowledge, removeLikeNotification } = await import("./notifications");
-
   if (shouldLike) {
     if (actorName) {
-      await notifyLikeOnKnowledge(entry, {
-        authorId: actorId,
-        username: actorName,
-      });
+      void import("./notifications")
+        .then(({ notifyLikeOnKnowledge }) =>
+          notifyLikeOnKnowledge(entry, {
+            authorId: actorId,
+            username: actorName,
+          }),
+        )
+        .catch((error) => {
+          console.warn("Like notification failed; like was saved.", error);
+        });
     }
 
     recordKnowledgeFeedActivity({
@@ -58,5 +62,11 @@ export async function toggleKnowledgeEntryLike({
     return;
   }
 
-  await removeLikeNotification(entry.id, actorId);
+  void import("./notifications")
+    .then(({ removeLikeNotification }) =>
+      removeLikeNotification(entry.id, actorId),
+    )
+    .catch((error) => {
+      console.warn("Like notification cleanup failed; unlike was saved.", error);
+    });
 }

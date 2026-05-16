@@ -2121,15 +2121,20 @@ export function KnowledgeFeed({
     cursor: null,
     error: null,
   };
+  const visibleLikedEntryIdSet = useMemo(
+    () => new Set(visibleLikedEntryIds),
+    [visibleLikedEntryIds],
+  );
   const viewableEntries = useMemo(
     () =>
       entries.filter(
         (entry) =>
           canViewKnowledgeEntry(entry, currentAuthorId) &&
           (entry.id === focusedEntryId ||
-            !isEntryLikedByAuthor(entry, currentAuthorId)),
+            !isEntryLikedByAuthor(entry, currentAuthorId) ||
+            visibleLikedEntryIdSet.has(entry.id)),
       ),
-    [currentAuthorId, entries, focusedEntryId],
+    [currentAuthorId, entries, focusedEntryId, visibleLikedEntryIdSet],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -2171,7 +2176,8 @@ export function KnowledgeFeed({
       .filter(
         (entry) =>
           canViewKnowledgeEntry(entry, currentAuthorId) &&
-          !isEntryLikedByAuthor(entry, currentAuthorId),
+          (!isEntryLikedByAuthor(entry, currentAuthorId) ||
+            visibleLikedEntryIdSet.has(entry.id)),
       )
       .filter((entry) => {
         if (!normalizedSelectedHashtag) return true;
@@ -2196,6 +2202,7 @@ export function KnowledgeFeed({
     currentAuthorId,
     normalizedSelectedHashtag,
     shouldUseIndependentFeed,
+    visibleLikedEntryIdSet,
   ]);
   const visibleEntries = independentFeedEntries || orderedEntries;
   const filteredEntries = useMemo(() => {
@@ -2951,16 +2958,27 @@ export function KnowledgeFeed({
 
   const handleLikeChange = useCallback(
     (entryId: string, likes: string[]) => {
+      const likedByCurrentUser = Boolean(
+        currentAuthorId && likes.includes(currentAuthorId),
+      );
+
       setVisibleLikedEntryIds((currentIds) => {
-        const nextIds = currentIds.filter((id) => id !== entryId);
+        const nextIds = likedByCurrentUser
+          ? [...new Set([...currentIds, entryId])]
+          : currentIds.filter((id) => id !== entryId);
 
         visibleLikedEntryIdsRef.current = nextIds;
         return nextIds;
       });
 
-      entriesRef.current = entriesRef.current.map((entry) =>
-        entry.id === entryId ? { ...entry, likes } : entry,
-      );
+      setEntries((currentEntries) => {
+        const nextEntries = currentEntries.map((entry) =>
+          entry.id === entryId ? { ...entry, likes } : entry,
+        );
+        entriesRef.current = nextEntries;
+        return nextEntries;
+      });
+
       setTopicFeedStates((current) => {
         let didUpdate = false;
         const nextStates = Object.fromEntries(
@@ -2984,7 +3002,7 @@ export function KnowledgeFeed({
         return didUpdate ? nextStates : current;
       });
     },
-    [],
+    [currentAuthorId],
   );
 
   const pageTitle = focusedEntry
