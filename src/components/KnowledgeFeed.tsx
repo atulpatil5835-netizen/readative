@@ -171,6 +171,10 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "llm",
       "generative ai",
       "ai automation",
+      "ai tools",
+      "aitools",
+      "free ai",
+      "freeai",
       "machine learning",
       "claude",
       "copilot",
@@ -219,6 +223,8 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "seo",
       "content",
       "brand",
+      "growth hacking",
+      "growthhacking",
       "newsletter",
       "copywriting",
       "campaign",
@@ -257,6 +263,12 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "browser",
       "chrome",
       "extension",
+      "free tools",
+      "freetools",
+      "tech tips",
+      "techtips",
+      "tech hacks",
+      "techhacks",
       "platform",
     ],
   },
@@ -290,6 +302,8 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
       "figma",
       "prototype",
       "interface",
+      "photo editing",
+      "photoediting",
     ],
   },
   {
@@ -463,28 +477,33 @@ function normalizeStoredHashtagValue(value: string) {
   return value.replace(/^#/, "").trim().toLowerCase();
 }
 
-function getKnowledgeTopicSourceText(entry: KnowledgeEntry) {
-  return entry.hashtags.join(" ");
-}
+function getStrictHashtagValues(value: string) {
+  const values = new Set<string>();
+  const normalizedValue = normalizeKnowledgeTopicValue(value.replace(/^#/, ""));
+  if (!normalizedValue) return [];
 
-function getKnowledgeTopicCorpus(entry: KnowledgeEntry) {
-  const text = normalizeKnowledgeTopicValue(getKnowledgeTopicSourceText(entry));
-  const rawTokens = text.match(/[a-z0-9+#]+/g) || [];
-  const tokens = new Set(
-    rawTokens.flatMap((token) =>
-      token.startsWith("#") ? [token, token.slice(1)] : [token],
-    ),
-  );
-  const compactHashtags = entry.hashtags
-    .map((tag) => normalizeKnowledgeTopicValue(tag.replace(/^#/, "")))
-    .map((tag) => tag.replace(/\s+/g, ""))
-    .filter(Boolean);
+  const valueTokens = normalizedValue.split(/\s+/).filter(Boolean);
+  const compactValue = valueTokens.join("");
+  const dashedValue = valueTokens.join("-");
+  const underscoredValue = valueTokens.join("_");
 
-  return {
-    text: ` ${text} `,
-    tokens,
-    compactHashtags,
-  };
+  [normalizedValue, compactValue, dashedValue, underscoredValue]
+    .map(normalizeStoredHashtagValue)
+    .filter((tagValue) => tagValue && !tagValue.includes(" "))
+    .forEach((tagValue) => values.add(tagValue));
+
+  if (valueTokens.length === 1) {
+    const [token] = valueTokens;
+    if (token.length > 2 && !token.endsWith("s")) {
+      values.add(`${token}s`);
+    }
+
+    if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+      values.add(token.slice(0, -1));
+    }
+  }
+
+  return [...values];
 }
 
 function getTopicHashtagQueryValues(topic: FeedTopicFilter) {
@@ -492,77 +511,26 @@ function getTopicHashtagQueryValues(topic: FeedTopicFilter) {
 
   const values = new Set<string>();
   topic.keywords.forEach((keyword) => {
-    const normalizedKeyword = normalizeKnowledgeTopicValue(keyword);
-    if (!normalizedKeyword) return;
-
-    const compactKeyword = normalizedKeyword.replace(/\s+/g, "");
-    const dashedKeyword = normalizedKeyword.replace(/\s+/g, "-");
-    const underscoredKeyword = normalizedKeyword.replace(/\s+/g, "_");
-
-    [normalizedKeyword, compactKeyword, dashedKeyword, underscoredKeyword]
-      .map(normalizeStoredHashtagValue)
-      .filter((value) => value && !value.includes(" "))
-      .forEach((value) => values.add(value));
+    getStrictHashtagValues(keyword).forEach((value) => values.add(value));
   });
 
   return [...values].slice(0, FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT);
 }
 
-function getTopicKeywordTokenVariants(token: string) {
-  const variants = new Set([token]);
-
-  if (token.length > 2 && !token.endsWith("s")) {
-    variants.add(`${token}s`);
-  }
-
-  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
-    variants.add(token.slice(0, -1));
-  }
-
-  return variants;
-}
-
-function matchesTopicKeyword(
-  corpus: ReturnType<typeof getKnowledgeTopicCorpus>,
-  keyword: string,
-) {
-  const normalizedKeyword = normalizeKnowledgeTopicValue(keyword);
-  if (!normalizedKeyword) return false;
-
-  const keywordTokens = normalizedKeyword.split(/\s+/).filter(Boolean);
-  const compactKeyword = keywordTokens.join("");
-
-  if (keywordTokens.length > 1) {
-    return (
-      corpus.text.includes(` ${normalizedKeyword} `) ||
-      corpus.compactHashtags.some(
-        (tag) =>
-          tag === compactKeyword ||
-          (compactKeyword.length >= 5 && tag.includes(compactKeyword)),
-      )
-    );
-  }
-
-  const [keywordToken] = keywordTokens;
-  const variants = getTopicKeywordTokenVariants(keywordToken);
-  const matchesToken = [...variants].some((variant) =>
-    corpus.tokens.has(variant),
-  );
-  if (matchesToken) return true;
-
-  return corpus.compactHashtags.some((tag) =>
-    [...variants].some(
-      (variant) => tag === variant || (variant.length >= 4 && tag.includes(variant)),
-    ),
+function getEntryHashtagValues(entry: Pick<KnowledgeEntry, "hashtags">) {
+  return new Set(
+    entry.hashtags.flatMap((tag) => getStrictHashtagValues(tag)),
   );
 }
 
 function matchesKnowledgeTopic(entry: KnowledgeEntry, topic: FeedTopicFilter) {
   if (topic.id === "all" || topic.id === "trending") return true;
 
-  const corpus = getKnowledgeTopicCorpus(entry);
+  const topicHashtagValues = getTopicHashtagQueryValues(topic);
+  if (topicHashtagValues.length === 0) return false;
 
-  return topic.keywords.some((keyword) => matchesTopicKeyword(corpus, keyword));
+  const entryHashtagValues = getEntryHashtagValues(entry);
+  return topicHashtagValues.some((value) => entryHashtagValues.has(value));
 }
 
 function getKnowledgeTrendingScore(entry: KnowledgeEntry) {
@@ -2155,8 +2123,13 @@ export function KnowledgeFeed({
   };
   const viewableEntries = useMemo(
     () =>
-      entries.filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId)),
-    [currentAuthorId, entries],
+      entries.filter(
+        (entry) =>
+          canViewKnowledgeEntry(entry, currentAuthorId) &&
+          (entry.id === focusedEntryId ||
+            !isEntryLikedByAuthor(entry, currentAuthorId)),
+      ),
+    [currentAuthorId, entries, focusedEntryId],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -2195,7 +2168,11 @@ export function KnowledgeFeed({
     if (!shouldUseIndependentFeed) return null;
 
     return activeTopicFeedState.entries
-      .filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId))
+      .filter(
+        (entry) =>
+          canViewKnowledgeEntry(entry, currentAuthorId) &&
+          !isEntryLikedByAuthor(entry, currentAuthorId),
+      )
       .filter((entry) => {
         if (!normalizedSelectedHashtag) return true;
 
@@ -2264,6 +2241,16 @@ export function KnowledgeFeed({
       !hasActiveSearch &&
       !isActiveFeedLoadingMore &&
       (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError));
+  const shouldFillInitialVisibleBatch =
+    !focusedEntryId &&
+    !hasActiveSearch &&
+    filteredEntries.length > 0 &&
+    filteredEntries.length < FEED_INITIAL_PAGE_SIZE &&
+    hasMoreEntries &&
+    !isPaginationBusy &&
+    (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError);
+  const shouldContinueLoadingVisibleFeed =
+    shouldKeepLoadingEmptyFeed || shouldFillInitialVisibleBatch;
   const shouldHoldEmptyFeedState =
     shouldKeepLoadingEmptyFeed ||
     (!hasActiveSearch && filteredEntries.length === 0 && Boolean(activeFeedLoadError));
@@ -2549,7 +2536,7 @@ export function KnowledgeFeed({
   useEffect(() => {
     if (
       !isActive ||
-      !shouldKeepLoadingEmptyFeed ||
+      !shouldContinueLoadingVisibleFeed ||
       isLoading ||
       isActiveFeedLoadingMore ||
       (!shouldUseIndependentFeed && isBackgroundLoadingEntries)
@@ -2567,7 +2554,7 @@ export function KnowledgeFeed({
     isActiveFeedLoadingMore,
     isLoading,
     loadMoreActiveEntries,
-    shouldKeepLoadingEmptyFeed,
+    shouldContinueLoadingVisibleFeed,
     shouldUseIndependentFeed,
   ]);
 
@@ -2900,10 +2887,57 @@ export function KnowledgeFeed({
     (topicId: FeedTopicId) => {
       if (topicId === selectedFeedTopic) return;
 
+      const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
+      const normalizedRefreshHashtag = selectedHashtag
+        ? normalizeStoredHashtagValue(selectedHashtag)
+        : null;
+      const nextTopic =
+        FEED_TOPIC_FILTERS.find((topic) => topic.id === topicId) ||
+        FEED_TOPIC_FILTERS[0];
+
+      setFeedSearchQuery("");
+      visibleLikedEntryIdsRef.current = [];
+      setVisibleLikedEntryIds([]);
+      feedRefreshSeedRef.current = nextRefreshSeed;
       setSelectedFeedTopic(topicId);
+
+      if (nextTopic.id === "all" && !normalizedRefreshHashtag) {
+        setFeedEntryOrder(
+          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
+            refreshSeed: nextRefreshSeed,
+            shuffleOnRefresh: true,
+          }).map((entry) => entry.id),
+        );
+      } else {
+        const nextFeedKey = getIndependentFeedKey(
+          nextTopic.id,
+          normalizedRefreshHashtag,
+        );
+
+        setTopicFeedStates((current) => {
+          const existing = current[nextFeedKey];
+          if (!existing || existing.entries.length <= 1) return current;
+
+          return {
+            ...current,
+            [nextFeedKey]: {
+              ...existing,
+              entries: orderIndependentKnowledgeFeedEntries(
+                existing.entries,
+                nextTopic,
+                {
+                  refreshSeed: nextRefreshSeed,
+                  shuffleOnRefresh: true,
+                },
+              ),
+            },
+          };
+        });
+      }
+
       window.requestAnimationFrame(() => scrollKnowledgeFeedToTop("smooth"));
     },
-    [selectedFeedTopic],
+    [selectedFeedTopic, selectedHashtag],
   );
 
   const clearSelectedHashtag = useCallback(() => {
@@ -2917,13 +2951,8 @@ export function KnowledgeFeed({
 
   const handleLikeChange = useCallback(
     (entryId: string, likes: string[]) => {
-      const likedByCurrentUser = Boolean(
-        currentAuthorId && likes.includes(currentAuthorId),
-      );
       setVisibleLikedEntryIds((currentIds) => {
-        const nextIds = likedByCurrentUser
-          ? [...new Set([...currentIds, entryId])]
-          : currentIds.filter((id) => id !== entryId);
+        const nextIds = currentIds.filter((id) => id !== entryId);
 
         visibleLikedEntryIdsRef.current = nextIds;
         return nextIds;
@@ -2955,7 +2984,7 @@ export function KnowledgeFeed({
         return didUpdate ? nextStates : current;
       });
     },
-    [currentAuthorId],
+    [],
   );
 
   const pageTitle = focusedEntry
