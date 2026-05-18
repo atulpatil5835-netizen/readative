@@ -3037,6 +3037,7 @@ export function KnowledgeFeed({
         ]}
         type={focusedEntry ? "article" : "website"}
         url={pageUrl}
+        ampUrl={isActive && !focusedEntry && !selectedHashtag ? "/amp/" : undefined}
         schema={buildKnowledgeSchemas(focusedEntry)}
         image={
           focusedEntryPrimaryImage?.dataUrl &&

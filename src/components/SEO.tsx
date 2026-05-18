@@ -6,6 +6,7 @@ interface SEOProps {
   keywords?: string[];
   image?: string;
   url?: string;
+  ampUrl?: string;
   type?: "website" | "article" | "profile";
   schema?: object | object[];
 }
@@ -28,6 +29,7 @@ export function SEO({
   keywords = [],
   image,
   url,
+  ampUrl,
   type = "website",
   schema,
 }: SEOProps) {
@@ -37,6 +39,7 @@ export function SEO({
       ? "https://readative.com"
       : `${window.location.origin}${window.location.pathname}`;
   const resolvedUrl = url || baseUrl;
+  const resolvedAmpUrl = ampUrl ? toAbsoluteUrl(ampUrl) : null;
   const resolvedImage = toAbsoluteUrl(image || "/logo.png");
   const fullTitle = title.includes(siteTitle) ? title : `${title} | ${siteTitle}`;
   const keywordList = [
@@ -54,6 +57,7 @@ export function SEO({
       <meta name="keywords" content={keywordList.join(", ")} />
       <meta name="application-name" content={siteTitle} />
       <link rel="canonical" href={resolvedUrl} />
+      {resolvedAmpUrl && <link rel="amphtml" href={resolvedAmpUrl} />}
 
       <meta property="og:type" content={type} />
       <meta property="og:title" content={fullTitle} />
