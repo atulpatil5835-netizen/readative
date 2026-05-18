@@ -2271,6 +2271,13 @@ export function KnowledgeFeed({
   const shouldHoldEmptyFeedState =
     shouldKeepLoadingEmptyFeed ||
     (!hasActiveSearch && filteredEntries.length === 0 && Boolean(activeFeedLoadError));
+  const shouldShowBaseFeedSkeleton =
+    !focusedEntryId &&
+    !hasActiveSearch &&
+    !hasActiveTopic &&
+    !selectedHashtag &&
+    filteredEntries.length === 0 &&
+    !activeFeedLoadError;
 
   const loadNextIndependentFeedPage = useCallback(
     async ({
@@ -3173,7 +3180,7 @@ export function KnowledgeFeed({
           )}
 
           {filteredEntries.length === 0 ? (
-            shouldHoldEmptyFeedState ? (
+            shouldHoldEmptyFeedState || shouldShowBaseFeedSkeleton ? (
               <FeedEmptyLoadingSkeleton
                 labelWidth={
                   shouldUseIndependentFeed && activeFeedTopic.label.length > 8
