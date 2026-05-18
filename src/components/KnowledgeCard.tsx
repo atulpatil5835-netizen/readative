@@ -400,6 +400,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       : localLikes.filter((id) => id !== actorIdentity.authorId);
 
     setLocalLikes(nextLikes);
+    onLikeChange?.(entry.id, nextLikes);
     setInteractionMessage(null);
     setIsUpdatingLike(true);
 
@@ -410,10 +411,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         actorName: actorIdentity.displayName,
         shouldLike,
       });
-      onLikeChange?.(entry.id, nextLikes);
     } catch (error) {
       console.error("Failed to update like:", error);
       setLocalLikes(entry.likes || []);
+      onLikeChange?.(entry.id, entry.likes || []);
       setInteractionMessage(
         "Could not update the like right now. Please try again.",
       );
