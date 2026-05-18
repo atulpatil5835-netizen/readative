@@ -1,8 +1,7 @@
 import { type UserSocialLinks } from "../types";
+import { memo, useMemo } from "react";
 
-function cn(...inputs: Array<string | false | null | undefined>) {
-  return inputs.filter(Boolean).join(" ");
-}
+import { cn } from "../utils/classNames";
 
 type ProfileSocialPlatform = "linkedin" | "instagram" | "youtube";
 
@@ -13,32 +12,36 @@ interface ProfileSocialLinksProps {
   iconOnly?: boolean;
 }
 
-export function ProfileSocialLinks({
+export const ProfileSocialLinks = memo(function ProfileSocialLinks({
   socialLinks,
   className,
   compact = false,
   iconOnly = false,
 }: ProfileSocialLinksProps) {
-  const links = [
-    {
-      key: "linkedin",
-      label: "LinkedIn",
-      href: socialLinks.linkedin,
-      platform: "linkedin" as const,
-    },
-    {
-      key: "instagram",
-      label: "Instagram",
-      href: socialLinks.instagram,
-      platform: "instagram" as const,
-    },
-    {
-      key: "youtube",
-      label: "YouTube",
-      href: socialLinks.youtube,
-      platform: "youtube" as const,
-    },
-  ].filter((link) => Boolean(link.href));
+  const links = useMemo(
+    () =>
+      [
+        {
+          key: "linkedin",
+          label: "LinkedIn",
+          href: socialLinks.linkedin,
+          platform: "linkedin" as const,
+        },
+        {
+          key: "instagram",
+          label: "Instagram",
+          href: socialLinks.instagram,
+          platform: "instagram" as const,
+        },
+        {
+          key: "youtube",
+          label: "YouTube",
+          href: socialLinks.youtube,
+          platform: "youtube" as const,
+        },
+      ].filter((link) => Boolean(link.href)),
+    [socialLinks.instagram, socialLinks.linkedin, socialLinks.youtube],
+  );
 
   if (links.length === 0) {
     return null;
@@ -66,7 +69,7 @@ export function ProfileSocialLinks({
       ))}
     </div>
   );
-}
+});
 
 function SocialBrandIcon({
   platform,

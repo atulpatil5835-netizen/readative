@@ -363,6 +363,16 @@ interface TopicFeedState {
   error: string | null;
 }
 
+const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
+  entries: [],
+  isLoading: false,
+  isLoadingMore: false,
+  hasLoaded: false,
+  hasMore: false,
+  cursor: null,
+  error: null,
+};
+
 interface IndependentKnowledgeFeedPage {
   entries: KnowledgeEntry[];
   cursor: QueryDocumentSnapshot<DocumentData> | null;
@@ -1522,7 +1532,10 @@ export function KnowledgeFeed({
     }
 
     const updateBackToTopVisibility = () => {
-      setShowBackToTopRefresh(window.scrollY > 420);
+      const shouldShow = window.scrollY > 420;
+      setShowBackToTopRefresh((current) =>
+        current === shouldShow ? current : shouldShow,
+      );
     };
 
     updateBackToTopVisibility();
@@ -1547,7 +1560,6 @@ export function KnowledgeFeed({
     });
   }, [
     entries,
-    feedEntryOrder,
     hasMoreServerEntries,
     identity?.authorId,
     visibleLikedEntryIds,
@@ -2112,15 +2124,8 @@ export function KnowledgeFeed({
     activeFeedTopic.id,
     normalizedSelectedHashtag,
   );
-  const activeTopicFeedState = topicFeedStates[independentFeedKey] || {
-    entries: [],
-    isLoading: false,
-    isLoadingMore: false,
-    hasLoaded: false,
-    hasMore: false,
-    cursor: null,
-    error: null,
-  };
+  const activeTopicFeedState =
+    topicFeedStates[independentFeedKey] || EMPTY_TOPIC_FEED_STATE;
   const visibleLikedEntryIdSet = useMemo(
     () => new Set(visibleLikedEntryIds),
     [visibleLikedEntryIds],
@@ -2538,7 +2543,7 @@ export function KnowledgeFeed({
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMoreEntries, isActive, isActiveFeedLoadingMore, loadMoreActiveEntries]);
+  }, [hasMoreEntries, isActive, loadMoreActiveEntries]);
 
   useEffect(() => {
     if (
@@ -2963,43 +2968,60 @@ export function KnowledgeFeed({
       );
 
       setVisibleLikedEntryIds((currentIds) => {
-        const nextIds = likedByCurrentUser
-          ? [...new Set([...currentIds, entryId])]
-          : currentIds.filter((id) => id !== entryId);
+        if (likedByCurrentUser) {
+          if (currentIds.includes(entryId)) {
+            visibleLikedEntryIdsRef.current = currentIds;
+            return currentIds;
+          }
 
+          const nextIds = [...currentIds, entryId];
+          visibleLikedEntryIdsRef.current = nextIds;
+          return nextIds;
+        }
+
+        if (!currentIds.includes(entryId)) {
+          visibleLikedEntryIdsRef.current = currentIds;
+          return currentIds;
+        }
+
+        const nextIds = currentIds.filter((id) => id !== entryId);
         visibleLikedEntryIdsRef.current = nextIds;
         return nextIds;
       });
 
       setEntries((currentEntries) => {
-        const nextEntries = currentEntries.map((entry) =>
-          entry.id === entryId ? { ...entry, likes } : entry,
-        );
+        let didUpdateEntries = false;
+        const nextEntries = currentEntries.map((entry) => {
+          if (entry.id !== entryId) return entry;
+
+          didUpdateEntries = true;
+          return { ...entry, likes };
+        });
+        if (!didUpdateEntries) return currentEntries;
+
         entriesRef.current = nextEntries;
         return nextEntries;
       });
 
       setTopicFeedStates((current) => {
-        let didUpdate = false;
-        const nextStates = Object.fromEntries(
-          Object.entries(current).map(([key, state]) => {
-            let didUpdateState = false;
-            const nextEntries = state.entries.map((entry) => {
-              if (entry.id !== entryId) return entry;
+        let nextStates: typeof current | null = null;
 
-              didUpdate = true;
-              didUpdateState = true;
-              return { ...entry, likes };
-            });
+        Object.entries(current).forEach(([key, state]) => {
+          let didUpdateState = false;
+          const nextEntries = state.entries.map((entry) => {
+            if (entry.id !== entryId) return entry;
 
-            return [
-              key,
-              didUpdateState ? { ...state, entries: nextEntries } : state,
-            ];
-          }),
-        );
+            didUpdateState = true;
+            return { ...entry, likes };
+          });
 
-        return didUpdate ? nextStates : current;
+          if (!didUpdateState) return;
+
+          nextStates = nextStates || { ...current };
+          nextStates[key] = { ...state, entries: nextEntries };
+        });
+
+        return nextStates || current;
       });
     },
     [currentAuthorId],

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CirclePlus, Info, LogIn, LogOut, MoreVertical } from "lucide-react";
 import { Logo } from "./Logo";
 import { type AppTab } from "../utils/routes";
@@ -17,7 +17,9 @@ interface HeaderProps {
   onSignOut: () => void;
 }
 
-export function Header({
+const HEADER_TABS: AppTab[] = ["knowledge", "smarttalk", "profile"];
+
+export const Header = memo(function Header({
   activeTab,
   setActiveTab,
   identity,
@@ -29,7 +31,6 @@ export function Header({
   onOpenSignIn,
   onSignOut,
 }: HeaderProps) {
-  const tabs: AppTab[] = ["knowledge", "smarttalk", "profile"];
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -60,10 +61,10 @@ export function Header({
     };
   }, [actionsOpen]);
 
-  const handleMenuAction = (action: () => void) => {
+  const handleMenuAction = useCallback((action: () => void) => {
     setActionsOpen(false);
     action();
-  };
+  }, []);
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
@@ -91,7 +92,7 @@ export function Header({
 
         <div className="flex items-center gap-3">
           <nav className="hidden items-center gap-6 md:flex">
-            {tabs.map((tab) => {
+            {HEADER_TABS.map((tab) => {
               const label =
                 tab === "smarttalk"
                   ? "SmartTalk"
@@ -191,4 +192,4 @@ export function Header({
       </div>
     </header>
   );
-}
+});

@@ -82,6 +82,49 @@ function estimateKnowledgeCardHeight(entry: KnowledgeEntry) {
   return clamp(imageHeight + textHeight, 420, 1360);
 }
 
+function findFirstVisibleIndex(
+  offsets: number[],
+  heights: number[],
+  targetTop: number,
+) {
+  let low = 0;
+  let high = offsets.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const rowBottom = offsets[mid] + heights[mid];
+
+    if (rowBottom < targetTop) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function findFirstOffsetAtOrAfter(
+  offsets: number[],
+  targetBottom: number,
+  startIndex: number,
+) {
+  let low = startIndex;
+  let high = offsets.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+
+    if (offsets[mid] < targetBottom) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 export const KnowledgeCardList = memo(function KnowledgeCardList({
   entries,
   currentIdentity,
@@ -169,10 +212,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   }, [updateViewportWindow]);
 
   const estimatedHeights = useMemo(
-    () =>
-      Object.fromEntries(
-        entries.map((entry) => [entry.id, estimateKnowledgeCardHeight(entry)]),
-      ),
+    () => entries.map((entry) => estimateKnowledgeCardHeight(entry)),
     [entries],
   );
   const entryIndexById = useMemo(
@@ -186,10 +226,10 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
     const heights: number[] = [];
     let totalHeight = 0;
 
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       const height =
         measuredHeights[entry.id] ||
-        estimatedHeights[entry.id] ||
+        estimatedHeights[index] ||
         DEFAULT_CARD_HEIGHT;
       offsets.push(totalHeight);
       heights.push(height);
@@ -210,23 +250,15 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
 
     const overscanTop = Math.max(0, viewportWindow.top - VIRTUAL_OVERSCAN_PX);
     const overscanBottom = viewportWindow.bottom + VIRTUAL_OVERSCAN_PX;
-    let start = 0;
-    let end = entries.length;
-
-    while (
-      start < entries.length - 1 &&
-      itemLayout.offsets[start] + itemLayout.heights[start] < overscanTop
-    ) {
-      start += 1;
-    }
-
-    end = start;
-    while (
-      end < entries.length &&
-      itemLayout.offsets[end] < overscanBottom
-    ) {
-      end += 1;
-    }
+    const start = Math.min(
+      findFirstVisibleIndex(itemLayout.offsets, itemLayout.heights, overscanTop),
+      entries.length - 1,
+    );
+    const end = findFirstOffsetAtOrAfter(
+      itemLayout.offsets,
+      overscanBottom,
+      start,
+    );
 
     return { start, end: Math.max(end, start + 1) };
   }, [entries.length, itemLayout, viewportWindow]);
@@ -238,16 +270,18 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
 
   const handleHeightChange = useCallback(
     (entryId: string, height: number) => {
+      const entryIndex = entryIndexById.get(entryId);
       const previousHeight =
         measuredHeightsRef.current[entryId] ||
-        estimatedHeights[entryId] ||
+        (typeof entryIndex === "number"
+          ? estimatedHeights[entryIndex]
+          : DEFAULT_CARD_HEIGHT) ||
         DEFAULT_CARD_HEIGHT;
 
       if (Math.abs(previousHeight - height) < 4) {
         return;
       }
 
-      const entryIndex = entryIndexById.get(entryId);
       const layout = itemLayoutRef.current;
       const rowTop =
         typeof entryIndex === "number" ? layout.offsets[entryIndex] || 0 : 0;

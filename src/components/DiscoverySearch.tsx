@@ -1,4 +1,5 @@
 import { Search, X } from "lucide-react";
+import { memo, useCallback, type ChangeEvent } from "react";
 
 interface DiscoverySearchProps {
   theme: "emerald" | "indigo";
@@ -26,7 +27,7 @@ const themeClasses = {
   },
 } as const;
 
-export function DiscoverySearch({
+export const DiscoverySearch = memo(function DiscoverySearch({
   theme,
   placeholder,
   value,
@@ -35,6 +36,12 @@ export function DiscoverySearch({
   ariaLabel,
 }: DiscoverySearchProps) {
   const styles = themeClasses[theme];
+  const handleChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onChange(event.target.value);
+    },
+    [onChange],
+  );
 
   return (
     <div
@@ -43,7 +50,7 @@ export function DiscoverySearch({
       <Search className={`h-4 w-4 shrink-0 ${styles.icon}`} />
       <input
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={handleChange}
         placeholder={placeholder}
         aria-label={ariaLabel}
         autoComplete="off"
@@ -61,4 +68,4 @@ export function DiscoverySearch({
       )}
     </div>
   );
-}
+});

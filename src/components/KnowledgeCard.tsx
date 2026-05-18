@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { arrayUnion, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { cn } from "../utils/classNames";
 import { renderRichText } from "../utils/renderRichText";
 import { recordKnowledgeFeedActivity } from "../utils/feedPersonalization";
 import { toggleKnowledgeEntryLike } from "../utils/knowledgeFeedData";
@@ -47,10 +48,6 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../utils/knowledgeEntryHelpers";
-
-function cn(...inputs: Array<string | false | null | undefined>) {
-  return inputs.filter(Boolean).join(" ");
-}
 
 function getProfileDisplayName(profile: UserProfile | undefined, fallback: string) {
   return profile?.displayName?.trim() || fallback;
@@ -221,9 +218,13 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
   const topComment = useMemo(
     () =>
-      [...localComments].sort(
-        (left, right) => (right.createdAt || 0) - (left.createdAt || 0),
-      )[0] || null,
+      localComments.reduce<KnowledgeComment | null>((latest, comment) => {
+        if (!latest || (comment.createdAt || 0) > (latest.createdAt || 0)) {
+          return comment;
+        }
+
+        return latest;
+      }, null),
     [localComments],
   );
   const profileMap = useMemo(
@@ -245,12 +246,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const topCommentUsername = topCommentProfile?.username || topComment?.author || "";
   const filteredCommentMentionProfiles = useMemo(() => {
     if (!activeCommentMention) return [];
+    const mentionQuery = activeCommentMention.query.toLowerCase();
 
     return profiles
       .filter((profile) =>
-        profile.usernameLower.startsWith(
-          activeCommentMention.query.toLowerCase(),
-        ),
+        profile.usernameLower.startsWith(mentionQuery),
       )
       .slice(0, 6);
   }, [activeCommentMention, profiles]);

@@ -1,8 +1,6 @@
 import { type KnowledgeImageAsset } from "../types";
-
-function cn(...inputs: Array<string | false | null | undefined>) {
-  return inputs.filter(Boolean).join(" ");
-}
+import { memo } from "react";
+import { cn } from "../utils/classNames";
 
 type AvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
 
@@ -72,7 +70,7 @@ function getInitials(username?: string | null) {
   return compact.slice(0, 2).toUpperCase();
 }
 
-export function ProfileAvatar({
+export const ProfileAvatar = memo(function ProfileAvatar({
   authorId,
   image,
   photoUrl,
@@ -119,4 +117,4 @@ export function ProfileAvatar({
       )}
     </div>
   );
-}
+});

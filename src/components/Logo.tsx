@@ -1,9 +1,11 @@
+import { memo } from "react";
+
 interface LogoProps {
   className?: string;
   loading?: "eager" | "lazy";
 }
 
-export function Logo({
+export const Logo = memo(function Logo({
   className = "h-10 w-10",
   loading = "lazy",
 }: LogoProps) {
@@ -18,4 +20,4 @@ export function Logo({
       decoding="async"
     />
   );
-}
+});

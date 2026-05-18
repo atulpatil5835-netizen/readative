@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
 import { Logo } from "./Logo";
 import { ReadativeLoader } from "./ReadativeLoader";
@@ -23,7 +23,7 @@ function getSlideClassName(layout: KnowledgeImageLayout, mode: "feed" | "compose
     : "basis-[calc(100%-0.75rem)] sm:basis-[calc(100%-1rem)] aspect-video";
 }
 
-export function KnowledgeImageCarousel({
+export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
   images,
   layout,
   altBase,
@@ -78,16 +78,24 @@ export function KnowledgeImageCarousel({
                     : "(max-width: 768px) 92vw, 72vw"
                 }
                 onLoad={() =>
-                  setLoadedImages((current) => ({
-                    ...current,
-                    [imageKey]: true,
-                  }))
+                  setLoadedImages((current) =>
+                    current[imageKey]
+                      ? current
+                      : {
+                          ...current,
+                          [imageKey]: true,
+                        },
+                  )
                 }
                 onError={() =>
-                  setLoadedImages((current) => ({
-                    ...current,
-                    [imageKey]: true,
-                  }))
+                  setLoadedImages((current) =>
+                    current[imageKey]
+                      ? current
+                      : {
+                          ...current,
+                          [imageKey]: true,
+                        },
+                  )
                 }
                 className={`relative h-full w-full object-cover transition-opacity duration-500 ${
                   shouldShowImage ? "opacity-100" : "opacity-0"
@@ -119,4 +127,4 @@ export function KnowledgeImageCarousel({
       )}
     </div>
   );
-}
+});

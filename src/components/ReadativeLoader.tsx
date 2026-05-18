@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 
 type ReadativeLoaderSize = "xs" | "sm" | "md" | "lg";
 type ReadativeLoaderTone = "emerald" | "indigo" | "light";
@@ -22,7 +22,9 @@ interface ReadativeLoaderProps {
   labelClassName?: string;
 }
 
-export function ReadativeRMark({ className = "" }: ReadativeRMarkProps) {
+export const ReadativeRMark = memo(function ReadativeRMark({
+  className = "",
+}: ReadativeRMarkProps) {
   return (
     <span
       className={`inline-flex items-center justify-center font-black leading-none ${className}`}
@@ -31,9 +33,9 @@ export function ReadativeRMark({ className = "" }: ReadativeRMarkProps) {
       R
     </span>
   );
-}
+});
 
-export function ReadativeLoader({
+export const ReadativeLoader = memo(function ReadativeLoader({
   size = "md",
   tone = "emerald",
   label,
@@ -70,4 +72,4 @@ export function ReadativeLoader({
       <p className={labelClassName}>{label}</p>
     </div>
   );
-}
+});
