@@ -40,6 +40,7 @@ import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileSocialLinks } from "./ProfileSocialLinks";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { normalizeKnowledgeVisibility } from "../utils/knowledgePrivacy";
+import { CommentSkeleton } from "./Skeletons";
 import {
   createExcerpt,
   estimateReadMinutes,
@@ -154,6 +155,7 @@ interface KnowledgeCardProps {
   entry: KnowledgeEntry;
   currentIdentity: KnowledgeIdentity | null;
   profiles?: UserProfile[];
+  profileMap?: ReadonlyMap<string, UserProfile>;
   onVisible?: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: {
     type: "like" | "comment";
@@ -175,6 +177,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   entry,
   currentIdentity,
   profiles = [],
+  profileMap: providedProfileMap,
   onVisible,
   onIdentityRequired,
   onOpenProfile,
@@ -228,8 +231,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     [localComments],
   );
   const profileMap = useMemo(
-    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
-    [profiles],
+    () =>
+      providedProfileMap ||
+      new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    [profiles, providedProfileMap],
   );
   const authorProfile = profileMap.get(entry.authorId);
   const authorDisplayName = getProfileDisplayName(authorProfile, entry.author);
@@ -1064,6 +1069,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           )}
 
           <div className="mt-4 space-y-3">
+            {(isCommenting || isModeratingComment) && <CommentSkeleton />}
+
             {localComments.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-center text-sm text-slate-400">
                 No comments yet. Start the discussion.

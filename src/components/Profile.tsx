@@ -36,7 +36,7 @@ import { GoogleSignInPrompt } from "./Auth";
 import { KnowledgeCardList } from "./KnowledgeCardList";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileAvatarPicker } from "./ProfileAvatarPicker";
-import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
+import { ReadativeRMark } from "./ReadativeLoader";
 import {
   changeProfileBanner,
   changeProfilePhoto,
@@ -53,6 +53,7 @@ import {
   normalizeKnowledgeVisibility,
 } from "../utils/knowledgePrivacy";
 import { ProfileSocialLinks } from "./ProfileSocialLinks";
+import { KnowledgeCardSkeleton, ProfileSkeleton } from "./Skeletons";
 
 type ProfileSection = "shared" | "liked";
 
@@ -183,6 +184,8 @@ export function Profile({
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isLoadingSharedEntries, setIsLoadingSharedEntries] = useState(false);
+  const [isLoadingLikedEntries, setIsLoadingLikedEntries] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
@@ -228,10 +231,13 @@ export function Profile({
       setSharedEntries([]);
       setLikedEntries([]);
       setIsLoadingProfile(false);
+      setIsLoadingSharedEntries(false);
+      setIsLoadingLikedEntries(false);
       return;
     }
 
     setIsLoadingProfile(true);
+    setIsLoadingSharedEntries(true);
     setSharedEntries([]);
     setLikedEntries([]);
 
@@ -274,11 +280,13 @@ export function Profile({
           fallbackQuery,
           (snapshot) => {
             onEntries(hydrateEntries(snapshot));
+            setIsLoadingSharedEntries(false);
             setProfileLoadError(null);
           },
           (error) => {
             console.error(`${label} fallback listener error:`, error);
             onEntries([]);
+            setIsLoadingSharedEntries(false);
             setProfileLoadError(errorMessage);
           },
         );
@@ -288,6 +296,7 @@ export function Profile({
         orderedQuery,
         (snapshot) => {
           onEntries(hydrateEntries(snapshot));
+          setIsLoadingSharedEntries(false);
           setProfileLoadError(null);
         },
         (error) => {
@@ -303,6 +312,7 @@ export function Profile({
 
           console.error(`${label} listener error:`, error);
           onEntries([]);
+          setIsLoadingSharedEntries(false);
           setProfileLoadError(errorMessage);
         },
       );
@@ -441,9 +451,11 @@ export function Profile({
   useEffect(() => {
     if (!activeAuthorId || !profile) {
       setLikedEntries([]);
+      setIsLoadingLikedEntries(false);
       return;
     }
 
+    setIsLoadingLikedEntries(true);
     const targetAuthorId = activeAuthorId;
     const visibleAuthorId = currentIdentity?.authorId;
     const trackedEntryIds = [...new Set(trackedLikedEntryIds)]
@@ -481,10 +493,12 @@ export function Profile({
                 trackedEntryIds,
               ).slice(0, PROFILE_TRACKED_LIKE_LOOKUP_LIMIT),
             );
+            setIsLoadingLikedEntries(false);
             setProfileLoadError(null);
           },
           (error) => {
             console.error("Liked knowledge ID listener error:", error);
+            setIsLoadingLikedEntries(false);
             setProfileLoadError(
               "Could not load liked posts for this profile right now.",
             );
@@ -528,11 +542,13 @@ export function Profile({
         ),
         (snapshot) => {
           setLikedEntries(hydrateLikedEntries(snapshot));
+          setIsLoadingLikedEntries(false);
           setProfileLoadError(null);
         },
         (error) => {
           console.error("Liked knowledge fallback listener error:", error);
           setLikedEntries([]);
+          setIsLoadingLikedEntries(false);
           setProfileLoadError("Could not load liked posts for this profile right now.");
         },
       );
@@ -547,6 +563,7 @@ export function Profile({
       ),
       (snapshot) => {
         setLikedEntries(hydrateLikedEntries(snapshot));
+        setIsLoadingLikedEntries(false);
         setProfileLoadError(null);
       },
       (error) => {
@@ -562,6 +579,7 @@ export function Profile({
 
         console.error("Liked knowledge listener error:", error);
         setLikedEntries([]);
+        setIsLoadingLikedEntries(false);
         setProfileLoadError("Could not load liked posts for this profile right now.");
       },
     );
@@ -757,9 +775,7 @@ export function Profile({
       )}
 
       {isLoadingProfile ? (
-        <div className="flex justify-center py-20">
-          <ReadativeLoader size="md" label="Loading profile..." />
-        </div>
+        <ProfileSkeleton />
       ) : !profile ? (
         <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
           <User className="mx-auto h-10 w-10 text-slate-300" />
@@ -882,6 +898,7 @@ export function Profile({
               }
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
+              isLoading={isLoadingSharedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}
@@ -899,6 +916,7 @@ export function Profile({
               }
               emptyMessage="No liked knowledge yet."
               entries={orderedLikedEntries}
+              isLoading={isLoadingLikedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}
@@ -1320,6 +1338,7 @@ function KnowledgeSection({
   title,
   emptyMessage,
   entries,
+  isLoading,
   currentIdentity,
   profiles,
   onIdentityRequired,
@@ -1329,6 +1348,7 @@ function KnowledgeSection({
   title: string;
   emptyMessage: string;
   entries: KnowledgeEntry[];
+  isLoading: boolean;
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
@@ -1344,7 +1364,12 @@ function KnowledgeSection({
         </h3>
       </div>
 
-      {entries.length === 0 ? (
+      {isLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-live="polite">
+          <KnowledgeCardSkeleton compact />
+          <KnowledgeCardSkeleton showImage={false} compact />
+        </div>
+      ) : entries.length === 0 ? (
         <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm">
           <Heart className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-3 text-sm text-slate-400">{emptyMessage}</p>

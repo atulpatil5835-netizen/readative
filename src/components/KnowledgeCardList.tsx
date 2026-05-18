@@ -16,6 +16,7 @@ import {
   getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
 } from "../utils/knowledgeImages";
+import { KnowledgeCardSkeleton } from "./Skeletons";
 
 const knowledgeCardModulePromise = import("./KnowledgeCard");
 const LazyKnowledgeCard = lazy(() =>
@@ -220,6 +221,10 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
       new Map(entries.map((entry, index) => [entry.id, index] as const)),
     [entries],
   );
+  const profileMap = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    [profiles],
+  );
 
   const itemLayout = useMemo<ItemLayout>(() => {
     const offsets: number[] = [];
@@ -326,6 +331,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 entry={entry}
                 currentIdentity={currentIdentity}
                 profiles={profiles}
+                profileMap={profileMap}
                 onVisible={onVisible}
                 onIdentityRequired={onIdentityRequired}
                 onOpenProfile={onOpenProfile}
@@ -389,29 +395,6 @@ function MeasuredVirtualRow({
       }
     >
       {children}
-    </div>
-  );
-}
-
-function KnowledgeCardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
-      <div className="aspect-video animate-pulse bg-slate-200" />
-      <div className="space-y-4 p-5">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 animate-pulse rounded-2xl bg-slate-200" />
-          <div className="space-y-2">
-            <div className="h-3 w-28 animate-pulse rounded-full bg-slate-200" />
-            <div className="h-3 w-40 animate-pulse rounded-full bg-slate-100" />
-          </div>
-        </div>
-        <div className="h-7 w-4/5 animate-pulse rounded-full bg-slate-200" />
-        <div className="space-y-2">
-          <div className="h-3 w-full animate-pulse rounded-full bg-slate-100" />
-          <div className="h-3 w-11/12 animate-pulse rounded-full bg-slate-100" />
-          <div className="h-3 w-2/3 animate-pulse rounded-full bg-slate-100" />
-        </div>
-      </div>
     </div>
   );
 }

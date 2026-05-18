@@ -1,7 +1,7 @@
 import { memo, useState, type ReactNode } from "react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
 import { Logo } from "./Logo";
-import { ReadativeLoader } from "./ReadativeLoader";
+import { SkeletonBlock } from "./Skeletons";
 
 interface KnowledgeImageCarouselProps {
   images: KnowledgeImageAsset[];
@@ -54,15 +54,18 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                 }`}
                 aria-hidden="true"
               />
-              <div
-                className={`absolute inset-0 animate-pulse bg-slate-200 transition-opacity duration-500 ${
+              <SkeletonBlock
+                className={`absolute inset-0 rounded-none transition-opacity duration-500 ${
                   shouldShowImage ? "opacity-0" : "opacity-100"
                 }`}
-                aria-hidden="true"
               />
               {!shouldShowImage && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center">
-                  <ReadativeLoader size="sm" label="Loading image..." />
+                <div
+                  className="absolute inset-x-6 bottom-6 z-10 space-y-2"
+                  aria-hidden="true"
+                >
+                  <SkeletonBlock className="h-3 w-1/2 bg-white/70" />
+                  <SkeletonBlock className="h-3 w-2/3 bg-white/60" />
                 </div>
               )}
               <img

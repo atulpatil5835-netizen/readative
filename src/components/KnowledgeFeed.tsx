@@ -61,6 +61,11 @@ import { KnowledgeCardList } from "./KnowledgeCardList";
 import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
+import {
+  FeedEmptyLoadingSkeleton,
+  FeedPaginationSkeleton,
+  KnowledgeFeedSkeleton,
+} from "./Skeletons";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { hydrateUserProfile } from "../utils/profileData";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
@@ -3070,9 +3075,7 @@ export function KnowledgeFeed({
       />
 
       {isLoading ? (
-        <div className="flex flex-col items-center gap-3 py-20">
-          <ReadativeLoader size="md" label="Loading posts..." />
-        </div>
+        <KnowledgeFeedSkeleton />
       ) : (
         <div className="space-y-6">
           {feedLoadError && !shouldUseIndependentFeed && (
@@ -3171,16 +3174,13 @@ export function KnowledgeFeed({
 
           {filteredEntries.length === 0 ? (
             shouldHoldEmptyFeedState ? (
-              <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-                <ReadativeLoader
-                  size="md"
-                  label={
-                    shouldUseIndependentFeed
-                      ? `Loading ${activeFeedTopic.label.toLowerCase()} posts...`
-                      : "Loading posts..."
-                  }
-                />
-              </div>
+              <FeedEmptyLoadingSkeleton
+                labelWidth={
+                  shouldUseIndependentFeed && activeFeedTopic.label.length > 8
+                    ? "w-64"
+                    : "w-48"
+                }
+              />
             ) : (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
                 <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
@@ -3205,14 +3205,20 @@ export function KnowledgeFeed({
                         : "Tap the `+` button at the top to upload the first knowledge post."}
                 </p>
                 {hasMoreEntries && (
-                  <button
-                    type="button"
-                    onClick={() => void loadMoreActiveEntries()}
-                    disabled={isPaginationBusy}
-                    className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
-                  >
-                    {isActiveFeedLoadingMore ? "Loading posts..." : "Load more posts"}
-                  </button>
+                  isActiveFeedLoadingMore ? (
+                    <div className="mt-5">
+                      <FeedPaginationSkeleton />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreActiveEntries()}
+                      disabled={isPaginationBusy}
+                      className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                    >
+                      Load more posts
+                    </button>
+                  )
                 )}
               </div>
             )
@@ -3235,14 +3241,18 @@ export function KnowledgeFeed({
                   ref={loadMoreSentinelRef}
                   className="py-4 text-center"
                 >
-                  <button
-                    type="button"
-                    onClick={() => void loadMoreActiveEntries()}
-                    disabled={isPaginationBusy}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
-                  >
-                    {isActiveFeedLoadingMore ? "Loading posts..." : "Load more posts"}
-                  </button>
+                  {isActiveFeedLoadingMore ? (
+                    <FeedPaginationSkeleton />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreActiveEntries()}
+                      disabled={isPaginationBusy}
+                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                    >
+                      Load more posts
+                    </button>
+                  )}
                 </div>
               )}
             </div>

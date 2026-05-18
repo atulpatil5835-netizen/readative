@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -30,6 +30,7 @@ import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import { SmartTalkQuestionSkeleton } from "./Skeletons";
 
 const SMART_TALK_REALTIME_LIMIT = 50;
 
@@ -479,15 +480,44 @@ export function SmartTalk({
     );
   };
 
-  const searchTerms = tokenizeSearch(deferredSearchQuery);
-  const visibleQuestions =
-    searchTerms.length === 0
-      ? questions
-      : questions.filter((question) =>
-          matchesSmartTalkSearch(question, searchTerms),
+  const searchTerms = useMemo(
+    () => tokenizeSearch(deferredSearchQuery),
+    [deferredSearchQuery],
+  );
+  const visibleQuestions = useMemo(
+    () =>
+      searchTerms.length === 0
+        ? questions
+        : questions.filter((question) =>
+            matchesSmartTalkSearch(question, searchTerms),
+          ),
+    [questions, searchTerms],
+  );
+  const visibleQuestionRows = useMemo(
+    () =>
+      visibleQuestions.map((question) => {
+        const sortedAnswers = [...(question.answers || [])].sort(
+          (left, right) =>
+            getAnswerScore(right) - getAnswerScore(left) ||
+            left.createdAt - right.createdAt,
         );
-  const hasSearchQuery = searchQuery.trim().length > 0;
+        const topAnswerId = sortedAnswers[0]?.id || null;
+        const worstAnswerId =
+          sortedAnswers.length > 1
+            ? sortedAnswers[sortedAnswers.length - 1].id
+            : null;
 
+        return {
+          question,
+          sortedAnswers,
+          topAnswerId,
+          worstAnswerId,
+          featuredAnswer: sortedAnswers[0] || null,
+          hiddenAnswers: sortedAnswers.slice(1),
+        };
+      }),
+    [visibleQuestions],
+  );
   const renderAnswerCard = (
     question: Question,
     answer: Answer,
@@ -670,13 +700,10 @@ export function SmartTalk({
       />
 
       {isLoading ? (
-        <div className="flex flex-col items-center py-16 gap-3">
-          <ReadativeLoader
-            size="md"
-            tone="indigo"
-            label="Loading questions..."
-            labelClassName="text-sm text-gray-400"
-          />
+        <div className="space-y-4" aria-busy="true" aria-live="polite">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <SmartTalkQuestionSkeleton key={index} />
+          ))}
         </div>
       ) : questions.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm">
@@ -696,21 +723,15 @@ export function SmartTalk({
         </div>
       ) : (
         <div className="space-y-4">
-          {visibleQuestions.map((question) => {
-            const sortedAnswers = [...(question.answers || [])].sort(
-              (left, right) =>
-                getAnswerScore(right) - getAnswerScore(left) ||
-                left.createdAt - right.createdAt,
-            );
-            const topAnswerId = sortedAnswers[0]?.id || null;
-
-            const worstAnswerId =
-              sortedAnswers.length > 1
-                ? sortedAnswers[sortedAnswers.length - 1].id
-                : null;
-
-            const featuredAnswer = sortedAnswers[0] || null;
-            const hiddenAnswers = sortedAnswers.slice(1);
+          {visibleQuestionRows.map((questionRow) => {
+            const {
+              question,
+              sortedAnswers,
+              topAnswerId,
+              worstAnswerId,
+              featuredAnswer,
+              hiddenAnswers,
+            } = questionRow;
             const answersExpanded = Boolean(expandedAnswers[question.id]);
             const hiddenAnswerCount = hiddenAnswers.length;
 

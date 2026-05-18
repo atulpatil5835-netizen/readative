@@ -1,11 +1,33 @@
 import { TriangleAlert } from "lucide-react";
-import { ReadativeLoader } from "./ReadativeLoader";
 import type { InfoSection } from "./AppPanels";
+import {
+  KnowledgeFeedSkeleton,
+  ProfileSkeleton,
+  SmartTalkSkeleton,
+} from "./Skeletons";
 
 export function SectionSkeleton({ label }: { label: string }) {
+  const normalizedLabel = label.toLowerCase();
+
+  if (normalizedLabel.includes("smarttalk")) {
+    return <SmartTalkSkeleton />;
+  }
+
+  if (normalizedLabel.includes("profile")) {
+    return <ProfileSkeleton />;
+  }
+
+  if (normalizedLabel.includes("feed") || normalizedLabel.includes("home")) {
+    return <KnowledgeFeedSkeleton />;
+  }
+
   return (
-    <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-      <ReadativeLoader size="lg" label={label} />
+    <div
+      className="rounded-[32px] border border-slate-200 bg-white px-6 py-10 shadow-sm"
+      aria-label={label}
+      aria-busy="true"
+    >
+      <KnowledgeFeedSkeleton count={2} />
     </div>
   );
 }
