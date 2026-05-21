@@ -704,6 +704,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     <article
       ref={articleRef}
       id={`knowledge-${entry.id}`}
+      data-publisher-content="knowledge-post"
       className={cn(
         "overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]",
         highlighted &&

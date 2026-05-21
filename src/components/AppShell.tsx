@@ -18,7 +18,7 @@ export function SectionSkeleton({ label }: { label: string }) {
   }
 
   if (normalizedLabel.includes("feed") || normalizedLabel.includes("home")) {
-    return <KnowledgeFeedSkeleton />;
+    return <KnowledgeFeedSkeleton showControls={false} />;
   }
 
   return (

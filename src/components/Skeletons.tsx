@@ -87,13 +87,21 @@ export const KnowledgeCardSkeleton = memo(function KnowledgeCardSkeleton({
   );
 });
 
-export function KnowledgeFeedSkeleton({ count = 3 }: { count?: number }) {
+export function KnowledgeFeedSkeleton({
+  count = 3,
+  showControls = true,
+}: {
+  count?: number;
+  showControls?: boolean;
+}) {
   return (
     <div className="space-y-6" aria-busy="true" aria-live="polite">
-      <div className="space-y-3">
-        <SkeletonBlock className="h-12 w-full rounded-[22px]" />
-        <SkeletonButtonRow />
-      </div>
+      {showControls && (
+        <div className="space-y-3">
+          <SkeletonBlock className="h-12 w-full rounded-[22px]" />
+          <SkeletonButtonRow />
+        </div>
+      )}
       <div className="space-y-4">
         {Array.from({ length: count }).map((_, index) => (
           <KnowledgeCardSkeleton
@@ -253,4 +261,3 @@ export function CommentSkeleton() {
     </div>
   );
 }
-

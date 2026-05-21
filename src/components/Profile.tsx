@@ -718,6 +718,7 @@ export function Profile({
         <SEO
           title="Profile | Readative"
           description="Sign in with Google to unlock your Readative profile, posts, and likes."
+          robots="noindex"
         />
 
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -758,6 +759,7 @@ export function Profile({
         type="profile"
         url={profileUrl}
         schema={profileSchema}
+        robots={!isLoadingProfile && !profile ? "noindex" : "index"}
       />
 
       {profileLoadError && (

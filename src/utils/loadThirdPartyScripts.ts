@@ -4,10 +4,16 @@ const GOOGLE_ADS_SRC =
   "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8482951627272767";
 const ADS_IDLE_DELAY_MS = 4500;
 const ADS_INTERACTION_EVENTS = ["pointerdown", "keydown", "scroll"] as const;
+const ADS_ROUTE_CHANGE_EVENTS = ["hashchange", "popstate", "readative:routechange"] as const;
+const PUBLISHER_CONTENT_SELECTOR = [
+  '[data-publisher-content="knowledge-post"]',
+  '[data-publisher-content="smarttalk-question"]',
+].join(",");
 
 let thirdPartyScriptsScheduled = false;
 let analyticsConfigured = false;
-let adsScriptScheduled = false;
+let adsLoadWatcherScheduled = false;
+let adsScriptLoaded = false;
 
 interface BrowserIdleCallbacks {
   requestIdleCallback?: (
@@ -91,16 +97,69 @@ function runWhenBrowserIsIdle(callback: () => void) {
   window.setTimeout(callback, 1200);
 }
 
+function getNormalizedPathname() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+
+  const pathname = window.location.pathname.replace(/\/+$/, "");
+  return pathname || "/";
+}
+
+function isAdsEligibleRoute() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const pathname = getNormalizedPathname();
+  const hashRoute = window.location.hash.replace(/^#/, "").split("?")[0];
+
+  if (
+    pathname === "/" ||
+    pathname === "/index.html" ||
+    pathname === "/knowledge" ||
+    pathname.startsWith("/knowledge/") ||
+    pathname === "/smarttalk"
+  ) {
+    return true;
+  }
+
+  if (
+    hashRoute === "knowledge" ||
+    hashRoute.startsWith("knowledge/") ||
+    hashRoute === "smarttalk"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasPublisherContent() {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  return Boolean(document.querySelector(PUBLISHER_CONTENT_SELECTOR));
+}
+
 function scheduleAdsScript() {
-  if (typeof window === "undefined" || adsScriptScheduled) {
+  if (typeof window === "undefined" || adsLoadWatcherScheduled || adsScriptLoaded) {
     return;
   }
 
-  adsScriptScheduled = true;
+  adsLoadWatcherScheduled = true;
   let timeoutId: number | null = null;
+  let observer: MutationObserver | null = null;
 
   const loadAds = () => {
-    ADS_INTERACTION_EVENTS.forEach((eventName) => {
+    if (adsScriptLoaded || !isAdsEligibleRoute() || !hasPublisherContent()) {
+      return;
+    }
+
+    adsScriptLoaded = true;
+
+    [...ADS_INTERACTION_EVENTS, ...ADS_ROUTE_CHANGE_EVENTS].forEach((eventName) => {
       window.removeEventListener(eventName, loadAds);
     });
 
@@ -109,15 +168,27 @@ function scheduleAdsScript() {
       timeoutId = null;
     }
 
+    observer?.disconnect();
+    observer = null;
+
     appendScript(GOOGLE_ADS_SRC, {
       async: true,
       crossorigin: "anonymous",
     });
   };
 
-  ADS_INTERACTION_EVENTS.forEach((eventName) => {
-    window.addEventListener(eventName, loadAds, { once: true, passive: true });
+  [...ADS_INTERACTION_EVENTS, ...ADS_ROUTE_CHANGE_EVENTS].forEach((eventName) => {
+    window.addEventListener(eventName, loadAds, { passive: true });
   });
+
+  if (typeof MutationObserver === "function" && document.body) {
+    observer = new MutationObserver(loadAds);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
   timeoutId = window.setTimeout(loadAds, ADS_IDLE_DELAY_MS);
 }
 

@@ -621,6 +621,7 @@ export function SmartTalk({
       <SEO
         title="SmartTalk - Q&A Community | Readative"
         description="Ask learning-focused questions and get thoughtful community answers on Readative."
+        robots={!isLoading && questions.length === 0 ? "noindex" : "index"}
         keywords={[
           "Q&A",
           "learning questions",
@@ -738,6 +739,7 @@ export function SmartTalk({
             return (
               <div
                 key={question.id}
+                data-publisher-content="smarttalk-question"
                 className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
               >
                 <div className="mb-5 flex items-start gap-3">

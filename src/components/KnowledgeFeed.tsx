@@ -2268,16 +2268,7 @@ export function KnowledgeFeed({
     (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError);
   const shouldContinueLoadingVisibleFeed =
     shouldKeepLoadingEmptyFeed || shouldFillInitialVisibleBatch;
-  const shouldHoldEmptyFeedState =
-    shouldKeepLoadingEmptyFeed ||
-    (!hasActiveSearch && filteredEntries.length === 0 && Boolean(activeFeedLoadError));
-  const shouldShowBaseFeedSkeleton =
-    !focusedEntryId &&
-    !hasActiveSearch &&
-    !hasActiveTopic &&
-    !selectedHashtag &&
-    filteredEntries.length === 0 &&
-    !activeFeedLoadError;
+  const shouldHoldEmptyFeedState = shouldKeepLoadingEmptyFeed;
 
   const loadNextIndependentFeedPage = useCallback(
     async ({
@@ -3056,6 +3047,11 @@ export function KnowledgeFeed({
       : buildAbsoluteRouteUrl("knowledge");
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
+  const shouldNoIndexKnowledgePage =
+    !isLoading &&
+    !shouldHoldEmptyFeedState &&
+    !hasActiveSearch &&
+    filteredEntries.length === 0;
 
   return (
     <div className="pb-20">
@@ -3073,6 +3069,7 @@ export function KnowledgeFeed({
         url={pageUrl}
         ampUrl={isActive && !focusedEntry && !selectedHashtag ? "/amp/" : undefined}
         schema={buildKnowledgeSchemas(focusedEntry)}
+        robots={shouldNoIndexKnowledgePage ? "noindex" : "index"}
         image={
           focusedEntryPrimaryImage?.dataUrl &&
           !focusedEntryPrimaryImage.dataUrl.startsWith("data:")
@@ -3082,7 +3079,7 @@ export function KnowledgeFeed({
       />
 
       {isLoading ? (
-        <KnowledgeFeedSkeleton />
+        <KnowledgeFeedSkeleton showControls={false} />
       ) : (
         <div className="space-y-6">
           {feedLoadError && !shouldUseIndependentFeed && (
@@ -3180,7 +3177,7 @@ export function KnowledgeFeed({
           )}
 
           {filteredEntries.length === 0 ? (
-            shouldHoldEmptyFeedState || shouldShowBaseFeedSkeleton ? (
+            shouldHoldEmptyFeedState ? (
               <FeedEmptyLoadingSkeleton
                 labelWidth={
                   shouldUseIndependentFeed && activeFeedTopic.label.length > 8
