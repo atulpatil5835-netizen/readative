@@ -888,6 +888,53 @@ function pushCurrentUserLikedEntriesDown(
   return [...freshEntries, ...likedEntries];
 }
 
+function compareEntriesByNewestFirst(left: KnowledgeEntry, right: KnowledgeEntry) {
+  const createdAtDelta = right.createdAt - left.createdAt;
+  if (createdAtDelta !== 0) {
+    return createdAtDelta;
+  }
+
+  const likeDelta = right.likes.length - left.likes.length;
+  if (likeDelta !== 0) {
+    return likeDelta;
+  }
+
+  return right.id.localeCompare(left.id);
+}
+
+function putNewUnseenEntriesFirst(
+  entries: KnowledgeEntry[],
+  snapshot: KnowledgeFeedSnapshot,
+) {
+  if (entries.length <= 1) {
+    return entries;
+  }
+
+  const unseenEntries: KnowledgeEntry[] = [];
+  const remainingEntries: KnowledgeEntry[] = [];
+
+  entries.forEach((entry) => {
+    if (
+      !isLikedByCurrentUser(entry, snapshot) &&
+      !snapshot.seenEntryIds.has(entry.id)
+    ) {
+      unseenEntries.push(entry);
+      return;
+    }
+
+    remainingEntries.push(entry);
+  });
+
+  if (unseenEntries.length === 0) {
+    return entries;
+  }
+
+  return [
+    ...unseenEntries.sort(compareEntriesByNewestFirst),
+    ...remainingEntries,
+  ];
+}
+
 function putRefreshDiscoveryEntriesFirst(
   entries: KnowledgeEntry[],
   snapshot: KnowledgeFeedSnapshot,
@@ -1206,8 +1253,12 @@ export function rankKnowledgeEntries(
     fallbackEntries,
     snapshot,
   );
-  const refreshedEntries = putRefreshDiscoveryEntriesFirst(
+  const newestUnseenFirstEntries = putNewUnseenEntriesFirst(
     unlikedFirstEntries,
+    snapshot,
+  );
+  const refreshedEntries = putRefreshDiscoveryEntriesFirst(
+    newestUnseenFirstEntries,
     snapshot,
     options.refreshSeed,
   );

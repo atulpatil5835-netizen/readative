@@ -62,7 +62,6 @@ import { KnowledgeImageCarousel } from "./KnowledgeImageCarousel";
 import { DiscoverySearch } from "./DiscoverySearch";
 import { ReadativeLoader, ReadativeRMark } from "./ReadativeLoader";
 import {
-  FeedEmptyLoadingSkeleton,
   FeedPaginationSkeleton,
   KnowledgeFeedSkeleton,
 } from "./Skeletons";
@@ -224,8 +223,20 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
     icon: Megaphone,
     keywords: [
       "marketing",
+      "market",
+      "markettech",
+      "marketnews",
+      "digitalmarketing",
+      "socialmediamarketing",
+      "contentmarketing",
+      "emailmarketing",
+      "performancemarketing",
+      "growthmarketing",
+      "brandmarketing",
       "growth",
       "seo",
+      "ads",
+      "advertising",
       "content",
       "brand",
       "growth hacking",
@@ -509,11 +520,16 @@ function getStrictHashtagValues(value: string) {
 
   if (valueTokens.length === 1) {
     const [token] = valueTokens;
-    if (token.length > 2 && !token.endsWith("s")) {
+    if (token.length > 2 && !token.endsWith("s") && !token.endsWith("ing")) {
       values.add(`${token}s`);
     }
 
-    if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+    if (
+      token.length > 3 &&
+      token.endsWith("s") &&
+      !token.endsWith("ss") &&
+      !token.endsWith("news")
+    ) {
       values.add(token.slice(0, -1));
     }
   }
@@ -983,19 +999,16 @@ function reconcileRealtimeKnowledgeFeedOrder({
   currentOrder,
   snapshot,
   newEntryIds,
-  refreshSeed,
 }: {
   entries: KnowledgeEntry[];
   currentOrder: string[];
   snapshot: ReturnType<typeof getKnowledgeFeedSnapshot>;
   newEntryIds: Set<string>;
-  refreshSeed: number;
 }) {
   const reconciledOrder = reconcileKnowledgeFeedOrder(
     entries,
     currentOrder,
     snapshot,
-    { refreshSeed },
   );
 
   if (currentOrder.length === 0 || newEntryIds.size === 0) {
@@ -1011,9 +1024,9 @@ function reconcileRealtimeKnowledgeFeedOrder({
     return reconciledOrder;
   }
 
-  const leadEntryIds = rankKnowledgeEntries(newEntries, snapshot, {
-    refreshSeed,
-  }).map((entry) => entry.id);
+  const leadEntryIds = rankKnowledgeEntries(newEntries, snapshot).map(
+    (entry) => entry.id,
+  );
   const leadEntryIdSet = new Set(leadEntryIds);
 
   return [
@@ -1357,10 +1370,9 @@ export function KnowledgeFeed({
         ? rankKnowledgeEntries(
             initialFeedCache.entries,
             getKnowledgeFeedSnapshot(),
-            { refreshSeed: initialRefreshSeed, shuffleOnRefresh: true },
           ).map((entry) => entry.id)
         : [],
-    [initialFeedCache, initialRefreshSeed],
+    [initialFeedCache],
   );
   const [entries, setEntries] = useState<KnowledgeEntry[]>(
     () => initialFeedCache?.entries || [],
@@ -1586,7 +1598,6 @@ export function KnowledgeFeed({
         rankKnowledgeEntries(
           cachedFeed.entries,
           getKnowledgeFeedSnapshot(),
-          { refreshSeed: nextRefreshSeed, shuffleOnRefresh: true },
         ).map((entry) => entry.id),
       );
       updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
@@ -1598,7 +1609,6 @@ export function KnowledgeFeed({
       rankKnowledgeEntries(
         entriesRef.current,
         getKnowledgeFeedSnapshot(),
-        { refreshSeed: nextRefreshSeed, shuffleOnRefresh: true },
       ).map((entry) => entry.id),
     );
   }, [identity?.authorId, updateHasMoreServerEntries]);
@@ -1762,10 +1772,6 @@ export function KnowledgeFeed({
             return rankKnowledgeEntries(
               nextFeedEntries,
               personalizationSnapshot,
-              {
-                refreshSeed: feedRefreshSeedRef.current,
-                shuffleOnRefresh: true,
-              },
             ).map((entry) => entry.id);
           }
 
@@ -1774,7 +1780,6 @@ export function KnowledgeFeed({
             currentOrder,
             snapshot: personalizationSnapshot,
             newEntryIds,
-            refreshSeed: feedRefreshSeedRef.current,
           });
         });
 
@@ -1864,9 +1869,6 @@ export function KnowledgeFeed({
               nextFeedEntries,
               currentOrder,
               getKnowledgeFeedSnapshot(),
-              {
-                refreshSeed: feedRefreshSeedRef.current,
-              },
             ),
           );
         }
@@ -2316,7 +2318,6 @@ export function KnowledgeFeed({
             existing.entries,
             page.entries,
             activeFeedTopic,
-            { refreshSeed: feedRefreshSeedRef.current },
           );
 
           return {
@@ -2471,10 +2472,6 @@ export function KnowledgeFeed({
               current[independentFeedKey]?.entries || [],
               page.entries,
               activeFeedTopic,
-              {
-                refreshSeed: feedRefreshSeedRef.current,
-                shuffleOnRefresh: true,
-              },
             ),
             isLoading: false,
             isLoadingMore: false,
@@ -2902,7 +2899,6 @@ export function KnowledgeFeed({
     (topicId: FeedTopicId) => {
       if (topicId === selectedFeedTopic) return;
 
-      const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
       const normalizedRefreshHashtag = selectedHashtag
         ? normalizeStoredHashtagValue(selectedHashtag)
         : null;
@@ -2913,15 +2909,13 @@ export function KnowledgeFeed({
       setFeedSearchQuery("");
       visibleLikedEntryIdsRef.current = [];
       setVisibleLikedEntryIds([]);
-      feedRefreshSeedRef.current = nextRefreshSeed;
       setSelectedFeedTopic(topicId);
 
       if (nextTopic.id === "all" && !normalizedRefreshHashtag) {
         setFeedEntryOrder(
-          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot(), {
-            refreshSeed: nextRefreshSeed,
-            shuffleOnRefresh: true,
-          }).map((entry) => entry.id),
+          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
+            (entry) => entry.id,
+          ),
         );
       } else {
         const nextFeedKey = getIndependentFeedKey(
@@ -2940,10 +2934,6 @@ export function KnowledgeFeed({
               entries: orderIndependentKnowledgeFeedEntries(
                 existing.entries,
                 nextTopic,
-                {
-                  refreshSeed: nextRefreshSeed,
-                  shuffleOnRefresh: true,
-                },
               ),
             },
           };
@@ -3147,7 +3137,7 @@ export function KnowledgeFeed({
 
           {showRefreshFeedback && (
             <p className="text-center text-xs font-medium text-emerald-700">
-              Posts refreshed and reshuffled
+              Feed refreshed
             </p>
           )}
 
@@ -3178,13 +3168,7 @@ export function KnowledgeFeed({
 
           {filteredEntries.length === 0 ? (
             shouldHoldEmptyFeedState ? (
-              <FeedEmptyLoadingSkeleton
-                labelWidth={
-                  shouldUseIndependentFeed && activeFeedTopic.label.length > 8
-                    ? "w-64"
-                    : "w-48"
-                }
-              />
+              <KnowledgeFeedSkeleton count={3} showControls={false} />
             ) : (
               <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
                 <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
