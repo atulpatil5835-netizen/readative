@@ -30,6 +30,7 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
   renderOverlayAction,
 }: KnowledgeImageCarouselProps) {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   if (images.length === 0) return null;
 
@@ -39,8 +40,9 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
         {images.map((image, index) => {
           const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
           const isLoaded = Boolean(loadedImages[imageKey]);
+          const hasFailed = Boolean(failedImages[imageKey]);
           const canShowImmediately = mode === "composer";
-          const shouldShowImage = isLoaded || canShowImmediately;
+          const shouldShowImage = !hasFailed && (isLoaded || canShowImmediately);
 
           return (
             <figure
@@ -68,42 +70,44 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                   <span className="block h-3 w-2/3 rounded-full bg-white/60" />
                 </div>
               )}
-              <img
-                src={image.dataUrl}
-                alt={`${altBase} ${index + 1}`}
-                loading={mode === "feed" ? "lazy" : "eager"}
-                decoding="async"
-                width={image.width}
-                height={image.height}
-                sizes={
-                  layout === "portrait"
-                    ? "(max-width: 768px) 76vw, 58vw"
-                    : "(max-width: 768px) 92vw, 72vw"
-                }
-                onLoad={() =>
-                  setLoadedImages((current) =>
-                    current[imageKey]
-                      ? current
-                      : {
-                          ...current,
-                          [imageKey]: true,
-                        },
-                  )
-                }
-                onError={() =>
-                  setLoadedImages((current) =>
-                    current[imageKey]
-                      ? current
-                      : {
-                          ...current,
-                          [imageKey]: true,
-                        },
-                  )
-                }
-                className={`relative h-full w-full object-cover transition-opacity duration-500 ${
-                  shouldShowImage ? "opacity-100" : "opacity-0"
-                }`}
-              />
+              {!hasFailed && (
+                <img
+                  src={image.dataUrl}
+                  alt={`${altBase} ${index + 1}`}
+                  loading={mode === "feed" ? "lazy" : "eager"}
+                  decoding="async"
+                  width={image.width}
+                  height={image.height}
+                  sizes={
+                    layout === "portrait"
+                      ? "(max-width: 768px) 76vw, 58vw"
+                      : "(max-width: 768px) 92vw, 72vw"
+                  }
+                  onLoad={() =>
+                    setLoadedImages((current) =>
+                      current[imageKey]
+                        ? current
+                        : {
+                            ...current,
+                            [imageKey]: true,
+                          },
+                    )
+                  }
+                  onError={() =>
+                    setFailedImages((current) =>
+                      current[imageKey]
+                        ? current
+                        : {
+                            ...current,
+                            [imageKey]: true,
+                          },
+                    )
+                  }
+                  className={`relative h-full w-full object-cover transition-opacity duration-500 ${
+                    shouldShowImage ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              )}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/28 via-transparent to-transparent" />
 
               <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 px-0 py-0 text-[10px] font-semibold tracking-[0.16em] text-white">

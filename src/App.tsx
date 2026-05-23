@@ -132,7 +132,10 @@ export default function App() {
 
     const route = parseRouteFromLocation();
     const alreadyOnBaseHome =
-      route.tab === "knowledge" && !route.focusedEntryId && !route.selectedHashtag;
+      route.tab === "knowledge" &&
+      !route.focusedEntryId &&
+      !route.selectedHashtag &&
+      !route.selectedTopic;
 
     if (!alreadyOnBaseHome) {
       navigateToRoute("knowledge");
@@ -198,6 +201,7 @@ export default function App() {
             profileAuthorId: route.profileAuthorId,
             focusedEntryId: route.focusedEntryId,
             selectedHashtag: route.selectedHashtag,
+            selectedTopic: route.selectedTopic,
           },
           "replace"
         );

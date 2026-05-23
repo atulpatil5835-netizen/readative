@@ -4,6 +4,7 @@ export interface RouteOptions {
   focusedEntryId?: string | null;
   profileAuthorId?: string | null;
   selectedHashtag?: string | null;
+  selectedTopic?: string | null;
 }
 
 export interface ParsedAppRoute {
@@ -11,6 +12,7 @@ export interface ParsedAppRoute {
   focusedEntryId: string | null;
   profileAuthorId: string | null;
   selectedHashtag: string | null;
+  selectedTopic: string | null;
   source: "hash" | "path";
   attemptedLocation: string;
 }
@@ -39,6 +41,20 @@ function normalizeTag(tag: string | null | undefined) {
   return normalized || null;
 }
 
+function normalizeTopic(topic: string | null | undefined) {
+  const normalized = topic?.trim().toLowerCase();
+  return normalized && normalized !== "all" ? normalized : null;
+}
+
+function getKnowledgeSearchOptions(search: string) {
+  const params = new URLSearchParams(search);
+
+  return {
+    selectedHashtag: normalizeTag(params.get("tag")),
+    selectedTopic: normalizeTopic(params.get("topic")),
+  };
+}
+
 function createRoute(
   tab: AppTab | "notFound",
   source: "hash" | "path",
@@ -52,6 +68,7 @@ function createRoute(
     focusedEntryId: options.focusedEntryId ?? null,
     profileAuthorId: options.profileAuthorId ?? null,
     selectedHashtag: options.selectedHashtag ?? null,
+    selectedTopic: options.selectedTopic ?? null,
   };
 }
 
@@ -62,9 +79,12 @@ function parseKnowledgeRoute(
   attemptedLocation: string
 ) {
   if (routePart === "knowledge" || routePart === "/knowledge" || routePart === "/") {
-    return createRoute("knowledge", source, attemptedLocation, {
-      selectedHashtag: normalizeTag(new URLSearchParams(search).get("tag")),
-    });
+    return createRoute(
+      "knowledge",
+      source,
+      attemptedLocation,
+      getKnowledgeSearchOptions(search),
+    );
   }
 
   const knowledgePrefix = source === "hash" ? "knowledge/" : "/knowledge/";
@@ -132,9 +152,12 @@ function parsePathRoute(pathname: string, search: string) {
   const attemptedLocation = `${normalizedPathname}${search}`;
 
   if (normalizedPathname === "/" || normalizedPathname === "/index.html") {
-    return createRoute("knowledge", "path", attemptedLocation, {
-      selectedHashtag: normalizeTag(new URLSearchParams(search).get("tag")),
-    });
+    return createRoute(
+      "knowledge",
+      "path",
+      attemptedLocation,
+      getKnowledgeSearchOptions(search),
+    );
   }
 
   if (normalizedPathname === "/smarttalk") {
@@ -163,10 +186,21 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
     return `/knowledge/${encodeURIComponent(options.focusedEntryId)}`;
   }
 
-  if (tab === "knowledge" && options.selectedHashtag) {
-    return `/knowledge?tag=${encodeURIComponent(
-      normalizeTag(options.selectedHashtag) || ""
-    )}`;
+  if (tab === "knowledge") {
+    const params = new URLSearchParams();
+    const selectedHashtag = normalizeTag(options.selectedHashtag);
+    const selectedTopic = normalizeTopic(options.selectedTopic);
+
+    if (selectedHashtag) {
+      params.set("tag", selectedHashtag);
+    }
+
+    if (selectedTopic) {
+      params.set("topic", selectedTopic);
+    }
+
+    const search = params.toString();
+    return search ? `/knowledge?${search}` : "/";
   }
 
   if (tab === "profile" && options.profileAuthorId) {
@@ -198,10 +232,21 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
     return `#knowledge/${encodeURIComponent(options.focusedEntryId)}`;
   }
 
-  if (tab === "knowledge" && options.selectedHashtag) {
-    return `#knowledge?tag=${encodeURIComponent(
-      normalizeTag(options.selectedHashtag) || ""
-    )}`;
+  if (tab === "knowledge") {
+    const params = new URLSearchParams();
+    const selectedHashtag = normalizeTag(options.selectedHashtag);
+    const selectedTopic = normalizeTopic(options.selectedTopic);
+
+    if (selectedHashtag) {
+      params.set("tag", selectedHashtag);
+    }
+
+    if (selectedTopic) {
+      params.set("topic", selectedTopic);
+    }
+
+    const search = params.toString();
+    return search ? `#knowledge?${search}` : "#knowledge";
   }
 
   if (tab === "profile" && options.profileAuthorId) {

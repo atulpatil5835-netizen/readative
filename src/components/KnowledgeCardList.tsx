@@ -248,6 +248,25 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
     itemLayoutRef.current = itemLayout;
   }, [itemLayout]);
 
+  useEffect(() => {
+    const entryIds = new Set(entries.map((entry) => entry.id));
+    const nextMeasuredHeights = Object.fromEntries(
+      Object.entries(measuredHeightsRef.current).filter(([entryId]) =>
+        entryIds.has(entryId),
+      ),
+    );
+
+    if (
+      Object.keys(nextMeasuredHeights).length ===
+      Object.keys(measuredHeightsRef.current).length
+    ) {
+      return;
+    }
+
+    measuredHeightsRef.current = nextMeasuredHeights;
+    setMeasuredHeights(nextMeasuredHeights);
+  }, [entries]);
+
   const virtualRange = useMemo(() => {
     if (entries.length === 0) {
       return { start: 0, end: 0 };
@@ -390,7 +409,6 @@ function MeasuredVirtualRow({
         {
           contain: "layout paint",
           transform: `translateY(${top}px)`,
-          willChange: "transform",
         } as CSSProperties
       }
     >

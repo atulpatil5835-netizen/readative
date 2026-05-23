@@ -115,28 +115,6 @@ export function KnowledgeFeedSkeleton({
   );
 }
 
-export function FeedEmptyLoadingSkeleton({
-  labelWidth = "w-48",
-}: {
-  labelWidth?: string;
-}) {
-  return (
-    <div
-      className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-10 shadow-sm"
-      aria-busy="true"
-    >
-      <div className="mx-auto max-w-md space-y-5">
-        <SkeletonBlock className="mx-auto h-11 w-11 rounded-2xl" />
-        <SkeletonBlock className={cn("mx-auto h-5 rounded-xl", labelWidth)} />
-        <div className="space-y-2">
-          <SkeletonBlock className="mx-auto h-3.5 w-full max-w-sm" />
-          <SkeletonBlock className="mx-auto h-3.5 w-[72%] max-w-xs" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function FeedPaginationSkeleton() {
   return (
     <div className="space-y-4 py-2" aria-busy="true" aria-live="polite">

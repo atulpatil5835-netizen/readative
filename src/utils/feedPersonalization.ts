@@ -117,6 +117,11 @@ function getStableRefreshNoise(value: string, refreshSeed = 0) {
   return (hash >>> 0) / 4294967295;
 }
 
+function getStableDiversityNoise(entryId: string, now: number) {
+  const dayBucket = Math.floor(now / (24 * HOUR_MS));
+  return getStableRefreshNoise(entryId, dayBucket) * 1.15;
+}
+
 function getKnowledgeSeenEntryKey() {
   return `${KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX}:${getKnowledgePersonalizationId()}`;
 }
@@ -740,6 +745,7 @@ function scoreKnowledgeEntry(
   const personalizationScore = getPersonalizationScore(entry, snapshot);
   const noveltyScore = getNoveltyScore(entry, snapshot, ageHours, hoursSinceSeen);
   const explorationScore = getExplorationScore(entry, snapshot);
+  const diversityNoise = getStableDiversityNoise(entry.id, now);
   const refreshDiscoveryScore = getRefreshDiscoveryScore(
     entry,
     snapshot,
@@ -767,6 +773,7 @@ function scoreKnowledgeEntry(
       personalizationScore +
       noveltyScore +
       explorationScore +
+      diversityNoise +
       refreshDiscoveryScore +
       newUnseenPostBoost -
       stalePenalty -

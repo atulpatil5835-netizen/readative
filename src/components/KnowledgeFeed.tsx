@@ -108,7 +108,7 @@ const FEED_NEXT_PAGE_SIZE = 5;
 const FEED_LOAD_MORE_REMAINING_THRESHOLD = 5;
 const FEED_LOAD_TIMEOUT_MS = 7000;
 const FEED_BACKGROUND_PAGE_DELAY_MS = 1200;
-const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 0;
+const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 1;
 const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
@@ -116,6 +116,7 @@ const FEED_CACHE_STORAGE_ENTRY_LIMIT = 32;
 const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 900_000;
 const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v2";
 const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
+const FEED_SCROLL_STORAGE_KEY_PREFIX = "readativeKnowledgeFeedScroll:v1";
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const TRENDING_FEED_LIMIT = FEED_INITIAL_PAGE_SIZE;
@@ -446,6 +447,19 @@ function readSelectedHashtagFromLocation() {
   return parseRouteFromLocation().selectedHashtag;
 }
 
+function normalizeFeedTopicId(value: string | null | undefined): FeedTopicId {
+  return (
+    FEED_TOPIC_FILTERS.find((topic) => topic.id === value)?.id ||
+    "all"
+  );
+}
+
+function readSelectedFeedTopicFromLocation() {
+  if (typeof window === "undefined") return "all";
+
+  return normalizeFeedTopicId(parseRouteFromLocation().selectedTopic);
+}
+
 function tokenizeSearch(input: string) {
   return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
 }
@@ -586,7 +600,9 @@ function getTrendingKnowledgeEntries(
   entries: KnowledgeEntry[],
   maxEntries = TRENDING_FEED_LIMIT,
 ) {
-  if (entries.length <= 1) return entries;
+  if (entries.length <= 1) {
+    return entries.filter((entry) => getKnowledgeEntryLikeCount(entry) > 0);
+  }
 
   const rankedEntries = [...entries].sort((left, right) => {
     const likeDifference =
@@ -750,6 +766,35 @@ function getKnowledgeFeedCacheKey(authorId?: string | null) {
   const ownerId =
     authorId?.trim() || (typeof window === "undefined" ? "server" : getGuestId());
   return `${FEED_CACHE_KEY_PREFIX}:${ownerId}`;
+}
+
+function getKnowledgeFeedScrollKey(feedKey: string) {
+  return `${FEED_SCROLL_STORAGE_KEY_PREFIX}:${feedKey}`;
+}
+
+function readKnowledgeFeedScrollPosition(feedKey: string) {
+  if (typeof window === "undefined") return 0;
+
+  try {
+    const rawValue = window.sessionStorage.getItem(getKnowledgeFeedScrollKey(feedKey));
+    const parsedValue = rawValue ? Number.parseInt(rawValue, 10) : 0;
+    return Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeKnowledgeFeedScrollPosition(feedKey: string, scrollY: number) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      getKnowledgeFeedScrollKey(feedKey),
+      String(Math.max(0, Math.round(scrollY))),
+    );
+  } catch {
+    // Scroll restoration is a convenience only.
+  }
 }
 
 function normalizeCacheStringArray(value: unknown) {
@@ -1539,7 +1584,7 @@ export function KnowledgeFeed({
   );
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
   const [selectedFeedTopic, setSelectedFeedTopic] =
-    useState<FeedTopicId>("all");
+    useState<FeedTopicId>(() => readSelectedFeedTopicFromLocation());
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [showBackToTopRefresh, setShowBackToTopRefresh] = useState(false);
   const [feedEntryOrder, setFeedEntryOrder] =
@@ -1567,8 +1612,11 @@ export function KnowledgeFeed({
   const hasPaginatedPastFirstPageRef = useRef(false);
   const hasAppliedInitialRealtimeRankRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
+  const independentLoadingKeysRef = useRef(new Set<string>());
   const hasLoadedProfilesDirectoryRef = useRef(false);
   const lastAutoLoadEntryCountRef = useRef(0);
+  const isMountedRef = useRef(false);
+  const restoredScrollKeyRef = useRef<string | null>(null);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
@@ -1586,6 +1634,14 @@ export function KnowledgeFeed({
       setShowRefreshFeedback(false);
       refreshFeedbackTimeoutRef.current = null;
     }, 2400);
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const handleBackToTopRefresh = useCallback(() => {
@@ -1821,7 +1877,17 @@ export function KnowledgeFeed({
   }, [focusedEntryId, refreshSignal, selectedFeedTopic, selectedHashtag]);
 
   useEffect(() => {
-    if (!isActive) {
+    const normalizedRouteHashtag = selectedHashtag
+      ? normalizeStoredHashtagValue(selectedHashtag)
+      : null;
+    const isIndependentRoute =
+      !focusedEntryId &&
+      (Boolean(normalizedRouteHashtag) || selectedFeedTopic !== "all");
+
+    if (!isActive || isIndependentRoute) {
+      if (isIndependentRoute) {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -1937,7 +2003,13 @@ export function KnowledgeFeed({
       }
       unsubscribe();
     };
-  }, [isActive, updateHasMoreServerEntries]);
+  }, [
+    focusedEntryId,
+    isActive,
+    selectedFeedTopic,
+    selectedHashtag,
+    updateHasMoreServerEntries,
+  ]);
 
   const loadNextEntriesPage = useCallback(
     async ({
@@ -1978,6 +2050,10 @@ export function KnowledgeFeed({
           ),
         );
 
+        if (!isMountedRef.current) {
+          return "blocked";
+        }
+
         hasPaginatedPastFirstPageRef.current = true;
 
         if (snapshot.docs.length > 0) {
@@ -2016,7 +2092,7 @@ export function KnowledgeFeed({
         return "error";
       } finally {
         isLoadingMoreEntriesRef.current = false;
-        if (showLoadingState) {
+        if (showLoadingState && isMountedRef.current) {
           setIsLoadingMoreEntries(false);
         }
       }
@@ -2030,6 +2106,8 @@ export function KnowledgeFeed({
       isLoading ||
       FEED_BACKGROUND_PREFETCH_PAGE_LIMIT <= 0 ||
       focusedEntryId ||
+      selectedFeedTopic !== "all" ||
+      Boolean(selectedHashtag) ||
       !hasMoreServerEntries ||
       !paginationCursorRef.current ||
       typeof window === "undefined"
@@ -2097,6 +2175,8 @@ export function KnowledgeFeed({
     isActive,
     isLoading,
     loadNextEntriesPage,
+    selectedFeedTopic,
+    selectedHashtag,
   ]);
 
   useEffect(() => {
@@ -2221,19 +2301,20 @@ export function KnowledgeFeed({
   }, [entries.length, focusedEntryId]);
 
   useEffect(() => {
-    const syncSelectedHashtag = () => {
+    const syncRouteFeedState = () => {
       setSelectedHashtag(readSelectedHashtagFromLocation());
+      setSelectedFeedTopic(readSelectedFeedTopicFromLocation());
     };
 
-    syncSelectedHashtag();
-    window.addEventListener("hashchange", syncSelectedHashtag);
-    window.addEventListener("popstate", syncSelectedHashtag);
-    window.addEventListener(ROUTE_CHANGE_EVENT, syncSelectedHashtag);
+    syncRouteFeedState();
+    window.addEventListener("hashchange", syncRouteFeedState);
+    window.addEventListener("popstate", syncRouteFeedState);
+    window.addEventListener(ROUTE_CHANGE_EVENT, syncRouteFeedState);
 
     return () => {
-      window.removeEventListener("hashchange", syncSelectedHashtag);
-      window.removeEventListener("popstate", syncSelectedHashtag);
-      window.removeEventListener(ROUTE_CHANGE_EVENT, syncSelectedHashtag);
+      window.removeEventListener("hashchange", syncRouteFeedState);
+      window.removeEventListener("popstate", syncRouteFeedState);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, syncRouteFeedState);
     };
   }, []);
 
@@ -2349,6 +2430,9 @@ export function KnowledgeFeed({
     visibleLikedEntryIdSet,
   ]);
   const visibleEntries = independentFeedEntries || orderedEntries;
+  const activeFeedPersistenceKey = shouldUseIndependentFeed
+    ? independentFeedKey
+    : "home";
   const filteredEntries = useMemo(() => {
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
     if (searchTerms.length === 0) return visibleEntries;
@@ -2404,6 +2488,56 @@ export function KnowledgeFeed({
     shouldKeepLoadingEmptyFeed || shouldFillInitialVisibleBatch;
   const shouldHoldEmptyFeedState = shouldKeepLoadingEmptyFeed;
 
+  useEffect(() => {
+    if (!isActive || focusedEntryId || typeof window === "undefined") return;
+
+    let frameId: number | null = null;
+    const persistScroll = () => {
+      frameId = null;
+      writeKnowledgeFeedScrollPosition(activeFeedPersistenceKey, window.scrollY);
+    };
+    const schedulePersistScroll = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(persistScroll);
+    };
+
+    schedulePersistScroll();
+    window.addEventListener("scroll", schedulePersistScroll, { passive: true });
+    window.addEventListener("pagehide", persistScroll);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      persistScroll();
+      window.removeEventListener("scroll", schedulePersistScroll);
+      window.removeEventListener("pagehide", persistScroll);
+    };
+  }, [activeFeedPersistenceKey, focusedEntryId, isActive]);
+
+  useEffect(() => {
+    if (!isActive || focusedEntryId || typeof window === "undefined") return;
+    if (restoredScrollKeyRef.current === activeFeedPersistenceKey) return;
+    if (filteredEntries.length === 0 || shouldHoldEmptyFeedState) return;
+
+    restoredScrollKeyRef.current = activeFeedPersistenceKey;
+    const savedScrollY = readKnowledgeFeedScrollPosition(activeFeedPersistenceKey);
+    if (savedScrollY <= 0) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: savedScrollY, left: 0, behavior: "auto" });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    activeFeedPersistenceKey,
+    filteredEntries.length,
+    focusedEntryId,
+    isActive,
+    shouldHoldEmptyFeedState,
+  ]);
+
   const loadNextIndependentFeedPage = useCallback(
     async ({
       showLoadingState = true,
@@ -2413,11 +2547,17 @@ export function KnowledgeFeed({
         !shouldUseIndependentFeed ||
         activeTopicFeedState.isLoading ||
         activeTopicFeedState.isLoadingMore ||
+        independentLoadingKeysRef.current.has(independentFeedKey) ||
         !activeTopicFeedState.hasMore ||
         !activeTopicFeedState.cursor
       ) {
-        return activeTopicFeedState.isLoadingMore ? "blocked" : "done";
+        return activeTopicFeedState.isLoadingMore ||
+          independentLoadingKeysRef.current.has(independentFeedKey)
+          ? "blocked"
+          : "done";
       }
+
+      independentLoadingKeysRef.current.add(independentFeedKey);
 
       if (showLoadingState) {
         setTopicFeedStates((current) => {
@@ -2443,6 +2583,10 @@ export function KnowledgeFeed({
           selectedHashtag: normalizedSelectedHashtag,
           cursor: activeTopicFeedState.cursor,
         });
+
+        if (!isMountedRef.current) {
+          return "blocked";
+        }
 
         setTopicFeedStates((current) => {
           const existing = current[independentFeedKey] || activeTopicFeedState;
@@ -2492,6 +2636,8 @@ export function KnowledgeFeed({
         });
 
         return "error";
+      } finally {
+        independentLoadingKeysRef.current.delete(independentFeedKey);
       }
     },
     [
@@ -2567,8 +2713,10 @@ export function KnowledgeFeed({
   useEffect(() => {
     if (!isActive || !shouldUseIndependentFeed) return;
     if (activeTopicFeedState.isLoading || activeTopicFeedState.hasLoaded) return;
+    if (independentLoadingKeysRef.current.has(independentFeedKey)) return;
 
     let cancelled = false;
+    independentLoadingKeysRef.current.add(independentFeedKey);
 
     setTopicFeedStates((current) => {
       const existing = current[independentFeedKey];
@@ -2634,6 +2782,8 @@ export function KnowledgeFeed({
                   : `Could not load ${activeFeedTopic.label} posts right now.`,
           },
         }));
+      } finally {
+        independentLoadingKeysRef.current.delete(independentFeedKey);
       }
     };
 
@@ -2641,6 +2791,7 @@ export function KnowledgeFeed({
 
     return () => {
       cancelled = true;
+      independentLoadingKeysRef.current.delete(independentFeedKey);
     };
   }, [
     activeFeedTopic,
@@ -3025,8 +3176,11 @@ export function KnowledgeFeed({
     const normalizedTag = tag.trim().toLowerCase();
     if (!normalizedTag) return;
 
-    navigateToRoute("knowledge", { selectedHashtag: normalizedTag });
-  }, []);
+    navigateToRoute("knowledge", {
+      selectedHashtag: normalizedTag,
+      selectedTopic: selectedFeedTopic === "all" ? null : selectedFeedTopic,
+    });
+  }, [selectedFeedTopic]);
 
   const handleSelectFeedTopic = useCallback(
     (topicId: FeedTopicId) => {
@@ -3035,43 +3189,15 @@ export function KnowledgeFeed({
       const normalizedRefreshHashtag = selectedHashtag
         ? normalizeStoredHashtagValue(selectedHashtag)
         : null;
-      const nextTopic =
-        FEED_TOPIC_FILTERS.find((topic) => topic.id === topicId) ||
-        FEED_TOPIC_FILTERS[0];
 
       setFeedSearchQuery("");
       visibleLikedEntryIdsRef.current = [];
       setVisibleLikedEntryIds([]);
       setSelectedFeedTopic(topicId);
-
-      if (nextTopic.id === "all" && !normalizedRefreshHashtag) {
-        setFeedEntryOrder(
-          rankKnowledgeEntries(entriesRef.current, getKnowledgeFeedSnapshot()).map(
-            (entry) => entry.id,
-          ),
-        );
-      } else {
-        const nextFeedKey = getIndependentFeedKey(
-          nextTopic.id,
-          normalizedRefreshHashtag,
-        );
-
-        setTopicFeedStates((current) => {
-          const existing = current[nextFeedKey];
-          if (!existing || existing.entries.length <= 1) return current;
-
-          return {
-            ...current,
-            [nextFeedKey]: {
-              ...existing,
-              entries: orderIndependentKnowledgeFeedEntries(
-                existing.entries,
-                nextTopic,
-              ),
-            },
-          };
-        });
-      }
+      navigateToRoute("knowledge", {
+        selectedHashtag: normalizedRefreshHashtag,
+        selectedTopic: topicId === "all" ? null : topicId,
+      });
 
       window.requestAnimationFrame(() => scrollKnowledgeFeedToTop("smooth"));
     },
@@ -3079,8 +3205,10 @@ export function KnowledgeFeed({
   );
 
   const clearSelectedHashtag = useCallback(() => {
-    navigateToRoute("knowledge");
-  }, []);
+    navigateToRoute("knowledge", {
+      selectedTopic: selectedFeedTopic === "all" ? null : selectedFeedTopic,
+    });
+  }, [selectedFeedTopic]);
 
   const handleIdentityRequired = useCallback(
     (action: NonNullable<PendingAction>) => setPendingAction(action),
@@ -3157,21 +3285,33 @@ export function KnowledgeFeed({
     ? `${focusedEntry.title} | Readative`
     : selectedHashtag
       ? `#${selectedHashtag} posts | Readative`
-      : "Home Feed | Readative";
+      : activeFeedTopic.id !== "all"
+        ? `${activeFeedTopic.label} posts | Readative`
+        : "Home Feed | Readative";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
       ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
-      : "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
+      : activeFeedTopic.id !== "all"
+        ? `Explore ${activeFeedTopic.label.toLowerCase()} knowledge posts on Readative.`
+        : "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
   const pageUrl = focusedEntry
     ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
     : selectedHashtag
-      ? buildAbsoluteRouteUrl("knowledge", { selectedHashtag })
-      : buildAbsoluteRouteUrl("knowledge");
+      ? buildAbsoluteRouteUrl("knowledge", {
+          selectedHashtag,
+          selectedTopic:
+            activeFeedTopic.id === "all" ? null : activeFeedTopic.id,
+        })
+      : buildAbsoluteRouteUrl("knowledge", {
+          selectedTopic:
+            activeFeedTopic.id === "all" ? null : activeFeedTopic.id,
+        });
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
+  const isHomeFeedLoading = isLoading && !shouldUseIndependentFeed;
   const shouldNoIndexKnowledgePage =
-    !isLoading &&
+    !isHomeFeedLoading &&
     !shouldHoldEmptyFeedState &&
     !hasActiveSearch &&
     filteredEntries.length === 0;
@@ -3201,7 +3341,7 @@ export function KnowledgeFeed({
         }
       />
 
-      {isLoading ? (
+      {isHomeFeedLoading ? (
         <KnowledgeFeedSkeleton showControls={false} />
       ) : (
         <div className="space-y-6">
