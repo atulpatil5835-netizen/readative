@@ -2,6 +2,7 @@ import {
   arrayRemove,
   arrayUnion,
   doc,
+  increment,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -24,6 +25,7 @@ export async function toggleKnowledgeEntryLike({
 }: ToggleKnowledgeEntryLikeInput) {
   const knowledgeLikeUpdate = {
     likes: shouldLike ? arrayUnion(actorId) : arrayRemove(actorId),
+    likeCount: increment(shouldLike ? 1 : -1),
   };
   const profileLikeUpdate = {
     likedKnowledgeIds: shouldLike

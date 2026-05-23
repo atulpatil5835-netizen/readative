@@ -119,6 +119,8 @@ const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
 const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const TRENDING_FEED_LIMIT = FEED_INITIAL_PAGE_SIZE;
+const TRENDING_CANDIDATE_PAGE_MULTIPLIER = 8;
+const CATEGORY_FALLBACK_PAGE_MULTIPLIER = 8;
 const FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT = 30;
 
 type FeedTopicId =
@@ -569,7 +571,7 @@ function getKnowledgeTrendingScore(entry: KnowledgeEntry) {
   const ageHours = Math.max(1, (now - entry.createdAt) / 3_600_000);
   const recencyBoost = Math.max(0, 6 - ageHours / 18);
   const qualityBoost = Math.max(0, (entry.qualityScore || 0) / 25);
-  const likeCount = (entry.likes || []).length;
+  const likeCount = getKnowledgeEntryLikeCount(entry);
   const commentCount = (entry.comments || []).length;
 
   return (
@@ -587,7 +589,8 @@ function getTrendingKnowledgeEntries(
   if (entries.length <= 1) return entries;
 
   const rankedEntries = [...entries].sort((left, right) => {
-    const likeDifference = (right.likes || []).length - (left.likes || []).length;
+    const likeDifference =
+      getKnowledgeEntryLikeCount(right) - getKnowledgeEntryLikeCount(left);
     if (likeDifference !== 0) return likeDifference;
 
     const scoreDifference =
@@ -597,11 +600,10 @@ function getTrendingKnowledgeEntries(
     return right.createdAt - left.createdAt;
   });
   const engagedEntries = rankedEntries.filter(
-    (entry) => (entry.likes || []).length > 0,
+    (entry) => getKnowledgeEntryLikeCount(entry) > 0,
   );
-  const trendingPool = engagedEntries.length > 0 ? engagedEntries : rankedEntries;
 
-  return trendingPool.slice(0, Math.min(maxEntries, trendingPool.length));
+  return engagedEntries.slice(0, Math.min(maxEntries, engagedEntries.length));
 }
 
 function getKnowledgeEntriesForTopic(
@@ -612,6 +614,17 @@ function getKnowledgeEntriesForTopic(
   if (topic.id === "trending") return getTrendingKnowledgeEntries(entries);
 
   return entries.filter((entry) => matchesKnowledgeTopic(entry, topic));
+}
+
+function getKnowledgeEntryLikeCount(
+  entry: Pick<KnowledgeEntry, "likes"> & Partial<Pick<KnowledgeEntry, "likeCount">>,
+) {
+  const storedLikeCount =
+    typeof entry.likeCount === "number" && Number.isFinite(entry.likeCount)
+      ? entry.likeCount
+      : 0;
+
+  return Math.max((entry.likes || []).length, storedLikeCount);
 }
 
 function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
@@ -678,6 +691,7 @@ function normalizeKnowledgeEntry(
     createdAt,
     updatedAt,
     likes,
+    likeCount,
     mentions,
     images,
     imageLayout,
@@ -704,6 +718,10 @@ function normalizeKnowledgeEntry(
     ...restData,
     id,
     likes: likes || [],
+    likeCount:
+      typeof likeCount === "number" && Number.isFinite(likeCount)
+        ? Math.max(0, likeCount)
+        : (likes || []).length,
     mentions: mentions || [],
     images: Array.isArray(images) ? images : [],
     imageLayout:
@@ -1135,11 +1153,97 @@ function buildIndependentKnowledgeFeedPage(
   entries: KnowledgeEntry[],
   pageSize: number,
   previousCursor: QueryDocumentSnapshot<DocumentData> | null,
+  hasMoreOverride?: boolean,
 ): IndependentKnowledgeFeedPage {
   return {
     entries,
     cursor: docs[docs.length - 1] || previousCursor,
-    hasMore: docs.length === pageSize,
+    hasMore: hasMoreOverride ?? docs.length === pageSize,
+  };
+}
+
+function getKnowledgeQueryDocCreatedAt(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+) {
+  const rawCreatedAt = snapshot.data().createdAt as
+    | number
+    | { toMillis?: () => number }
+    | undefined;
+
+  if (
+    rawCreatedAt &&
+    typeof rawCreatedAt === "object" &&
+    typeof rawCreatedAt.toMillis === "function"
+  ) {
+    return rawCreatedAt.toMillis();
+  }
+
+  return typeof rawCreatedAt === "number" ? rawCreatedAt : 0;
+}
+
+function sortKnowledgeQueryDocs(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+) {
+  return [...docs].sort((left, right) => {
+    const createdAtDiff =
+      getKnowledgeQueryDocCreatedAt(right) - getKnowledgeQueryDocCreatedAt(left);
+    if (createdAtDiff !== 0) return createdAtDiff;
+    return right.id.localeCompare(left.id);
+  });
+}
+
+function mergeKnowledgeQueryDocs(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+) {
+  return sortKnowledgeQueryDocs(
+    [...new Map(docs.map((item) => [item.id, item] as const)).values()],
+  );
+}
+
+async function loadRecentKnowledgeDocs(
+  cursor: QueryDocumentSnapshot<DocumentData> | null,
+  pageSize: number,
+) {
+  const knowledgeCollection = collection(db, "knowledge");
+  const snapshot = await getDocs(
+    cursor
+      ? query(
+          knowledgeCollection,
+          orderBy("createdAt", "desc"),
+          startAfter(cursor),
+          limit(pageSize),
+        )
+      : query(
+          knowledgeCollection,
+          orderBy("createdAt", "desc"),
+          limit(pageSize),
+        ),
+  );
+
+  return snapshot.docs;
+}
+
+async function loadTopicFallbackKnowledgeDocs(
+  topic: FeedTopicFilter,
+  cursor: QueryDocumentSnapshot<DocumentData> | null,
+  pageSize: number,
+) {
+  if (topic.id === "all" || topic.id === "trending") {
+    return { matchingDocs: [], sourceDocs: [], hasMore: false };
+  }
+
+  const fallbackPageSize = pageSize * CATEGORY_FALLBACK_PAGE_MULTIPLIER;
+  const sourceDocs = await loadRecentKnowledgeDocs(cursor, fallbackPageSize);
+  const matchingDocIds = new Set(
+    normalizeKnowledgeQueryDocs(sourceDocs)
+      .filter((entry) => matchesKnowledgeTopic(entry, topic))
+      .map((entry) => entry.id),
+  );
+
+  return {
+    matchingDocs: sourceDocs.filter((item) => matchingDocIds.has(item.id)),
+    sourceDocs,
+    hasMore: sourceDocs.length === fallbackPageSize,
   };
 }
 
@@ -1205,28 +1309,38 @@ async function loadTrendingKnowledgeEntries(
 ): Promise<IndependentKnowledgeFeedPage> {
   const knowledgeCollection = collection(db, "knowledge");
   const pageSize = getIndependentFeedPageSize(cursor);
-  const snapshot = await getDocs(
-    cursor
-      ? query(
-          knowledgeCollection,
-          orderBy("createdAt", "desc"),
-          startAfter(cursor),
-          limit(pageSize),
-        )
-      : query(
-          knowledgeCollection,
-          orderBy("createdAt", "desc"),
-          limit(pageSize),
-        ),
+  const candidatePageSize = pageSize * TRENDING_CANDIDATE_PAGE_MULTIPLIER;
+  const recentDocs = await loadRecentKnowledgeDocs(cursor, candidatePageSize);
+  const likeCountDocs =
+    cursor === null
+      ? await getDocsWithIndexFallback(
+          query(
+            knowledgeCollection,
+            orderBy("likeCount", "desc"),
+            orderBy("createdAt", "desc"),
+            limit(candidatePageSize),
+          ),
+          query(
+            knowledgeCollection,
+            orderBy("createdAt", "desc"),
+            limit(candidatePageSize),
+          ),
+          "Trending feed",
+        ).then((snapshot) => snapshot.docs)
+      : [];
+  const sourceDocs = sortKnowledgeQueryDocs(recentDocs);
+  const candidateDocs = mergeKnowledgeQueryDocs([...likeCountDocs, ...recentDocs]);
+  const entries = getTrendingKnowledgeEntries(
+    normalizeKnowledgeQueryDocs(candidateDocs),
+    pageSize,
   );
 
-  const entries = normalizeKnowledgeQueryDocs(snapshot.docs);
-
   return buildIndependentKnowledgeFeedPage(
-    snapshot.docs,
-    getTrendingKnowledgeEntries(entries, entries.length),
-    pageSize,
+    sourceDocs,
+    entries,
+    candidatePageSize,
     cursor,
+    sourceDocs.length === candidatePageSize,
   );
 }
 
@@ -1278,16 +1392,34 @@ async function loadTopicKnowledgeEntries(
     `${topic.label} category feed`,
   );
 
-  const entries = getKnowledgeEntriesForTopic(
-    sortKnowledgeEntries(normalizeKnowledgeQueryDocs(snapshot.docs)),
+  const exactDocs = sortKnowledgeQueryDocs(snapshot.docs);
+  let sourceDocs = exactDocs;
+  let hasMoreTopicEntries = exactDocs.length === pageSize;
+  let entries = getKnowledgeEntriesForTopic(
+    sortKnowledgeEntries(normalizeKnowledgeQueryDocs(exactDocs)),
     topic,
   );
 
+  if (entries.length === 0) {
+    const fallback = await loadTopicFallbackKnowledgeDocs(topic, cursor, pageSize);
+    sourceDocs = fallback.sourceDocs.length > 0 ? fallback.sourceDocs : exactDocs;
+    hasMoreTopicEntries = hasMoreTopicEntries || fallback.hasMore;
+    entries = getKnowledgeEntriesForTopic(
+      sortKnowledgeEntries(
+        normalizeKnowledgeQueryDocs(
+          mergeKnowledgeQueryDocs([...exactDocs, ...fallback.matchingDocs]),
+        ),
+      ),
+      topic,
+    );
+  }
+
   return buildIndependentKnowledgeFeedPage(
-    snapshot.docs,
+    sourceDocs,
     entries,
     pageSize,
     cursor,
+    hasMoreTopicEntries,
   );
 }
 
@@ -2659,6 +2791,7 @@ export function KnowledgeFeed({
         hashtags,
         comments: [],
         likes: [],
+        likeCount: 0,
         mentions,
         images: preparedImages,
         imageLayout: preparedImages.length > 0 ? selectedImageLayout : null,
@@ -2988,7 +3121,7 @@ export function KnowledgeFeed({
           if (entry.id !== entryId) return entry;
 
           didUpdateEntries = true;
-          return { ...entry, likes };
+          return { ...entry, likes, likeCount: likes.length };
         });
         if (!didUpdateEntries) return currentEntries;
 
@@ -3005,7 +3138,7 @@ export function KnowledgeFeed({
             if (entry.id !== entryId) return entry;
 
             didUpdateState = true;
-            return { ...entry, likes };
+            return { ...entry, likes, likeCount: likes.length };
           });
 
           if (!didUpdateState) return;

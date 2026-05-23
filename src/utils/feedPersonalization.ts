@@ -45,6 +45,7 @@ type KnowledgeEntrySignal = Pick<
   | "authorId"
   | "hashtags"
   | "likes"
+  | "likeCount"
   | "comments"
   | "mentions"
   | "createdAt"
@@ -467,7 +468,11 @@ function getWeightedRecencyScore(ageHours: number) {
 }
 
 function getWeightedLikesScore(entry: KnowledgeEntry) {
-  const engagement = entry.likes.length + entry.comments.length * 1.4;
+  const likeCount =
+    typeof entry.likeCount === "number" && Number.isFinite(entry.likeCount)
+      ? Math.max(entry.likes.length, entry.likeCount)
+      : entry.likes.length;
+  const engagement = likeCount + entry.comments.length * 1.4;
   return clamp(Math.log1p(engagement), 0, 3);
 }
 
@@ -485,8 +490,12 @@ function getWeightedRankingScore(
 
 function getMomentumScore(entry: KnowledgeEntry, ageHours: number) {
   const imageCount = entry.images?.length || 0;
+  const likeCount =
+    typeof entry.likeCount === "number" && Number.isFinite(entry.likeCount)
+      ? Math.max(entry.likes.length, entry.likeCount)
+      : entry.likes.length;
   const rawMomentum =
-    entry.likes.length * 1.35 +
+    likeCount * 1.35 +
     entry.comments.length * 3.2 +
     entry.mentions.length * 0.7 +
     imageCount * 0.9;
@@ -572,7 +581,12 @@ function getNoveltyScore(
 
   const revisitMomentum = Math.min(
     5,
-    Math.log1p(entry.comments.length * 2 + entry.likes.length),
+    Math.log1p(
+      entry.comments.length * 2 +
+        (typeof entry.likeCount === "number" && Number.isFinite(entry.likeCount)
+          ? Math.max(entry.likes.length, entry.likeCount)
+          : entry.likes.length),
+    ),
   );
   const cooledDownRevisitBoost = hoursSinceSeen >= 48 ? 2 : hoursSinceSeen >= 24 ? 1 : 0;
   const staleRevisitPenalty = ageHours > 48 ? 1.8 : 0;

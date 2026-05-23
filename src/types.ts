@@ -33,6 +33,7 @@ export interface KnowledgeEntry {
   visibility: KnowledgeVisibility;
   hashtags: string[];
   likes: string[];
+  likeCount?: number | null;
   comments: KnowledgeComment[];
   mentions: TaggedUser[];
   createdAt: number;
