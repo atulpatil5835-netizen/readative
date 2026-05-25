@@ -1653,6 +1653,7 @@ export function KnowledgeFeed({
     () => !initialFeedCache?.entries.length,
   );
   const [feedLoadError, setFeedLoadError] = useState<string | null>(null);
+  const [feedRetrySignal, setFeedRetrySignal] = useState(0);
   const [profilesLoadError, setProfilesLoadError] = useState<string | null>(
     null,
   );
@@ -2098,6 +2099,7 @@ export function KnowledgeFeed({
       unsubscribe();
     };
   }, [
+    feedRetrySignal,
     focusedEntryId,
     isActive,
     selectedFeedTopic,
@@ -2576,6 +2578,14 @@ export function KnowledgeFeed({
   const activeFeedLoadError = shouldUseIndependentFeed
     ? activeTopicFeedState.error
     : feedLoadError;
+  const shouldShowInitialFeedSkeleton =
+    filteredEntries.length === 0 &&
+    !activeFeedLoadError &&
+    (shouldUseIndependentFeed ? isIndependentFeedLoading : isLoading);
+  const shouldShowFeedErrorState =
+    filteredEntries.length === 0 &&
+    Boolean(activeFeedLoadError) &&
+    !shouldShowInitialFeedSkeleton;
   const shouldKeepLoadingEmptyFeed =
     (isIndependentFeedLoading && filteredEntries.length === 0 && !hasActiveSearch) ||
     (!focusedEntryId &&
@@ -2765,6 +2775,32 @@ export function KnowledgeFeed({
     [loadNextEntriesPage, loadNextIndependentFeedPage, shouldUseIndependentFeed],
   );
 
+  const handleRetryFeedLoad = useCallback(() => {
+    setFeedLoadError(null);
+
+    if (shouldUseIndependentFeed) {
+      independentLoadingKeysRef.current.delete(independentFeedKey);
+      setTopicFeedStates((current) => {
+        const existing = current[independentFeedKey] || EMPTY_TOPIC_FEED_STATE;
+
+        return {
+          ...current,
+          [independentFeedKey]: {
+            ...existing,
+            isLoading: false,
+            isLoadingMore: false,
+            hasLoaded: false,
+            error: null,
+          },
+        };
+      });
+    } else {
+      setIsLoading(true);
+    }
+
+    setFeedRetrySignal((current) => current + 1);
+  }, [independentFeedKey, shouldUseIndependentFeed]);
+
   useEffect(() => {
     lastAutoLoadEntryCountRef.current = 0;
   }, [deferredFeedSearchQuery, focusedEntryId, independentFeedKey]);
@@ -2903,6 +2939,7 @@ export function KnowledgeFeed({
     };
   }, [
     activeFeedTopic,
+    feedRetrySignal,
     independentFeedKey,
     isActive,
     normalizedSelectedHashtag,
@@ -3417,9 +3454,9 @@ export function KnowledgeFeed({
         });
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
-  const isHomeFeedLoading = isLoading && !shouldUseIndependentFeed;
   const shouldNoIndexKnowledgePage =
-    !isHomeFeedLoading &&
+    !shouldShowInitialFeedSkeleton &&
+    !shouldShowFeedErrorState &&
     !shouldHoldEmptyFeedState &&
     !hasActiveSearch &&
     filteredEntries.length === 0;
@@ -3449,20 +3486,24 @@ export function KnowledgeFeed({
         }
       />
 
-      {isHomeFeedLoading ? (
+      {shouldShowInitialFeedSkeleton ? (
         <KnowledgeFeedSkeleton showControls={false} />
       ) : (
         <div className="space-y-6">
-          {feedLoadError && !shouldUseIndependentFeed && (
-            <FeedNotice title="Feed loading issue" body={feedLoadError} />
-          )}
+          {feedLoadError &&
+            !shouldUseIndependentFeed &&
+            filteredEntries.length > 0 && (
+              <FeedNotice title="Feed loading issue" body={feedLoadError} />
+            )}
 
-          {shouldUseIndependentFeed && activeTopicFeedState.error && (
-            <FeedNotice
-              title="Category loading issue"
-              body={activeTopicFeedState.error}
-            />
-          )}
+          {shouldUseIndependentFeed &&
+            activeTopicFeedState.error &&
+            filteredEntries.length > 0 && (
+              <FeedNotice
+                title="Category loading issue"
+                body={activeTopicFeedState.error}
+              />
+            )}
 
           {profilesLoadError && (
             <FeedNotice
@@ -3547,7 +3588,21 @@ export function KnowledgeFeed({
             </div>
           )}
 
-          {filteredEntries.length === 0 ? (
+          {shouldShowFeedErrorState ? (
+            <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+              <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-4 text-xl font-black text-slate-900">
+                Something went wrong. Try again.
+              </h3>
+              <button
+                type="button"
+                onClick={handleRetryFeedLoad}
+                className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+              >
+                Try again
+              </button>
+            </div>
+          ) : filteredEntries.length === 0 ? (
             shouldHoldEmptyFeedState ? (
               <KnowledgeFeedSkeleton count={3} showControls={false} />
             ) : (
