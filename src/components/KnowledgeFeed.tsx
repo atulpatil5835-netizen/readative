@@ -70,6 +70,7 @@ import { hydrateUserProfile } from "../utils/profileData";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import {
   buildAbsoluteRouteUrl,
+  navigateToNotFound,
   navigateToRoute,
   parseRouteFromLocation,
   ROUTE_CHANGE_EVENT,
@@ -1139,6 +1140,99 @@ function mergeRealtimeKnowledgePage(
   );
 
   return mergeKnowledgeEntryPages(firstPageEntries, retainedOlderEntries);
+}
+
+function getCurrentKnowledgeAttemptedLocation(focusedEntryId: string) {
+  if (typeof window === "undefined") {
+    return `/knowledge/${encodeURIComponent(focusedEntryId)}`;
+  }
+
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function safeDecodeRouteValue(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getFocusedEntryIdCandidates(focusedEntryId: string) {
+  const candidates = new Set<string>();
+  const addCandidate = (value: string | null | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized) return;
+
+    candidates.add(normalized);
+  };
+
+  addCandidate(focusedEntryId);
+
+  let decodedValue = focusedEntryId;
+  for (let index = 0; index < 2; index += 1) {
+    const nextDecodedValue = safeDecodeRouteValue(decodedValue);
+    if (nextDecodedValue === decodedValue) break;
+
+    decodedValue = nextDecodedValue;
+    addCandidate(decodedValue);
+  }
+
+  [...candidates].forEach((candidate) => {
+    const withoutRoutePrefix = candidate.replace(/^#?\/?knowledge\//i, "");
+    addCandidate(withoutRoutePrefix);
+    addCandidate(withoutRoutePrefix.split(/[?#]/)[0]);
+
+    const pathParts = withoutRoutePrefix.split("/").filter(Boolean);
+    addCandidate(pathParts[0]);
+    addCandidate(pathParts[pathParts.length - 1]);
+  });
+
+  return [...candidates].filter(Boolean);
+}
+
+function isValidKnowledgeDocumentId(candidate: string) {
+  return (
+    candidate.length > 0 &&
+    candidate.length <= 1500 &&
+    !candidate.includes("/")
+  );
+}
+
+async function getKnowledgeEntrySnapshotByCandidate(candidate: string) {
+  if (isValidKnowledgeDocumentId(candidate)) {
+    const snapshot = await getDoc(doc(db, "knowledge", candidate));
+    if (snapshot.exists()) {
+      return snapshot;
+    }
+  }
+
+  const legacyIdSnapshot = await getDocs(
+    query(
+      collection(db, "knowledge"),
+      where("id", "==", candidate),
+      limit(1),
+    ),
+  );
+
+  return legacyIdSnapshot.docs[0] || null;
+}
+
+async function resolveFocusedKnowledgeEntrySnapshot(focusedEntryId: string) {
+  const candidates = getFocusedEntryIdCandidates(focusedEntryId);
+
+  for (const candidate of candidates) {
+    try {
+      const snapshot = await getKnowledgeEntrySnapshotByCandidate(candidate);
+      if (snapshot) {
+        return snapshot;
+      }
+    } catch (error) {
+      console.warn("Focused knowledge entry candidate failed:", candidate, error);
+    }
+  }
+
+  return null;
 }
 
 function normalizeKnowledgeQueryDocs(
@@ -2253,8 +2347,13 @@ export function KnowledgeFeed({
 
     const loadFocusedEntry = async () => {
       try {
-        const snapshot = await getDoc(doc(db, "knowledge", focusedEntryId));
-        if (cancelled || !snapshot.exists()) return;
+        const snapshot = await resolveFocusedKnowledgeEntrySnapshot(focusedEntryId);
+        if (cancelled) return;
+
+        if (!snapshot) {
+          navigateToNotFound(getCurrentKnowledgeAttemptedLocation(focusedEntryId));
+          return;
+        }
 
         const focusedEntry = normalizeKnowledgeEntry(
           snapshot.id,
@@ -2277,10 +2376,19 @@ export function KnowledgeFeed({
           focusedEntry.id,
           ...currentOrder.filter((entryId) => entryId !== focusedEntry.id),
         ]);
+
+        if (snapshot.id !== focusedEntryId) {
+          navigateToRoute(
+            "knowledge",
+            { focusedEntryId: snapshot.id },
+            "replace",
+          );
+        }
       } catch (error) {
         if (cancelled) return;
 
         console.error("Focused knowledge entry error:", error);
+        navigateToNotFound(getCurrentKnowledgeAttemptedLocation(focusedEntryId));
       }
     };
 

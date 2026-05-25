@@ -164,6 +164,14 @@ function parsePathRoute(pathname: string, search: string) {
     return createRoute("smarttalk", "path", attemptedLocation);
   }
 
+  if (normalizedPathname === "/404" || normalizedPathname === "/not-found") {
+    return createRoute(
+      "notFound",
+      "path",
+      new URLSearchParams(search).get("from") || attemptedLocation,
+    );
+  }
+
   return (
     parseKnowledgeRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseProfileRoute(normalizedPathname, "path", attemptedLocation) ||
@@ -271,6 +279,17 @@ export function navigateToRoute(
 ) {
   const targetPath = buildPublicPath(tab, options);
   const method = mode === "replace" ? "replaceState" : "pushState";
+
+  window.history[method](null, "", targetPath);
+  window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
+}
+
+export function navigateToNotFound(
+  attemptedLocation: string,
+  mode: "push" | "replace" = "replace",
+) {
+  const method = mode === "replace" ? "replaceState" : "pushState";
+  const targetPath = `/404?from=${encodeURIComponent(attemptedLocation)}`;
 
   window.history[method](null, "", targetPath);
   window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));

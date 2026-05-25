@@ -1,4 +1,11 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   BookOpenText,
   Check,
@@ -15,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   collection,
+  type DocumentData,
   documentId,
   doc,
   getDocs,
@@ -22,6 +30,8 @@ import {
   onSnapshot,
   orderBy,
   query,
+  type QueryDocumentSnapshot,
+  startAfter,
   where,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -56,9 +66,10 @@ import { ProfileSocialLinks } from "./ProfileSocialLinks";
 import { KnowledgeCardSkeleton, ProfileSkeleton } from "./Skeletons";
 
 type ProfileSection = "shared" | "liked";
+type ProfilePaginationMode = "ordered" | "fallback" | null;
 
-const PROFILE_POST_LIMIT = 10;
-const PROFILE_POST_FALLBACK_LIMIT = 40;
+const PROFILE_POST_PAGE_SIZE = 10;
+const PROFILE_POST_FALLBACK_PAGE_SIZE = 20;
 const PROFILE_TRACKED_LIKE_LOOKUP_LIMIT = 120;
 const FIRESTORE_IN_QUERY_LIMIT = 30;
 const PROFILE_DIRECTORY_LIMIT = 80;
@@ -73,6 +84,45 @@ interface ProfileProps {
 
 function sortKnowledge(entries: KnowledgeEntry[]) {
   return [...entries].sort((left, right) => right.createdAt - left.createdAt);
+}
+
+function mergeProfileKnowledgeEntries(
+  currentEntries: KnowledgeEntry[],
+  nextEntries: KnowledgeEntry[],
+) {
+  const entriesById = new Map<string, KnowledgeEntry>();
+
+  currentEntries.forEach((entry) => {
+    entriesById.set(entry.id, entry);
+  });
+
+  nextEntries.forEach((entry) => {
+    entriesById.set(entry.id, entry);
+  });
+
+  return sortKnowledge([...entriesById.values()]);
+}
+
+function reconcileRealtimeProfilePage(
+  currentEntries: KnowledgeEntry[],
+  realtimeEntries: KnowledgeEntry[],
+) {
+  if (
+    currentEntries.length <= PROFILE_POST_PAGE_SIZE ||
+    realtimeEntries.length < PROFILE_POST_PAGE_SIZE
+  ) {
+    return realtimeEntries;
+  }
+
+  const realtimeEntryIds = new Set(realtimeEntries.map((entry) => entry.id));
+  const oldestRealtimeEntry = realtimeEntries[realtimeEntries.length - 1];
+  const retainedEntries = currentEntries.filter(
+    (entry) =>
+      !realtimeEntryIds.has(entry.id) &&
+      entry.createdAt <= oldestRealtimeEntry.createdAt,
+  );
+
+  return sortKnowledge([...realtimeEntries, ...retainedEntries]);
 }
 
 function formatCooldown(remainingMs: number) {
@@ -121,6 +171,26 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
           ? updatedAt
           : null,
   } as KnowledgeEntry;
+}
+
+function hydrateProfileKnowledgeDocs(
+  docs: Array<QueryDocumentSnapshot<DocumentData>>,
+  visibleAuthorId: string | null | undefined,
+  includeEntry: (entry: KnowledgeEntry) => boolean = () => true,
+) {
+  return sortKnowledge(
+    docs
+      .map((item) =>
+        hydrateKnowledgeFromSnapshot(
+          item.id,
+          item.data() as Partial<KnowledgeEntry>,
+        ),
+      )
+      .filter(
+        (entry) =>
+          includeEntry(entry) && canViewKnowledgeEntry(entry, visibleAuthorId),
+      ),
+  );
 }
 
 function chunkItems<T>(items: T[], size: number) {
@@ -183,9 +253,23 @@ export function Profile({
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
+  const [sharedEntryCursor, setSharedEntryCursor] =
+    useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [likedEntryCursor, setLikedEntryCursor] =
+    useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMoreSharedEntries, setHasMoreSharedEntries] = useState(false);
+  const [hasMoreLikedEntries, setHasMoreLikedEntries] = useState(false);
+  const [sharedPaginationMode, setSharedPaginationMode] =
+    useState<ProfilePaginationMode>(null);
+  const [likedPaginationMode, setLikedPaginationMode] =
+    useState<ProfilePaginationMode>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingSharedEntries, setIsLoadingSharedEntries] = useState(false);
   const [isLoadingLikedEntries, setIsLoadingLikedEntries] = useState(false);
+  const [isLoadingMoreSharedEntries, setIsLoadingMoreSharedEntries] =
+    useState(false);
+  const [isLoadingMoreLikedEntries, setIsLoadingMoreLikedEntries] =
+    useState(false);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
@@ -202,6 +286,10 @@ export function Profile({
   const [pendingAction, setPendingAction] = useState<
     { type: "like" | "comment"; entryId: string } | null
   >(null);
+  const activeAuthorIdRef = useRef<string | null>(null);
+  const visibleAuthorIdRef = useRef<string | null | undefined>(null);
+  const isLoadingMoreSharedEntriesRef = useRef(false);
+  const isLoadingMoreLikedEntriesRef = useRef(false);
   const handleIdentityRequired = useCallback(
     (action: { type: "like" | "comment"; entryId: string }) =>
       setPendingAction(action),
@@ -212,6 +300,14 @@ export function Profile({
   const isOwnProfile =
     Boolean(currentIdentity?.authorId) &&
     activeAuthorId === currentIdentity?.authorId;
+
+  useEffect(() => {
+    activeAuthorIdRef.current = activeAuthorId;
+  }, [activeAuthorId]);
+
+  useEffect(() => {
+    visibleAuthorIdRef.current = currentIdentity?.authorId;
+  }, [currentIdentity?.authorId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -230,9 +326,19 @@ export function Profile({
       setProfile(null);
       setSharedEntries([]);
       setLikedEntries([]);
+      setSharedEntryCursor(null);
+      setLikedEntryCursor(null);
+      setHasMoreSharedEntries(false);
+      setHasMoreLikedEntries(false);
+      setSharedPaginationMode(null);
+      setLikedPaginationMode(null);
       setIsLoadingProfile(false);
       setIsLoadingSharedEntries(false);
       setIsLoadingLikedEntries(false);
+      setIsLoadingMoreSharedEntries(false);
+      setIsLoadingMoreLikedEntries(false);
+      isLoadingMoreSharedEntriesRef.current = false;
+      isLoadingMoreLikedEntriesRef.current = false;
       return;
     }
 
@@ -240,37 +346,40 @@ export function Profile({
     setIsLoadingSharedEntries(true);
     setSharedEntries([]);
     setLikedEntries([]);
+    setSharedEntryCursor(null);
+    setLikedEntryCursor(null);
+    setHasMoreSharedEntries(false);
+    setHasMoreLikedEntries(false);
+    setSharedPaginationMode(null);
+    setLikedPaginationMode(null);
+    setIsLoadingMoreSharedEntries(false);
+    setIsLoadingMoreLikedEntries(false);
+    isLoadingMoreSharedEntriesRef.current = false;
+    isLoadingMoreLikedEntriesRef.current = false;
 
     const unsubscribers: Array<() => void> = [];
     const hydrateEntries = (snapshot: {
-      docs: Array<{
-        id: string;
-        data: () => Partial<KnowledgeEntry>;
-      }>;
-    }) =>
-      sortKnowledge(
-        snapshot.docs
-          .map((item) =>
-            hydrateKnowledgeFromSnapshot(
-              item.id,
-              item.data() as Partial<KnowledgeEntry>,
-            ),
-          )
-          .filter((entry) =>
-            canViewKnowledgeEntry(entry, currentIdentity?.authorId),
-          ),
-      ).slice(0, PROFILE_POST_LIMIT);
+      docs: Array<QueryDocumentSnapshot<DocumentData>>;
+    }) => hydrateProfileKnowledgeDocs(snapshot.docs, currentIdentity?.authorId);
     const startProfileEntriesListener = ({
       orderedQuery,
       fallbackQuery,
       label,
       onEntries,
+      onCursorChange,
+      onHasMoreChange,
+      onPaginationModeChange,
       errorMessage,
     }: {
       orderedQuery: ReturnType<typeof query>;
       fallbackQuery: ReturnType<typeof query>;
       label: string;
       onEntries: (entries: KnowledgeEntry[]) => void;
+      onCursorChange: (
+        cursor: QueryDocumentSnapshot<DocumentData> | null,
+      ) => void;
+      onHasMoreChange: (hasMore: boolean) => void;
+      onPaginationModeChange: (mode: ProfilePaginationMode) => void;
       errorMessage: string;
     }) => {
       let activeUnsubscribe: (() => void) | null = null;
@@ -280,12 +389,20 @@ export function Profile({
           fallbackQuery,
           (snapshot) => {
             onEntries(hydrateEntries(snapshot));
+            onCursorChange(snapshot.docs[snapshot.docs.length - 1] || null);
+            onHasMoreChange(
+              snapshot.docs.length === PROFILE_POST_FALLBACK_PAGE_SIZE,
+            );
+            onPaginationModeChange("fallback");
             setIsLoadingSharedEntries(false);
             setProfileLoadError(null);
           },
           (error) => {
             console.error(`${label} fallback listener error:`, error);
             onEntries([]);
+            onCursorChange(null);
+            onHasMoreChange(false);
+            onPaginationModeChange(null);
             setIsLoadingSharedEntries(false);
             setProfileLoadError(errorMessage);
           },
@@ -296,6 +413,9 @@ export function Profile({
         orderedQuery,
         (snapshot) => {
           onEntries(hydrateEntries(snapshot));
+          onCursorChange(snapshot.docs[snapshot.docs.length - 1] || null);
+          onHasMoreChange(snapshot.docs.length === PROFILE_POST_PAGE_SIZE);
+          onPaginationModeChange("ordered");
           setIsLoadingSharedEntries(false);
           setProfileLoadError(null);
         },
@@ -312,6 +432,9 @@ export function Profile({
 
           console.error(`${label} listener error:`, error);
           onEntries([]);
+          onCursorChange(null);
+          onHasMoreChange(false);
+          onPaginationModeChange(null);
           setIsLoadingSharedEntries(false);
           setProfileLoadError(errorMessage);
         },
@@ -357,15 +480,21 @@ export function Profile({
           collection(db, "knowledge"),
           where("authorId", "==", activeAuthorId),
           orderBy("createdAt", "desc"),
-          limit(PROFILE_POST_LIMIT),
+          limit(PROFILE_POST_PAGE_SIZE),
         ),
         fallbackQuery: query(
           collection(db, "knowledge"),
           where("authorId", "==", activeAuthorId),
-          limit(PROFILE_POST_FALLBACK_LIMIT),
+          limit(PROFILE_POST_FALLBACK_PAGE_SIZE),
         ),
         label: "Shared knowledge",
-        onEntries: setSharedEntries,
+        onEntries: (entries) =>
+          setSharedEntries((currentEntries) =>
+            reconcileRealtimeProfilePage(currentEntries, entries),
+          ),
+        onCursorChange: setSharedEntryCursor,
+        onHasMoreChange: setHasMoreSharedEntries,
+        onPaginationModeChange: setSharedPaginationMode,
         errorMessage: "Could not load shared posts for this profile right now.",
       })
     );
@@ -423,11 +552,7 @@ export function Profile({
     likedEntries.length,
   );
   const orderedLikedEntries = useMemo(
-    () =>
-      sortProfileLikedEntries(likedEntries, trackedLikedEntryIds).slice(
-        0,
-        PROFILE_POST_LIMIT,
-      ),
+    () => sortProfileLikedEntries(likedEntries, trackedLikedEntryIds),
     [likedEntries, trackedLikedEntryIdsKey],
   );
   const profileDisplayName = profile ? getProfileDisplayName(profile) : "";
@@ -451,17 +576,30 @@ export function Profile({
   useEffect(() => {
     if (!activeAuthorId || !profile) {
       setLikedEntries([]);
+      setLikedEntryCursor(null);
+      setHasMoreLikedEntries(false);
+      setLikedPaginationMode(null);
       setIsLoadingLikedEntries(false);
+      setIsLoadingMoreLikedEntries(false);
+      isLoadingMoreLikedEntriesRef.current = false;
       return;
     }
 
     setIsLoadingLikedEntries(true);
+    setLikedEntryCursor(null);
+    setHasMoreLikedEntries(false);
+    setLikedPaginationMode(null);
+    setIsLoadingMoreLikedEntries(false);
+    isLoadingMoreLikedEntriesRef.current = false;
     const targetAuthorId = activeAuthorId;
     const visibleAuthorId = currentIdentity?.authorId;
     const trackedEntryIds = [...new Set(trackedLikedEntryIds)]
       .slice(-PROFILE_TRACKED_LIKE_LOOKUP_LIMIT);
 
     if (trackedEntryIds.length > 0) {
+      setLikedEntryCursor(null);
+      setHasMoreLikedEntries(false);
+      setLikedPaginationMode(null);
       const chunkEntries = new Map<number, KnowledgeEntry[]>();
       const likedEntryChunks = chunkItems(trackedEntryIds, FIRESTORE_IN_QUERY_LIMIT);
       const unsubscribers = likedEntryChunks.map((entryIds, chunkIndex) =>
@@ -473,18 +611,11 @@ export function Profile({
           (snapshot) => {
             chunkEntries.set(
               chunkIndex,
-              snapshot.docs
-                .map((item) =>
-                  hydrateKnowledgeFromSnapshot(
-                    item.id,
-                    item.data() as Partial<KnowledgeEntry>,
-                  ),
-                )
-                .filter(
-                  (entry) =>
-                    (entry.likes || []).includes(targetAuthorId) &&
-                    canViewKnowledgeEntry(entry, visibleAuthorId),
-                ),
+              hydrateProfileKnowledgeDocs(
+                snapshot.docs,
+                visibleAuthorId,
+                (entry) => (entry.likes || []).includes(targetAuthorId),
+              ),
             );
 
             setLikedEntries(
@@ -513,41 +644,38 @@ export function Profile({
 
     let activeUnsubscribe: (() => void) | null = null;
     const hydrateLikedEntries = (snapshot: {
-      docs: Array<{
-        id: string;
-        data: () => Partial<KnowledgeEntry>;
-      }>;
+      docs: Array<QueryDocumentSnapshot<DocumentData>>;
     }) =>
-      sortKnowledge(
-        snapshot.docs
-          .map((item) =>
-            hydrateKnowledgeFromSnapshot(
-              item.id,
-              item.data() as Partial<KnowledgeEntry>,
-            ),
-          )
-          .filter(
-            (entry) =>
-              (entry.likes || []).includes(targetAuthorId) &&
-              canViewKnowledgeEntry(entry, visibleAuthorId),
-          ),
-      ).slice(0, PROFILE_POST_LIMIT);
+      hydrateProfileKnowledgeDocs(snapshot.docs, visibleAuthorId, (entry) =>
+        (entry.likes || []).includes(targetAuthorId),
+      );
 
     const startFallbackLikedListener = () => {
       activeUnsubscribe = onSnapshot(
         query(
           collection(db, "knowledge"),
           where("likes", "array-contains", targetAuthorId),
-          limit(PROFILE_POST_FALLBACK_LIMIT),
+          limit(PROFILE_POST_FALLBACK_PAGE_SIZE),
         ),
         (snapshot) => {
-          setLikedEntries(hydrateLikedEntries(snapshot));
+          const entries = hydrateLikedEntries(snapshot);
+          setLikedEntries((currentEntries) =>
+            reconcileRealtimeProfilePage(currentEntries, entries),
+          );
+          setLikedEntryCursor(snapshot.docs[snapshot.docs.length - 1] || null);
+          setHasMoreLikedEntries(
+            snapshot.docs.length === PROFILE_POST_FALLBACK_PAGE_SIZE,
+          );
+          setLikedPaginationMode("fallback");
           setIsLoadingLikedEntries(false);
           setProfileLoadError(null);
         },
         (error) => {
           console.error("Liked knowledge fallback listener error:", error);
           setLikedEntries([]);
+          setLikedEntryCursor(null);
+          setHasMoreLikedEntries(false);
+          setLikedPaginationMode(null);
           setIsLoadingLikedEntries(false);
           setProfileLoadError("Could not load liked posts for this profile right now.");
         },
@@ -559,10 +687,16 @@ export function Profile({
         collection(db, "knowledge"),
         where("likes", "array-contains", targetAuthorId),
         orderBy("createdAt", "desc"),
-        limit(PROFILE_POST_LIMIT),
+        limit(PROFILE_POST_PAGE_SIZE),
       ),
       (snapshot) => {
-        setLikedEntries(hydrateLikedEntries(snapshot));
+        const entries = hydrateLikedEntries(snapshot);
+        setLikedEntries((currentEntries) =>
+          reconcileRealtimeProfilePage(currentEntries, entries),
+        );
+        setLikedEntryCursor(snapshot.docs[snapshot.docs.length - 1] || null);
+        setHasMoreLikedEntries(snapshot.docs.length === PROFILE_POST_PAGE_SIZE);
+        setLikedPaginationMode("ordered");
         setIsLoadingLikedEntries(false);
         setProfileLoadError(null);
       },
@@ -579,6 +713,9 @@ export function Profile({
 
         console.error("Liked knowledge listener error:", error);
         setLikedEntries([]);
+        setLikedEntryCursor(null);
+        setHasMoreLikedEntries(false);
+        setLikedPaginationMode(null);
         setIsLoadingLikedEntries(false);
         setProfileLoadError("Could not load liked posts for this profile right now.");
       },
@@ -592,6 +729,175 @@ export function Profile({
     currentIdentity?.authorId,
     profile,
     trackedLikedEntryIdsKey,
+  ]);
+
+  const loadMoreSharedEntries = useCallback(async () => {
+    const requestedAuthorId = activeAuthorId;
+    const requestedVisibleAuthorId = currentIdentity?.authorId;
+    const cursor = sharedEntryCursor;
+    const paginationMode = sharedPaginationMode;
+
+    if (
+      !requestedAuthorId ||
+      !cursor ||
+      !paginationMode ||
+      isLoadingMoreSharedEntriesRef.current
+    ) {
+      return;
+    }
+
+    isLoadingMoreSharedEntriesRef.current = true;
+    setIsLoadingMoreSharedEntries(true);
+
+    try {
+      const pageSize =
+        paginationMode === "ordered"
+          ? PROFILE_POST_PAGE_SIZE
+          : PROFILE_POST_FALLBACK_PAGE_SIZE;
+      const pageQuery =
+        paginationMode === "ordered"
+          ? query(
+              collection(db, "knowledge"),
+              where("authorId", "==", requestedAuthorId),
+              orderBy("createdAt", "desc"),
+              startAfter(cursor),
+              limit(pageSize),
+            )
+          : query(
+              collection(db, "knowledge"),
+              where("authorId", "==", requestedAuthorId),
+              startAfter(cursor),
+              limit(pageSize),
+            );
+      const snapshot = await getDocs(pageQuery);
+
+      if (
+        activeAuthorIdRef.current !== requestedAuthorId ||
+        visibleAuthorIdRef.current !== requestedVisibleAuthorId
+      ) {
+        return;
+      }
+
+      const entries = hydrateProfileKnowledgeDocs(
+        snapshot.docs,
+        requestedVisibleAuthorId,
+      );
+
+      setSharedEntries((currentEntries) =>
+        mergeProfileKnowledgeEntries(currentEntries, entries),
+      );
+      setSharedEntryCursor(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMoreSharedEntries(snapshot.docs.length === pageSize);
+      setProfileLoadError(null);
+    } catch (error) {
+      if (
+        activeAuthorIdRef.current === requestedAuthorId &&
+        visibleAuthorIdRef.current === requestedVisibleAuthorId
+      ) {
+        console.error("Shared knowledge pagination error:", error);
+        setHasMoreSharedEntries(false);
+        setProfileLoadError("Could not load more shared posts right now.");
+      }
+    } finally {
+      isLoadingMoreSharedEntriesRef.current = false;
+      if (
+        activeAuthorIdRef.current === requestedAuthorId &&
+        visibleAuthorIdRef.current === requestedVisibleAuthorId
+      ) {
+        setIsLoadingMoreSharedEntries(false);
+      }
+    }
+  }, [
+    activeAuthorId,
+    currentIdentity?.authorId,
+    sharedEntryCursor,
+    sharedPaginationMode,
+  ]);
+
+  const loadMoreLikedEntries = useCallback(async () => {
+    const requestedAuthorId = activeAuthorId;
+    const requestedVisibleAuthorId = currentIdentity?.authorId;
+    const cursor = likedEntryCursor;
+    const paginationMode = likedPaginationMode;
+
+    if (
+      !requestedAuthorId ||
+      trackedLikedEntryIds.length > 0 ||
+      !cursor ||
+      !paginationMode ||
+      isLoadingMoreLikedEntriesRef.current
+    ) {
+      return;
+    }
+
+    isLoadingMoreLikedEntriesRef.current = true;
+    setIsLoadingMoreLikedEntries(true);
+
+    try {
+      const pageSize =
+        paginationMode === "ordered"
+          ? PROFILE_POST_PAGE_SIZE
+          : PROFILE_POST_FALLBACK_PAGE_SIZE;
+      const pageQuery =
+        paginationMode === "ordered"
+          ? query(
+              collection(db, "knowledge"),
+              where("likes", "array-contains", requestedAuthorId),
+              orderBy("createdAt", "desc"),
+              startAfter(cursor),
+              limit(pageSize),
+            )
+          : query(
+              collection(db, "knowledge"),
+              where("likes", "array-contains", requestedAuthorId),
+              startAfter(cursor),
+              limit(pageSize),
+            );
+      const snapshot = await getDocs(pageQuery);
+
+      if (
+        activeAuthorIdRef.current !== requestedAuthorId ||
+        visibleAuthorIdRef.current !== requestedVisibleAuthorId
+      ) {
+        return;
+      }
+
+      const entries = hydrateProfileKnowledgeDocs(
+        snapshot.docs,
+        requestedVisibleAuthorId,
+        (entry) => (entry.likes || []).includes(requestedAuthorId),
+      );
+
+      setLikedEntries((currentEntries) =>
+        mergeProfileKnowledgeEntries(currentEntries, entries),
+      );
+      setLikedEntryCursor(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMoreLikedEntries(snapshot.docs.length === pageSize);
+      setProfileLoadError(null);
+    } catch (error) {
+      if (
+        activeAuthorIdRef.current === requestedAuthorId &&
+        visibleAuthorIdRef.current === requestedVisibleAuthorId
+      ) {
+        console.error("Liked knowledge pagination error:", error);
+        setHasMoreLikedEntries(false);
+        setProfileLoadError("Could not load more liked posts right now.");
+      }
+    } finally {
+      isLoadingMoreLikedEntriesRef.current = false;
+      if (
+        activeAuthorIdRef.current === requestedAuthorId &&
+        visibleAuthorIdRef.current === requestedVisibleAuthorId
+      ) {
+        setIsLoadingMoreLikedEntries(false);
+      }
+    }
+  }, [
+    activeAuthorId,
+    currentIdentity?.authorId,
+    likedEntryCursor,
+    likedPaginationMode,
+    trackedLikedEntryIds.length,
   ]);
 
   const handleClaimIdentity = async () => {
@@ -901,6 +1207,9 @@ export function Profile({
               emptyMessage="No shared knowledge yet."
               entries={sharedEntries}
               isLoading={isLoadingSharedEntries}
+              hasMore={hasMoreSharedEntries}
+              isLoadingMore={isLoadingMoreSharedEntries}
+              onLoadMore={loadMoreSharedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}
@@ -919,6 +1228,9 @@ export function Profile({
               emptyMessage="No liked knowledge yet."
               entries={orderedLikedEntries}
               isLoading={isLoadingLikedEntries}
+              hasMore={hasMoreLikedEntries}
+              isLoadingMore={isLoadingMoreLikedEntries}
+              onLoadMore={loadMoreLikedEntries}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}
@@ -1341,6 +1653,9 @@ function KnowledgeSection({
   emptyMessage,
   entries,
   isLoading,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
   currentIdentity,
   profiles,
   onIdentityRequired,
@@ -1351,6 +1666,9 @@ function KnowledgeSection({
   emptyMessage: string;
   entries: KnowledgeEntry[];
   isLoading: boolean;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
@@ -1377,14 +1695,29 @@ function KnowledgeSection({
           <p className="mt-3 text-sm text-slate-400">{emptyMessage}</p>
         </div>
       ) : (
-        <KnowledgeCardList
-          entries={entries}
-          currentIdentity={currentIdentity}
-          profiles={profiles}
-          onIdentityRequired={onIdentityRequired}
-          onOpenProfile={onOpenProfile}
-          onOpenEntry={onOpenEntry}
-        />
+        <>
+          <KnowledgeCardList
+            entries={entries}
+            currentIdentity={currentIdentity}
+            profiles={profiles}
+            onIdentityRequired={onIdentityRequired}
+            onOpenProfile={onOpenProfile}
+            onOpenEntry={onOpenEntry}
+          />
+
+          {hasMore && onLoadMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isLoadingMore ? "Loading..." : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
