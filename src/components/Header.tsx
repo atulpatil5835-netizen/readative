@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Bell, CirclePlus, Info, LogIn, LogOut, MoreVertical } from "lucide-react";
+import { Bell, Info, MoreVertical, Palette, Settings, ShieldCheck } from "lucide-react";
 import { Logo } from "./Logo";
 import { type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import { type InfoSection } from "./AppPanels";
 
 interface HeaderProps {
   activeTab: AppTab | "notFound";
@@ -12,12 +13,12 @@ interface HeaderProps {
   unreadNotificationCount: number;
   onOpenComposer: () => void;
   onOpenNotifications: () => void;
-  onOpenInfo: () => void;
+  onOpenInfo: (section?: InfoSection) => void;
   onOpenSignIn: () => void;
   onSignOut: () => void;
 }
 
-const HEADER_TABS: AppTab[] = ["knowledge", "smarttalk", "profile"];
+const HEADER_TABS: AppTab[] = ["knowledge", "smarttalk", "explore", "profile"];
 
 export const Header = memo(function Header({
   activeTab,
@@ -96,6 +97,8 @@ export const Header = memo(function Header({
               const label =
                 tab === "smarttalk"
                   ? "SmartTalk"
+                  : tab === "explore"
+                  ? "Explore"
                   : tab === "knowledge"
                   ? "Home"
                   : "Profile";
@@ -148,43 +151,45 @@ export const Header = memo(function Header({
                 className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
               >
                 <button
-                  onClick={() => handleMenuAction(onOpenComposer)}
+                  onClick={() => handleMenuAction(() => setActiveTab("profile"))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
-                  <CirclePlus className="h-4 w-4" />
-                  Add post
+                  <Settings className="h-4 w-4" />
+                  Settings
                 </button>
                 <button
-                  onClick={() => handleMenuAction(onOpenInfo)}
+                  onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Privacy
+                </button>
+                <button
+                  onClick={() => handleMenuAction(onOpenNotifications)}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <Bell className="h-4 w-4" />
+                  Notifications
+                </button>
+                <button
+                  onClick={() => handleMenuAction(() => onOpenInfo("appearance"))}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <Palette className="h-4 w-4" />
+                  Appearance
+                </button>
+                <button
+                  onClick={() => handleMenuAction(() => onOpenInfo("about"))}
                   role="menuitem"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <Info className="h-4 w-4" />
-                  Info
+                  About Readative
                 </button>
-                {identity ? (
-                  <button
-                    onClick={() => handleMenuAction(onSignOut)}
-                    role="menuitem"
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
-                    title={`Signed in as @${identity.displayName}`}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span className="min-w-0 truncate">
-                      Sign out @{identity.displayName}
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleMenuAction(onOpenSignIn)}
-                    role="menuitem"
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    Sign in
-                  </button>
-                )}
               </div>
             )}
           </div>

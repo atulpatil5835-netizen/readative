@@ -7,15 +7,24 @@ import {
   useState,
 } from "react";
 import {
+  Award,
   BookOpenText,
   Check,
   Clock3,
-  Heart,
+  Github,
+  Globe,
   ImagePlus,
   Instagram,
   Linkedin,
+  MessageCircle,
+  MessageSquareReply,
   Pencil,
   Save,
+  ShieldCheck,
+  Sparkles,
+  Tags,
+  ThumbsUp,
+  TrendingUp,
   User,
   X,
   Youtube,
@@ -38,6 +47,7 @@ import { db } from "../firebase/firebase";
 import {
   KnowledgeEntry,
   KnowledgeImageAsset,
+  SmartQuestion,
   UserProfile,
   UserSocialLinks,
 } from "../types";
@@ -55,7 +65,7 @@ import {
   updateProfileDetails,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { buildAbsoluteRouteUrl } from "../utils/routes";
+import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
 import { hydrateUserProfile } from "../utils/profileData";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import {
@@ -64,15 +74,66 @@ import {
 } from "../utils/knowledgePrivacy";
 import { ProfileSocialLinks } from "./ProfileSocialLinks";
 import { KnowledgeCardSkeleton, ProfileSkeleton } from "./Skeletons";
+import {
+  getContributorLevel,
+  getTrustMetrics,
+  mergeTrustIds,
+  normalizeTrustCount,
+  normalizeTrustIdArray,
+} from "../utils/trustSystem";
+import { getSaveMetrics } from "../utils/bookmarks";
 
-type ProfileSection = "shared" | "liked";
+type ProfileSection = "shared" | "activity" | "liked" | "saved";
+type ProfileActivityType =
+  | "post"
+  | "answer"
+  | "comment"
+  | "helpful"
+  | "trust"
+  | "level";
 type ProfilePaginationMode = "ordered" | "fallback" | null;
+type KnowledgePendingAction = {
+  type: "helpful" | "misleading" | "comment" | "save";
+  entryId: string;
+};
 
 const PROFILE_POST_PAGE_SIZE = 10;
 const PROFILE_POST_FALLBACK_PAGE_SIZE = 20;
 const PROFILE_TRACKED_LIKE_LOOKUP_LIMIT = 120;
 const FIRESTORE_IN_QUERY_LIMIT = 30;
 const PROFILE_DIRECTORY_LIMIT = 80;
+const PROFILE_SMARTTALK_SUMMARY_LIMIT = 50;
+
+const EXPERTISE_KEYWORDS = [
+  {
+    label: "AI",
+    keywords: ["ai", "artificial intelligence", "llm", "prompt", "openai", "copilot"],
+  },
+  {
+    label: "Programming",
+    keywords: ["programming", "code", "coding", "developer", "javascript", "typescript", "python", "react", "api"],
+  },
+  {
+    label: "Marketing",
+    keywords: ["marketing", "growth", "seo", "content", "brand", "campaign", "ads"],
+  },
+  {
+    label: "Cybersecurity",
+    keywords: ["security", "cybersecurity", "privacy", "auth", "password", "threat", "risk"],
+  },
+  {
+    label: "Productivity",
+    keywords: ["productivity", "workflow", "automation", "focus", "template", "shortcut"],
+  },
+  {
+    label: "Design",
+    keywords: ["design", "ui", "ux", "figma", "prototype", "interface"],
+  },
+  {
+    label: "Startups",
+    keywords: ["startup", "founder", "mvp", "fundraising", "launch", "customer"],
+  },
+] as const;
 
 interface ProfileProps {
   currentIdentity: KnowledgeIdentity | null;
@@ -80,6 +141,45 @@ interface ProfileProps {
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
+}
+
+interface ProfileSmartTalkSummary {
+  answers: number;
+  questions: number;
+  bestAnswers: number;
+  expertiseText: string[];
+  activityItems: ProfileActivityItem[];
+  bestAnswer: ProfileActivityItem | null;
+}
+
+const EMPTY_PROFILE_SMARTTALK_SUMMARY: ProfileSmartTalkSummary = {
+  answers: 0,
+  questions: 0,
+  bestAnswers: 0,
+  expertiseText: [],
+  activityItems: [],
+  bestAnswer: null,
+};
+
+type ProfileContributorLevel = ReturnType<typeof getContributorLevel>;
+
+interface ProfileTrustInsights {
+  trustScore: number;
+  helpfulRatio: number;
+  contributorLevel: ProfileContributorLevel;
+  postsCreated: number;
+  helpfulReceived: number;
+  smartTalkAnswers: number;
+  bestAnswers: number;
+  communityTrustPercent: number;
+}
+
+interface ProfileActivityItem {
+  id: string;
+  type: ProfileActivityType;
+  title: string;
+  detail: string;
+  createdAt: number;
 }
 
 function sortKnowledge(entries: KnowledgeEntry[]) {
@@ -136,40 +236,359 @@ function getProfileDisplayName(profile: UserProfile) {
   return profile.displayName?.trim() || profile.username;
 }
 
+function getProfileTrustInsights(
+  profile: UserProfile,
+  sharedEntries: KnowledgeEntry[],
+  smartTalkSummary: ProfileSmartTalkSummary,
+): ProfileTrustInsights {
+  const postHelpful = sharedEntries.reduce(
+    (total, entry) => total + getTrustMetrics(entry).helpfulCount,
+    0,
+  );
+  const postMisleading = sharedEntries.reduce(
+    (total, entry) => total + getTrustMetrics(entry).misleadingCount,
+    0,
+  );
+  const helpfulReceived = Math.max(
+    postHelpful,
+    normalizeTrustCount(profile.helpfulCount),
+  );
+  const misleadingReceived = Math.max(
+    postMisleading,
+    normalizeTrustCount(profile.misleadingCount),
+  );
+  const signalTotal = helpfulReceived + misleadingReceived;
+  const helpfulRatio =
+    signalTotal > 0 ? Math.round((helpfulReceived / signalTotal) * 100) : 0;
+  const communityTrustPercent = signalTotal > 0 ? helpfulRatio : 75;
+  const bestAnswers = Math.max(
+    smartTalkSummary.bestAnswers,
+    normalizeTrustCount(profile.bestAnswerCount),
+  );
+  const smartTalkAnswers = Math.max(smartTalkSummary.answers, bestAnswers);
+  const computedScore = Math.max(
+    0,
+    Math.round(
+      sharedEntries.length * 5 +
+        helpfulReceived * 6 +
+        smartTalkAnswers * 4 +
+        bestAnswers * 12 -
+        misleadingReceived * 8,
+    ),
+  );
+  const trustScore = Math.max(
+    computedScore,
+    normalizeTrustCount(profile.reputationScore),
+  );
+
+  return {
+    trustScore,
+    helpfulRatio,
+    contributorLevel: getContributorLevel(trustScore),
+    postsCreated: sharedEntries.length,
+    helpfulReceived,
+    smartTalkAnswers,
+    bestAnswers,
+    communityTrustPercent,
+  };
+}
+
+function getProfileTrustColor(trustPercent: number) {
+  if (trustPercent >= 88) return "#059669";
+  if (trustPercent >= 72) return "#0d9488";
+  if (trustPercent >= 55) return "#d97706";
+  return "#e11d48";
+}
+
+function addExpertiseScore(
+  scores: Map<string, number>,
+  sourceText: string,
+  weight = 1,
+) {
+  const text = sourceText.toLowerCase();
+  EXPERTISE_KEYWORDS.forEach(({ label, keywords }) => {
+    const matchedKeywords = keywords.filter((keyword) => text.includes(keyword));
+    if (matchedKeywords.length > 0) {
+      scores.set(label, (scores.get(label) || 0) + matchedKeywords.length * weight);
+    }
+  });
+}
+
+function inferExpertiseTags(
+  sharedEntries: KnowledgeEntry[],
+  smartTalkSummary: ProfileSmartTalkSummary,
+) {
+  const scores = new Map<string, number>();
+
+  sharedEntries.forEach((entry) => {
+    addExpertiseScore(scores, [entry.title, entry.content, entry.excerpt || ""].join(" "));
+    entry.hashtags.forEach((tag) => addExpertiseScore(scores, tag, 2));
+  });
+
+  smartTalkSummary.expertiseText.forEach((text) => addExpertiseScore(scores, text));
+
+  const inferredTags = [...scores.entries()]
+    .filter(([, score]) => score > 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+    .map(([label]) => label);
+
+  return inferredTags.length > 0 ? inferredTags : ["Technology"];
+}
+
+function readSmartTalkText(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function readProfileTimestamp(value: unknown, fallback = Date.now()) {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: unknown }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : fallback;
+}
+
+function getProfileSmartTalkSummary(
+  activeAuthorId: string,
+  docs: Array<QueryDocumentSnapshot<DocumentData>>,
+): ProfileSmartTalkSummary {
+  return docs.reduce<ProfileSmartTalkSummary>(
+    (summary, snapshot) => {
+      const data = snapshot.data();
+      const questionAuthorId =
+        typeof data.authorId === "string" ? data.authorId : "";
+
+      if (questionAuthorId === activeAuthorId) {
+        summary.questions += 1;
+        const questionText = readSmartTalkText(data.content);
+        summary.expertiseText.push(questionText);
+        summary.activityItems.push({
+          id: `smarttalk-question-${snapshot.id}`,
+          type: "answer",
+          title: "Started a SmartTalk discussion",
+          detail: questionText || "Asked the community a question.",
+          createdAt: readProfileTimestamp(data.createdAt),
+        });
+      }
+
+      if (Array.isArray(data.answers)) {
+        data.answers.forEach((answer: unknown) => {
+          if (!answer || typeof answer !== "object") return;
+
+          const answerData = answer as Record<string, unknown>;
+          if (answerData.authorId !== activeAuthorId) return;
+
+          summary.answers += 1;
+          const answerText = readSmartTalkText(answerData.content);
+          const answerCreatedAt = readProfileTimestamp(
+            answerData.createdAt,
+            readProfileTimestamp(data.createdAt),
+          );
+          const answerActivity = {
+            id: `smarttalk-answer-${snapshot.id}-${String(answerData.id || summary.answers)}`,
+            type: "answer" as const,
+            title: "Answered SmartTalk question",
+            detail: answerText || readSmartTalkText(data.content) || "Shared an answer.",
+            createdAt: answerCreatedAt,
+          };
+          summary.expertiseText.push(answerText);
+          summary.activityItems.push(answerActivity);
+
+          if (answerData.bestAnswer === true) {
+            summary.bestAnswers += 1;
+            if (
+              !summary.bestAnswer ||
+              answerActivity.createdAt > summary.bestAnswer.createdAt
+            ) {
+              summary.bestAnswer = {
+                ...answerActivity,
+                id: `best-${answerActivity.id}`,
+                title: "Best SmartTalk answer",
+              };
+            }
+          }
+        });
+      }
+
+      return summary;
+    },
+    {
+      ...EMPTY_PROFILE_SMARTTALK_SUMMARY,
+      expertiseText: [],
+      activityItems: [],
+      bestAnswer: null,
+    },
+  );
+}
+
+function buildProfileActivityTimeline(
+  profile: UserProfile,
+  sharedEntries: KnowledgeEntry[],
+  smartTalkSummary: ProfileSmartTalkSummary,
+  insights: ProfileTrustInsights,
+): ProfileActivityItem[] {
+  const timeline: ProfileActivityItem[] = [];
+  const latestPostAt = sharedEntries[0]?.createdAt || profile.updatedAt || profile.createdAt;
+
+  sharedEntries.slice(0, 8).forEach((entry) => {
+    timeline.push({
+      id: `post-${entry.id}`,
+      type: "post",
+      title: "Published a post",
+      detail: entry.title,
+      createdAt: entry.createdAt,
+    });
+
+    entry.comments
+      .filter((comment) => comment.authorId === profile.id)
+      .slice(0, 2)
+      .forEach((comment) => {
+        timeline.push({
+          id: `comment-${entry.id}-${comment.id}`,
+          type: "comment",
+          title: "Commented on discussion",
+          detail: comment.text || entry.title,
+          createdAt: comment.createdAt,
+        });
+      });
+  });
+
+  if (insights.helpfulReceived > 0) {
+    timeline.push({
+      id: "helpful-received",
+      type: "helpful",
+      title: "Received Helpful votes",
+      detail: `${insights.helpfulReceived.toLocaleString()} helpful marks from the community.`,
+      createdAt: latestPostAt,
+    });
+  }
+
+  if (insights.trustScore > 0) {
+    timeline.push({
+      id: "trust-score",
+      type: "trust",
+      title: "Trust score increased",
+      detail: `Trust score ${insights.trustScore.toLocaleString()} / ${insights.communityTrustPercent}% trusted.`,
+      createdAt: profile.updatedAt || latestPostAt,
+    });
+  }
+
+  timeline.push({
+    id: "contributor-level",
+    type: "level",
+    title: "Contributor level upgraded",
+    detail: insights.contributorLevel,
+    createdAt: profile.updatedAt || latestPostAt,
+  });
+
+  return [...timeline, ...smartTalkSummary.activityItems]
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, 16);
+}
+
 function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>) {
-  const createdAt = data.createdAt as
-    | number
-    | { toMillis?: () => number }
-    | undefined;
-  const updatedAt = data.updatedAt as
-    | number
-    | { toMillis?: () => number }
-    | undefined;
+  const normalizeTimestamp = (value: unknown, fallback = Date.now()) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as { toMillis?: unknown }).toMillis === "function"
+    ) {
+      return (value as { toMillis: () => number }).toMillis();
+    }
+
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : fallback;
+  };
+  const normalizeStringArray = (value: unknown) =>
+    Array.isArray(value)
+      ? [...new Set(value)]
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.replace(/^#/, "").trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+  const helpfulIds = mergeTrustIds(
+    normalizeTrustIdArray(data.likes),
+    normalizeTrustIdArray(data.helpfulIds),
+  );
+  const misleadingIds = mergeTrustIds(
+    normalizeTrustIdArray(data.dislikes),
+    normalizeTrustIdArray(data.misleadingIds),
+  );
+  const helpfulCount = Math.max(
+    helpfulIds.length,
+    normalizeTrustCount(data.likeCount),
+    normalizeTrustCount(data.helpfulCount),
+  );
+  const misleadingCount = Math.max(
+    misleadingIds.length,
+    normalizeTrustCount(data.dislikeCount),
+    normalizeTrustCount(data.misleadingCount),
+  );
+  const saveMetrics = getSaveMetrics(data);
+  const createdAt = normalizeTimestamp(data.createdAt);
+  const comments = Array.isArray(data.comments)
+    ? data.comments
+        .filter((comment) => Boolean(comment && typeof comment === "object"))
+        .map((comment) => {
+          const safeComment = comment as Partial<
+            KnowledgeEntry["comments"][number]
+          >;
+
+          return {
+            id:
+              typeof safeComment.id === "string" && safeComment.id
+                ? safeComment.id
+                : Math.random().toString(36).slice(2, 11),
+            author:
+              typeof safeComment.author === "string"
+                ? safeComment.author
+                : "Unknown",
+            ...(typeof safeComment.authorId === "string" && safeComment.authorId
+              ? { authorId: safeComment.authorId }
+              : {}),
+            text: typeof safeComment.text === "string" ? safeComment.text : "",
+            mentions: Array.isArray(safeComment.mentions)
+              ? safeComment.mentions
+              : [],
+            createdAt: normalizeTimestamp(safeComment.createdAt),
+          };
+        })
+    : [];
 
   return {
     ...data,
     id,
+    author: typeof data.author === "string" ? data.author : "",
+    authorId: typeof data.authorId === "string" ? data.authorId : "",
+    authorEmail: typeof data.authorEmail === "string" ? data.authorEmail : "",
+    title: typeof data.title === "string" ? data.title : "",
+    content: typeof data.content === "string" ? data.content : "",
     visibility: normalizeKnowledgeVisibility(data.visibility),
-    comments: data.comments || [],
-    likes: data.likes || [],
-    hashtags: data.hashtags || [],
-    mentions: data.mentions || [],
-    createdAt:
-      createdAt &&
-      typeof createdAt === "object" &&
-      typeof createdAt.toMillis === "function"
-        ? createdAt.toMillis()
-        : typeof createdAt === "number"
-          ? createdAt
-          : Date.now(),
+    comments,
+    likes: helpfulIds,
+    likeCount: helpfulCount,
+    helpfulIds,
+    helpfulCount,
+    dislikes: misleadingIds,
+    dislikeCount: misleadingCount,
+    misleadingIds,
+    misleadingCount,
+    savedBy: saveMetrics.savedBy,
+    saveCount: saveMetrics.saveCount,
+    hashtags: normalizeStringArray(data.hashtags),
+    mentions: Array.isArray(data.mentions) ? data.mentions : [],
+    createdAt,
     updatedAt:
-      updatedAt &&
-      typeof updatedAt === "object" &&
-      typeof updatedAt.toMillis === "function"
-        ? updatedAt.toMillis()
-        : typeof updatedAt === "number"
-          ? updatedAt
-          : null,
+      data.updatedAt === null || data.updatedAt === undefined
+        ? null
+        : normalizeTimestamp(data.updatedAt, createdAt),
   } as KnowledgeEntry;
 }
 
@@ -191,6 +610,27 @@ function hydrateProfileKnowledgeDocs(
           includeEntry(entry) && canViewKnowledgeEntry(entry, visibleAuthorId),
       ),
   );
+}
+
+function hydrateSavedSmartTalkQuestion(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+): SmartQuestion {
+  const data = snapshot.data();
+  const saveMetrics = getSaveMetrics(data);
+
+  return {
+    id: snapshot.id,
+    author:
+      typeof data.author === "string" && data.author ? data.author : "Unknown",
+    authorId: typeof data.authorId === "string" ? data.authorId : "",
+    content: typeof data.content === "string" ? data.content : "",
+    createdAt: readProfileTimestamp(data.createdAt),
+    answers: Array.isArray(data.answers) ? data.answers : [],
+    category: typeof data.category === "string" ? data.category : null,
+    difficulty: typeof data.difficulty === "string" ? data.difficulty : null,
+    savedBy: saveMetrics.savedBy,
+    saveCount: saveMetrics.saveCount,
+  };
 }
 
 function chunkItems<T>(items: T[], size: number) {
@@ -253,6 +693,8 @@ export function Profile({
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [sharedEntries, setSharedEntries] = useState<KnowledgeEntry[]>([]);
   const [likedEntries, setLikedEntries] = useState<KnowledgeEntry[]>([]);
+  const [savedEntries, setSavedEntries] = useState<KnowledgeEntry[]>([]);
+  const [savedQuestions, setSavedQuestions] = useState<SmartQuestion[]>([]);
   const [sharedEntryCursor, setSharedEntryCursor] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [likedEntryCursor, setLikedEntryCursor] =
@@ -266,6 +708,7 @@ export function Profile({
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingSharedEntries, setIsLoadingSharedEntries] = useState(false);
   const [isLoadingLikedEntries, setIsLoadingLikedEntries] = useState(false);
+  const [isLoadingSavedItems, setIsLoadingSavedItems] = useState(false);
   const [isLoadingMoreSharedEntries, setIsLoadingMoreSharedEntries] =
     useState(false);
   const [isLoadingMoreLikedEntries, setIsLoadingMoreLikedEntries] =
@@ -282,17 +725,17 @@ export function Profile({
   const [bannerSaveError, setBannerSaveError] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileEditError, setProfileEditError] = useState<string | null>(null);
+  const [smartTalkSummary, setSmartTalkSummary] =
+    useState<ProfileSmartTalkSummary>(EMPTY_PROFILE_SMARTTALK_SUMMARY);
   const [section, setSection] = useState<ProfileSection>("shared");
-  const [pendingAction, setPendingAction] = useState<
-    { type: "like" | "comment"; entryId: string } | null
-  >(null);
+  const [pendingAction, setPendingAction] =
+    useState<KnowledgePendingAction | null>(null);
   const activeAuthorIdRef = useRef<string | null>(null);
   const visibleAuthorIdRef = useRef<string | null | undefined>(null);
   const isLoadingMoreSharedEntriesRef = useRef(false);
   const isLoadingMoreLikedEntriesRef = useRef(false);
   const handleIdentityRequired = useCallback(
-    (action: { type: "like" | "comment"; entryId: string }) =>
-      setPendingAction(action),
+    (action: KnowledgePendingAction) => setPendingAction(action),
     [],
   );
 
@@ -322,10 +765,50 @@ export function Profile({
   }, [isOwnProfile, viewedAuthorId]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!activeAuthorId) {
+      setSmartTalkSummary(EMPTY_PROFILE_SMARTTALK_SUMMARY);
+      return;
+    }
+
+    const loadSmartTalkSummary = async () => {
+      try {
+        const snapshot = await getDocs(
+          query(
+            collection(db, "smarttalk"),
+            orderBy("createdAt", "desc"),
+            limit(PROFILE_SMARTTALK_SUMMARY_LIMIT),
+          ),
+        );
+
+        if (!cancelled) {
+          setSmartTalkSummary(
+            getProfileSmartTalkSummary(activeAuthorId, snapshot.docs),
+          );
+        }
+      } catch (error) {
+        console.warn("SmartTalk profile summary failed:", error);
+        if (!cancelled) {
+          setSmartTalkSummary(EMPTY_PROFILE_SMARTTALK_SUMMARY);
+        }
+      }
+    };
+
+    void loadSmartTalkSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAuthorId]);
+
+  useEffect(() => {
     if (!activeAuthorId) {
       setProfile(null);
       setSharedEntries([]);
       setLikedEntries([]);
+      setSavedEntries([]);
+      setSavedQuestions([]);
       setSharedEntryCursor(null);
       setLikedEntryCursor(null);
       setHasMoreSharedEntries(false);
@@ -335,6 +818,7 @@ export function Profile({
       setIsLoadingProfile(false);
       setIsLoadingSharedEntries(false);
       setIsLoadingLikedEntries(false);
+      setIsLoadingSavedItems(false);
       setIsLoadingMoreSharedEntries(false);
       setIsLoadingMoreLikedEntries(false);
       isLoadingMoreSharedEntriesRef.current = false;
@@ -346,6 +830,8 @@ export function Profile({
     setIsLoadingSharedEntries(true);
     setSharedEntries([]);
     setLikedEntries([]);
+    setSavedEntries([]);
+    setSavedQuestions([]);
     setSharedEntryCursor(null);
     setLikedEntryCursor(null);
     setHasMoreSharedEntries(false);
@@ -354,6 +840,7 @@ export function Profile({
     setLikedPaginationMode(null);
     setIsLoadingMoreSharedEntries(false);
     setIsLoadingMoreLikedEntries(false);
+    setIsLoadingSavedItems(false);
     isLoadingMoreSharedEntriesRef.current = false;
     isLoadingMoreLikedEntriesRef.current = false;
 
@@ -551,6 +1038,14 @@ export function Profile({
     trackedLikedEntryIds.length,
     likedEntries.length,
   );
+  const savedKnowledgeIds = profile?.savedKnowledgeIds || [];
+  const savedSmartTalkIds = profile?.savedSmartTalkIds || [];
+  const savedKnowledgeIdsKey = savedKnowledgeIds.join("\u001f");
+  const savedSmartTalkIdsKey = savedSmartTalkIds.join("\u001f");
+  const savedItemCount = Math.max(
+    savedKnowledgeIds.length + savedSmartTalkIds.length,
+    savedEntries.length + savedQuestions.length,
+  );
   const orderedLikedEntries = useMemo(
     () => sortProfileLikedEntries(likedEntries, trackedLikedEntryIds),
     [likedEntries, trackedLikedEntryIdsKey],
@@ -572,9 +1067,60 @@ export function Profile({
         sameAs: Object.values(profile.socialLinks || {}).filter(Boolean),
       }
     : undefined;
+  const profileTrustInsights = useMemo(
+    () =>
+      profile
+        ? getProfileTrustInsights(profile, sharedEntries, smartTalkSummary)
+        : null,
+    [profile, sharedEntries, smartTalkSummary],
+  );
+  const expertiseTags = useMemo(
+    () => inferExpertiseTags(sharedEntries, smartTalkSummary),
+    [sharedEntries, smartTalkSummary],
+  );
+  const activityTimeline = useMemo(
+    () =>
+      profile && profileTrustInsights
+        ? buildProfileActivityTimeline(
+            profile,
+            sharedEntries,
+            smartTalkSummary,
+            profileTrustInsights,
+          )
+        : [],
+    [profile, profileTrustInsights, sharedEntries, smartTalkSummary],
+  );
+  const mostHelpfulPost = useMemo(
+    () =>
+      sharedEntries.length > 0
+        ? [...sharedEntries].sort((left, right) => {
+            const leftMetrics = getTrustMetrics(left);
+            const rightMetrics = getTrustMetrics(right);
+
+            return (
+              rightMetrics.helpfulCount - leftMetrics.helpfulCount ||
+              rightMetrics.communityTrustPercent - leftMetrics.communityTrustPercent ||
+              right.createdAt - left.createdAt
+            );
+          })[0]
+        : null,
+    [sharedEntries],
+  );
+  const recentContributionItems = useMemo(
+    () =>
+      activityTimeline
+        .filter(
+          (item) =>
+            item.type === "post" ||
+            item.type === "answer" ||
+            item.type === "comment",
+        )
+        .slice(0, 3),
+    [activityTimeline],
+  );
 
   useEffect(() => {
-    if (!activeAuthorId || !profile) {
+    if (!activeAuthorId || !profile || section !== "liked") {
       setLikedEntries([]);
       setLikedEntryCursor(null);
       setHasMoreLikedEntries(false);
@@ -614,7 +1160,7 @@ export function Profile({
               hydrateProfileKnowledgeDocs(
                 snapshot.docs,
                 visibleAuthorId,
-                (entry) => (entry.likes || []).includes(targetAuthorId),
+                (entry) => getTrustMetrics(entry).helpfulIds.includes(targetAuthorId),
               ),
             );
 
@@ -631,7 +1177,7 @@ export function Profile({
             console.error("Liked knowledge ID listener error:", error);
             setIsLoadingLikedEntries(false);
             setProfileLoadError(
-              "Could not load liked posts for this profile right now.",
+              "Could not load helpful posts for this profile right now.",
             );
           },
         ),
@@ -647,7 +1193,7 @@ export function Profile({
       docs: Array<QueryDocumentSnapshot<DocumentData>>;
     }) =>
       hydrateProfileKnowledgeDocs(snapshot.docs, visibleAuthorId, (entry) =>
-        (entry.likes || []).includes(targetAuthorId),
+        getTrustMetrics(entry).helpfulIds.includes(targetAuthorId),
       );
 
     const startFallbackLikedListener = () => {
@@ -677,7 +1223,7 @@ export function Profile({
           setHasMoreLikedEntries(false);
           setLikedPaginationMode(null);
           setIsLoadingLikedEntries(false);
-          setProfileLoadError("Could not load liked posts for this profile right now.");
+          setProfileLoadError("Could not load helpful posts for this profile right now.");
         },
       );
     };
@@ -717,7 +1263,7 @@ export function Profile({
         setHasMoreLikedEntries(false);
         setLikedPaginationMode(null);
         setIsLoadingLikedEntries(false);
-        setProfileLoadError("Could not load liked posts for this profile right now.");
+        setProfileLoadError("Could not load helpful posts for this profile right now.");
       },
     );
 
@@ -728,7 +1274,116 @@ export function Profile({
     activeAuthorId,
     currentIdentity?.authorId,
     profile,
+    section,
     trackedLikedEntryIdsKey,
+  ]);
+
+  useEffect(() => {
+    if (!profile || section !== "saved") {
+      setSavedEntries([]);
+      setSavedQuestions([]);
+      setIsLoadingSavedItems(false);
+      return;
+    }
+
+    let cancelled = false;
+    const visibleAuthorId = currentIdentity?.authorId;
+    const knowledgeIds = [...new Set(savedKnowledgeIds)].slice(
+      -PROFILE_TRACKED_LIKE_LOOKUP_LIMIT,
+    );
+    const smartTalkIds = [...new Set(savedSmartTalkIds)].slice(
+      -PROFILE_TRACKED_LIKE_LOOKUP_LIMIT,
+    );
+
+    if (knowledgeIds.length === 0 && smartTalkIds.length === 0) {
+      setSavedEntries([]);
+      setSavedQuestions([]);
+      setIsLoadingSavedItems(false);
+      return;
+    }
+
+    setIsLoadingSavedItems(true);
+
+    const loadSavedItems = async () => {
+      try {
+        const [knowledgeChunks, smartTalkChunks] = await Promise.all([
+          Promise.all(
+            chunkItems(knowledgeIds, FIRESTORE_IN_QUERY_LIMIT).map((entryIds) =>
+              getDocs(
+                query(
+                  collection(db, "knowledge"),
+                  where(documentId(), "in", entryIds),
+                ),
+              ),
+            ),
+          ),
+          Promise.all(
+            chunkItems(smartTalkIds, FIRESTORE_IN_QUERY_LIMIT).map((questionIds) =>
+              getDocs(
+                query(
+                  collection(db, "smarttalk"),
+                  where(documentId(), "in", questionIds),
+                ),
+              ),
+            ),
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const knowledgeOrder = new Map(
+          knowledgeIds.map((entryId, index) => [entryId, index] as const),
+        );
+        const smartTalkOrder = new Map(
+          smartTalkIds.map((questionId, index) => [questionId, index] as const),
+        );
+
+        setSavedEntries(
+          knowledgeChunks
+            .flatMap((snapshot) =>
+              hydrateProfileKnowledgeDocs(snapshot.docs, visibleAuthorId),
+            )
+            .sort(
+              (left, right) =>
+                (knowledgeOrder.get(right.id) ?? -1) -
+                (knowledgeOrder.get(left.id) ?? -1),
+            ),
+        );
+        setSavedQuestions(
+          smartTalkChunks
+            .flatMap((snapshot) =>
+              snapshot.docs.map((item) => hydrateSavedSmartTalkQuestion(item)),
+            )
+            .sort(
+              (left, right) =>
+                (smartTalkOrder.get(right.id) ?? -1) -
+                (smartTalkOrder.get(left.id) ?? -1),
+            ),
+        );
+        setProfileLoadError(null);
+      } catch (error) {
+        console.error("Saved profile items failed:", error);
+        if (!cancelled) {
+          setSavedEntries([]);
+          setSavedQuestions([]);
+          setProfileLoadError("Could not load saved items right now.");
+        }
+      } finally {
+        if (!cancelled) setIsLoadingSavedItems(false);
+      }
+    };
+
+    void loadSavedItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentIdentity?.authorId,
+    profile,
+    savedKnowledgeIdsKey,
+    savedSmartTalkIdsKey,
+    section,
   ]);
 
   const loadMoreSharedEntries = useCallback(async () => {
@@ -865,7 +1520,7 @@ export function Profile({
       const entries = hydrateProfileKnowledgeDocs(
         snapshot.docs,
         requestedVisibleAuthorId,
-        (entry) => (entry.likes || []).includes(requestedAuthorId),
+        (entry) => getTrustMetrics(entry).helpfulIds.includes(requestedAuthorId),
       );
 
       setLikedEntries((currentEntries) =>
@@ -881,7 +1536,7 @@ export function Profile({
       ) {
         console.error("Liked knowledge pagination error:", error);
         setHasMoreLikedEntries(false);
-        setProfileLoadError("Could not load more liked posts right now.");
+        setProfileLoadError("Could not load more helpful posts right now.");
       }
     } finally {
       isLoadingMoreLikedEntriesRef.current = false;
@@ -1023,7 +1678,7 @@ export function Profile({
       <div className="space-y-6 pb-20">
         <SEO
           title="Profile | Readative"
-          description="Sign in with Google to unlock your Readative profile, posts, and likes."
+          description="Sign in with Google to unlock your Readative profile, posts, and helpful feedback."
           robots="noindex"
         />
 
@@ -1035,7 +1690,7 @@ export function Profile({
             Sign in with Google
           </h2>
           <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-            Keep your profile, posts, likes, and comments synced.
+            Keep your profile, posts, helpful feedback, and comments synced.
           </p>
           <button
             onClick={() => setShowIdentityPrompt(true)}
@@ -1061,7 +1716,7 @@ export function Profile({
     <div className="space-y-6 pb-20">
       <SEO
         title={profile ? `${profileDisplayName} | Readative` : "Profile | Readative"}
-        description="Explore user profiles, shared knowledge, and liked posts on Readative."
+        description="Explore user profiles, shared knowledge, and helpful posts on Readative."
         type="profile"
         url={profileUrl}
         schema={profileSchema}
@@ -1111,21 +1766,41 @@ export function Profile({
 
             <div className="px-5 pb-5 sm:px-6 sm:pb-6">
               <div className="-mt-12 flex flex-wrap items-end justify-between gap-3 sm:-mt-14">
-                <div className="relative">
-                  <ProfileAvatar
-                    authorId={profile.id}
-                    image={profile.profileImage}
-                    photoUrl={profile.photoUrl}
-                    username={profileDisplayName}
-                    size="xl"
-                    className="border-slate-200 bg-white ring-4 ring-white"
-                  />
+                <div
+                  className="relative rounded-[30px] p-1 shadow-[0_14px_36px_rgba(15,23,42,0.16)]"
+                  style={{
+                    background: `conic-gradient(${getProfileTrustColor(
+                      profileTrustInsights?.communityTrustPercent || 75,
+                    )} ${(profileTrustInsights?.communityTrustPercent || 75) * 3.6}deg, #e2e8f0 0deg)`,
+                  }}
+                >
+                  <div className="rounded-[26px] bg-white p-1">
+                    <ProfileAvatar
+                      authorId={profile.id}
+                      image={profile.profileImage}
+                      photoUrl={profile.photoUrl}
+                      username={profileDisplayName}
+                      size="xl"
+                      className="border-slate-200 bg-white"
+                    />
+                  </div>
+                  {profileTrustInsights && (
+                    <span className="absolute -bottom-1 -right-1 inline-flex h-8 w-8 items-center justify-center rounded-full border-4 border-white bg-slate-950 text-white shadow-sm">
+                      <Award className="h-4 w-4" />
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">
                     {isOwnProfile ? "Your Profile" : "Community Profile"}
                   </span>
+                  {profileTrustInsights && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700 shadow-sm">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                      {profileTrustInsights.contributorLevel}
+                    </span>
+                  )}
                   {isOwnProfile && (
                     <button
                       onClick={() => {
@@ -1179,6 +1854,22 @@ export function Profile({
                   )}
                 </div>
               </div>
+
+              {profileTrustInsights && (
+                <>
+                  <ProfileTrustOverview
+                    insights={profileTrustInsights}
+                    expertiseTags={expertiseTags}
+                  />
+                  <ProfileDiscoveryHighlights
+                    expertiseTags={expertiseTags}
+                    recentItems={recentContributionItems}
+                    mostHelpfulPost={mostHelpfulPost}
+                    bestAnswer={smartTalkSummary.bestAnswer}
+                    onOpenEntry={onOpenEntry}
+                  />
+                </>
+              )}
             </div>
           </div>
 
@@ -1186,14 +1877,20 @@ export function Profile({
             <SectionButton
               active={section === "shared"}
               onClick={() => setSection("shared")}
-              label="Shared"
+              label="Posts"
               count={sharedEntries.length}
             />
             <SectionButton
-              active={section === "liked"}
-              onClick={() => setSection("liked")}
-              label="Liked"
-              count={likedEntryCount}
+              active={section === "activity"}
+              onClick={() => setSection("activity")}
+              label="Activity"
+              count={activityTimeline.length}
+            />
+            <SectionButton
+              active={section === "saved"}
+              onClick={() => setSection("saved")}
+              label="Saved"
+              count={savedItemCount}
             />
           </div>
 
@@ -1218,19 +1915,18 @@ export function Profile({
             />
           )}
 
-          {section === "liked" && (
-            <KnowledgeSection
-              title={
-                isOwnProfile
-                  ? "Posts you liked"
-                  : `Knowledge liked by ${profileDisplayName}`
-              }
-              emptyMessage="No liked knowledge yet."
-              entries={orderedLikedEntries}
-              isLoading={isLoadingLikedEntries}
-              hasMore={hasMoreLikedEntries}
-              isLoadingMore={isLoadingMoreLikedEntries}
-              onLoadMore={loadMoreLikedEntries}
+          {section === "activity" && (
+            <ProfileActivityTimeline
+              items={activityTimeline}
+              isLoading={isLoadingSharedEntries}
+            />
+          )}
+
+          {section === "saved" && (
+            <ProfileSavedSection
+              entries={savedEntries}
+              questions={savedQuestions}
+              isLoading={isLoadingSavedItems}
               currentIdentity={currentIdentity}
               profiles={profiles}
               onIdentityRequired={handleIdentityRequired}
@@ -1307,9 +2003,13 @@ export function Profile({
       {pendingAction && (
         <GoogleSignInPrompt
           title={
-            pendingAction.type === "like"
-              ? "Sign in to like"
-              : "Sign in to comment"
+            pendingAction.type === "helpful"
+              ? "Sign in to mark helpful"
+              : pendingAction.type === "misleading"
+                ? "Sign in to mark misleading"
+                : pendingAction.type === "save"
+                  ? "Sign in to save"
+                  : "Sign in to comment"
           }
           description="Use your Google account so this activity is saved to your profile on every browser and device."
           submitLabel="Continue with Google"
@@ -1355,6 +2055,9 @@ function EditProfileModal({
   const [instagram, setInstagram] = useState(
     profile.socialLinks.instagram || "",
   );
+  const [github, setGithub] = useState(profile.socialLinks.github || "");
+  const [twitter, setTwitter] = useState(profile.socialLinks.twitter || "");
+  const [website, setWebsite] = useState(profile.socialLinks.website || "");
   const [youtube, setYoutube] = useState(profile.socialLinks.youtube || "");
   const [showSocialLinksOnPosts, setShowSocialLinksOnPosts] = useState(
     profile.showSocialLinksOnPosts,
@@ -1369,6 +2072,9 @@ function EditProfileModal({
       socialLinks: {
         linkedin,
         instagram,
+        github,
+        twitter,
+        website,
         youtube,
       },
       showSocialLinksOnPosts,
@@ -1506,6 +2212,27 @@ function EditProfileModal({
               placeholder="https://www.instagram.com/username"
             />
             <SocialInput
+              icon={<Github className="h-4 w-4" />}
+              label="GitHub"
+              value={github}
+              onChange={setGithub}
+              placeholder="https://github.com/username"
+            />
+            <SocialInput
+              icon={<span className="text-sm font-black">X</span>}
+              label="X / Twitter"
+              value={twitter}
+              onChange={setTwitter}
+              placeholder="https://x.com/username"
+            />
+            <SocialInput
+              icon={<Globe className="h-4 w-4" />}
+              label="Website"
+              value={website}
+              onChange={setWebsite}
+              placeholder="https://yourdomain.com"
+            />
+            <SocialInput
               icon={<Youtube className="h-4 w-4" />}
               label="YouTube"
               value={youtube}
@@ -1623,6 +2350,327 @@ function SocialInput({
   );
 }
 
+function ProfileTrustOverview({
+  insights,
+  expertiseTags,
+}: {
+  insights: ProfileTrustInsights;
+  expertiseTags: string[];
+}) {
+  const compactStats = [
+    ["Trust Score", insights.trustScore.toLocaleString()],
+    ["Helpful", insights.helpfulReceived.toLocaleString()],
+    ["Posts", insights.postsCreated.toLocaleString()],
+    ["SmartTalk", insights.smartTalkAnswers.toLocaleString()],
+    ["Trust", `${insights.communityTrustPercent}%`],
+  ];
+
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+          {insights.contributorLevel}
+        </span>
+        {compactStats.map(([label, value]) => (
+          <span
+            key={label}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600"
+          >
+            <span className="text-slate-400">{label}</span>
+            <span className="text-slate-950">{value}</span>
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+          <Tags className="h-3.5 w-3.5" />
+          Topics
+        </span>
+        {expertiseTags.map((tag) => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"
+          >
+            <Sparkles className="h-3 w-3" />
+            {tag}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfileDiscoveryHighlights({
+  expertiseTags,
+  recentItems,
+  mostHelpfulPost,
+  bestAnswer,
+  onOpenEntry,
+}: {
+  expertiseTags: string[];
+  recentItems: ProfileActivityItem[];
+  mostHelpfulPost: KnowledgeEntry | null;
+  bestAnswer: ProfileActivityItem | null;
+  onOpenEntry: (entryId: string) => void;
+}) {
+  const helpfulMetrics = mostHelpfulPost ? getTrustMetrics(mostHelpfulPost) : null;
+
+  return (
+    <section className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+        <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+        Discovery
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Top Topics
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {expertiseTags.slice(0, 4).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-indigo-700 shadow-sm"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (mostHelpfulPost) onOpenEntry(mostHelpfulPost.id);
+          }}
+          disabled={!mostHelpfulPost}
+          className="rounded-xl bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-emerald-50 disabled:cursor-default disabled:hover:bg-slate-50"
+        >
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Most Helpful Post
+          </p>
+          <p className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">
+            {mostHelpfulPost?.title || "No posts yet"}
+          </p>
+          {helpfulMetrics && (
+            <p className="mt-1 text-[11px] font-bold text-slate-500">
+              {helpfulMetrics.helpfulCount} helpful / {helpfulMetrics.communityTrustPercent}% trust
+            </p>
+          )}
+        </button>
+
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Recent Contributions
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {recentItems.length > 0 ? (
+              recentItems.map((item) => (
+                <p
+                  key={item.id}
+                  className="line-clamp-1 text-xs font-bold text-slate-700"
+                >
+                  {item.detail}
+                </p>
+              ))
+            ) : (
+              <p className="text-xs font-bold text-slate-400">
+                No recent contributions yet
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Best SmartTalk Answer
+          </p>
+          <p className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">
+            {bestAnswer?.detail || "No best answer yet"}
+          </p>
+          {bestAnswer && (
+            <p className="mt-1 text-[11px] font-bold text-slate-500">
+              {new Date(bestAnswer.createdAt).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProfileActivityTimeline({
+  items,
+  isLoading,
+}: {
+  items: ProfileActivityItem[];
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
+        <div className="space-y-4" aria-busy="true" aria-live="polite">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="flex gap-3">
+              <span className="h-8 w-8 animate-pulse rounded-full bg-slate-100" />
+              <span className="h-12 flex-1 animate-pulse rounded-xl bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center shadow-sm">
+        <Clock3 className="mx-auto h-8 w-8 text-slate-300" />
+        <p className="mt-3 text-sm font-semibold text-slate-500">
+          Activity will appear as this contributor posts, answers, and earns trust.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="space-y-1">
+        {items.map((item, index) => (
+          <div key={item.id} className="relative flex gap-3 pb-4 last:pb-0">
+            {index < items.length - 1 && (
+              <span className="absolute left-4 top-9 h-[calc(100%-2rem)] w-px bg-slate-200" />
+            )}
+            <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600">
+              <ProfileActivityIcon type={item.type} />
+            </span>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="text-sm font-black text-slate-950">{item.title}</p>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {new Date(item.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-600">
+                {item.detail}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfileActivityIcon({ type }: { type: ProfileActivityType }) {
+  if (type === "post") return <BookOpenText className="h-4 w-4" />;
+  if (type === "answer") return <MessageSquareReply className="h-4 w-4" />;
+  if (type === "comment") return <MessageCircle className="h-4 w-4" />;
+  if (type === "helpful") return <ThumbsUp className="h-4 w-4" />;
+  if (type === "trust") return <TrendingUp className="h-4 w-4" />;
+  return <Award className="h-4 w-4" />;
+}
+
+function ProfileSavedSection({
+  entries,
+  questions,
+  isLoading,
+  currentIdentity,
+  profiles,
+  onIdentityRequired,
+  onOpenProfile,
+  onOpenEntry,
+}: {
+  entries: KnowledgeEntry[];
+  questions: SmartQuestion[];
+  isLoading: boolean;
+  currentIdentity: KnowledgeIdentity | null;
+  profiles: UserProfile[];
+  onIdentityRequired: (action: KnowledgePendingAction) => void;
+  onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
+        <div className="space-y-3" aria-busy="true" aria-live="polite">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-16 animate-pulse rounded-xl bg-slate-100" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (entries.length === 0 && questions.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center shadow-sm">
+        <Save className="mx-auto h-8 w-8 text-slate-300" />
+        <p className="mt-3 text-sm font-semibold text-slate-500">
+          Saved posts and SmartTalk discussions will appear here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {questions.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+            <MessageSquareReply className="h-4 w-4 text-indigo-600" />
+            Saved SmartTalk
+          </div>
+          <div className="space-y-2">
+            {questions.map((question) => (
+              <button
+                key={question.id}
+                type="button"
+                onClick={() => navigateToRoute("smarttalk")}
+                className="w-full rounded-xl bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-indigo-50"
+              >
+                <p className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
+                  {question.content}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400">
+                  <span>{question.answers.length} answers</span>
+                  {question.category && (
+                    <>
+                      <span>/</span>
+                      <span className="capitalize">{question.category}</span>
+                    </>
+                  )}
+                  {question.difficulty && (
+                    <>
+                      <span>/</span>
+                      <span className="capitalize">{question.difficulty}</span>
+                    </>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {entries.length > 0 && (
+        <KnowledgeSection
+          title="Saved posts"
+          emptyMessage="No saved posts yet."
+          entries={entries}
+          isLoading={false}
+          currentIdentity={currentIdentity}
+          profiles={profiles}
+          onIdentityRequired={onIdentityRequired}
+          onOpenProfile={onOpenProfile}
+          onOpenEntry={onOpenEntry}
+        />
+      )}
+    </div>
+  );
+}
+
 function SectionButton({
   active,
   onClick,
@@ -1671,7 +2719,7 @@ function KnowledgeSection({
   onLoadMore?: () => void;
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
-  onIdentityRequired: (action: { type: "like" | "comment"; entryId: string }) => void;
+  onIdentityRequired: (action: KnowledgePendingAction) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
 }) {
@@ -1691,7 +2739,7 @@ function KnowledgeSection({
         </div>
       ) : entries.length === 0 ? (
         <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm">
-          <Heart className="mx-auto h-8 w-8 text-slate-300" />
+          <ThumbsUp className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-3 text-sm text-slate-400">{emptyMessage}</p>
         </div>
       ) : (

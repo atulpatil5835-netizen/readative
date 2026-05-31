@@ -1,13 +1,17 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   AtSign,
+  Award,
   FileText,
-  Heart,
   Linkedin,
   Mail,
   MessageCircle,
+  Palette,
   Scale,
   ShieldCheck,
+  ThumbsUp,
+  Trophy,
+  TrendingUp,
   Users,
   X,
 } from "lucide-react";
@@ -24,7 +28,8 @@ export type InfoSection =
   | "privacy"
   | "terms"
   | "guidelines"
-  | "disclaimer";
+  | "disclaimer"
+  | "appearance";
 
 export function InfoPanel({
   onClose,
@@ -204,7 +209,7 @@ export function InfoPanel({
               <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
                 <PolicyBlock
                   title="Information we store"
-                  body="Readative may store usernames, posts, comments, likes, notifications, and basic usage information needed to run the community experience."
+                  body="Readative may store usernames, posts, comments, helpful feedback, notifications, and basic usage information needed to run the community experience."
                 />
                 <PolicyBlock
                   title="Cookies and local preferences"
@@ -328,6 +333,29 @@ export function InfoPanel({
               </div>
             </div>
           )}
+
+          {activeSection === "appearance" && (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-indigo-100 p-2 text-indigo-700">
+                  <Palette className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Appearance
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Readative uses a compact system-friendly interface.
+                  </p>
+                </div>
+              </div>
+              <p className="mt-5 text-sm leading-6 text-slate-700">
+                The app is tuned for mobile readability, subtle depth, and fast
+                scrolling. More appearance controls can be added here without
+                changing existing posts or profiles.
+              </p>
+            </div>
+          )}
         </div>
       </aside>
     </div>
@@ -342,6 +370,7 @@ interface NotificationsPanelProps {
   onClose: () => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
+  onOpenSmartTalk: () => void;
 }
 
 export function NotificationsPanel({
@@ -352,6 +381,7 @@ export function NotificationsPanel({
   onClose,
   onOpenProfile,
   onOpenEntry,
+  onOpenSmartTalk,
 }: NotificationsPanelProps) {
   const [panelError, setPanelError] = useState<string | null>(null);
 
@@ -361,6 +391,19 @@ export function NotificationsPanel({
     try {
       if (!notification.read) {
         await markNotificationAsRead(notification.id);
+      }
+
+      if (
+        notification.type === "level-up" ||
+        notification.type === "trust-score"
+      ) {
+        onOpenProfile(notification.targetAuthorId);
+        return;
+      }
+
+      if (notification.type === "best-answer") {
+        onOpenSmartTalk();
+        return;
       }
 
       onOpenEntry(notification.entryId);
@@ -383,6 +426,67 @@ export function NotificationsPanel({
     }
   };
 
+  const groupedNotifications = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    return {
+      today: notifications.filter(
+        (notification) => notification.createdAt >= todayStart.getTime(),
+      ),
+      earlier: notifications.filter(
+        (notification) => notification.createdAt < todayStart.getTime(),
+      ),
+    };
+  }, [notifications]);
+
+  const renderNotification = (notification: UserNotification) => {
+    const actorProfileId =
+      notification.actorAuthorId === "readative-system"
+        ? notification.targetAuthorId
+        : notification.actorAuthorId;
+
+    return (
+      <div
+        key={notification.id}
+        className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
+      >
+        <div
+          className={`mt-0.5 rounded-xl p-2 ${getNotificationAccentClass(
+            notification.type,
+          )}`}
+        >
+          {getNotificationIcon(notification.type)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => onOpenProfile(actorProfileId)}
+              className="text-xs font-black text-slate-900 transition-colors hover:text-emerald-700"
+            >
+              @{notification.actorUsername}
+            </button>
+            {!notification.read && (
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white">
+                New
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void openNotification(notification)}
+            className="mt-1 block w-full text-left text-sm leading-5 text-slate-600 transition-colors hover:text-slate-950"
+          >
+            {notification.preview}
+          </button>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400">
+            {new Date(notification.createdAt).toLocaleString()}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[1px]"
@@ -390,18 +494,15 @@ export function NotificationsPanel({
     >
       <aside
         onClick={(event) => event.stopPropagation()}
-        className="absolute right-4 top-20 w-[min(92vw,390px)] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
+        className="absolute right-3 top-16 w-[min(94vw,380px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
       >
-        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
-          <div className="flex items-start justify-between gap-4">
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-200">
-                Realtime Alerts
-              </p>
-              <h2 className="mt-2 text-2xl font-black tracking-tight">
+              <h2 className="text-base font-black tracking-tight text-slate-950">
                 Notifications
               </h2>
-              <p className="mt-2 text-sm text-emerald-50">
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">
                 {identity
                   ? unreadNotificationCount === 0
                     ? `@${identity.displayName}, you are all caught up.`
@@ -411,7 +512,7 @@ export function NotificationsPanel({
             </div>
             <button
               onClick={onClose}
-              className="rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
               <X className="h-4 w-4" />
             </button>
@@ -421,7 +522,7 @@ export function NotificationsPanel({
             <button
               onClick={() => void markAllRead()}
               disabled={unreadNotificationCount === 0}
-              className="mt-4 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white transition-colors hover:bg-white/15 disabled:opacity-40"
+              className="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-40"
             >
               Mark all read
             </button>
@@ -437,76 +538,76 @@ export function NotificationsPanel({
 
           {!identity ? (
             <div className="px-6 py-8 text-sm text-slate-500">
-              Post, like, or comment once with your username and your realtime
+              Post, mark helpful, or comment once with your username and your realtime
               notifications will appear here.
             </div>
           ) : notifications.length === 0 ? (
             <div className="px-6 py-8 text-sm text-slate-500">
-              No notifications yet. Likes, comments, and tags will appear here in
+              No notifications yet. Helpful feedback, comments, and tags will appear here in
               realtime.
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`mt-1 rounded-2xl p-2 ${
-                        notification.type === "like"
-                          ? "bg-rose-100 text-rose-600"
-                          : notification.type === "comment"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-cyan-100 text-cyan-700"
-                      }`}
-                    >
-                      {notification.type === "like" ? (
-                        <Heart className="h-4 w-4" />
-                      ) : notification.type === "comment" ? (
-                        <MessageCircle className="h-4 w-4" />
-                      ) : (
-                        <AtSign className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => onOpenProfile(notification.actorAuthorId)}
-                          className="text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-                        >
-                          @{notification.actorUsername}
-                        </button>
-                        {!notification.read && (
-                          <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                            New
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
-                        {notification.preview}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-400">
-                        {new Date(notification.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => void openNotification(notification)}
-                    className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-50"
-                  >
-                    Open
-                  </button>
-                </div>
-              ))}
+            <div>
+              {groupedNotifications.today.length > 0 && (
+                <NotificationGroup title="Today">
+                  {groupedNotifications.today.map((notification) =>
+                    renderNotification(notification),
+                  )}
+                </NotificationGroup>
+              )}
+              {groupedNotifications.earlier.length > 0 && (
+                <NotificationGroup title="Earlier">
+                  {groupedNotifications.earlier.map((notification) =>
+                    renderNotification(notification),
+                  )}
+                </NotificationGroup>
+              )}
             </div>
           )}
         </div>
       </aside>
     </div>
   );
+}
+
+function NotificationGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-b border-slate-100 last:border-b-0">
+      <p className="px-4 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+        {title}
+      </p>
+      <div className="divide-y divide-slate-100">{children}</div>
+    </section>
+  );
+}
+
+function getNotificationAccentClass(type: UserNotification["type"]) {
+  if (type === "like" || type === "helpful-milestone") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+  if (type === "comment") return "bg-sky-100 text-sky-700";
+  if (type === "level-up" || type === "best-answer") {
+    return "bg-amber-100 text-amber-700";
+  }
+  if (type === "trust-score") return "bg-indigo-100 text-indigo-700";
+  return "bg-cyan-100 text-cyan-700";
+}
+
+function getNotificationIcon(type: UserNotification["type"]) {
+  if (type === "like" || type === "helpful-milestone") {
+    return <ThumbsUp className="h-4 w-4" />;
+  }
+  if (type === "comment") return <MessageCircle className="h-4 w-4" />;
+  if (type === "level-up") return <Award className="h-4 w-4" />;
+  if (type === "trust-score") return <TrendingUp className="h-4 w-4" />;
+  if (type === "best-answer") return <Trophy className="h-4 w-4" />;
+  return <AtSign className="h-4 w-4" />;
 }
 
 function InfoSectionButton({

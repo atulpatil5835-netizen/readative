@@ -34,6 +34,12 @@ export interface KnowledgeEntry {
   hashtags: string[];
   likes: string[];
   likeCount?: number | null;
+  helpfulIds?: string[];
+  helpfulCount?: number | null;
+  dislikes?: string[];
+  dislikeCount?: number | null;
+  misleadingIds?: string[];
+  misleadingCount?: number | null;
   comments: KnowledgeComment[];
   mentions: TaggedUser[];
   createdAt: number;
@@ -48,11 +54,18 @@ export interface KnowledgeEntry {
   excerpt?: string | null;
   readingMinutes?: number | null;
   qualityScore?: number | null;
+  contentKind?: string | null;
+  category?: string | null;
+  savedBy?: string[];
+  saveCount?: number | null;
 }
 
 export interface UserSocialLinks {
   linkedin?: string;
   instagram?: string;
+  github?: string;
+  twitter?: string;
+  website?: string;
   youtube?: string;
 }
 
@@ -67,12 +80,18 @@ export interface UserProfile {
   socialLinks: UserSocialLinks;
   showSocialLinksOnPosts: boolean;
   likedKnowledgeIds: string[];
+  savedKnowledgeIds: string[];
+  savedSmartTalkIds: string[];
   bannerImage?: KnowledgeImageAsset | null;
   profileImage?: KnowledgeImageAsset | null;
   photoUrl?: string | null;
   createdAt: number;
   updatedAt: number;
   lastUsernameChangedAt: number | null;
+  reputationScore?: number | null;
+  helpfulCount?: number | null;
+  misleadingCount?: number | null;
+  bestAnswerCount?: number | null;
 }
 
 export interface UserNotification {
@@ -80,7 +99,14 @@ export interface UserNotification {
   targetAuthorId: string;
   actorAuthorId: string;
   actorUsername: string;
-  type: "like" | "comment" | "tag";
+  type:
+    | "like"
+    | "comment"
+    | "tag"
+    | "level-up"
+    | "trust-score"
+    | "best-answer"
+    | "helpful-milestone";
   entryId: string;
   entryTitle: string;
   preview: string;
@@ -101,6 +127,11 @@ export interface SmartAnswer {
   content: string;
   likes: string[];
   dislikes: string[];
+  helpfulIds?: string[];
+  helpfulCount?: number | null;
+  misleadingIds?: string[];
+  misleadingCount?: number | null;
+  bestAnswer?: boolean;
   createdAt: number;
 }
 
@@ -111,4 +142,8 @@ export interface SmartQuestion {
   content: string;
   createdAt: number;
   answers: SmartAnswer[];
+  category?: string | null;
+  difficulty?: string | null;
+  savedBy?: string[];
+  saveCount?: number | null;
 }

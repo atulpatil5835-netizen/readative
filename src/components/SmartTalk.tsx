@@ -1,11 +1,15 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
+  Bookmark,
   ChevronDown,
   ChevronUp,
+  Flame,
+  HelpCircle,
   ThumbsUp,
-  ThumbsDown,
   Trophy,
   Send,
+  ShieldAlert,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import { SEO } from "./SEO";
@@ -31,6 +35,20 @@ import { renderRichText } from "../utils/renderRichText";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { SmartTalkQuestionSkeleton } from "./Skeletons";
+import {
+  getAnswerHelpfulScore,
+  getTrustMetrics,
+  mergeTrustIds,
+  normalizeTrustCount,
+  normalizeTrustIdArray,
+} from "../utils/trustSystem";
+import { getSaveMetrics, toggleSmartTalkSave } from "../utils/bookmarks";
+import {
+  KNOWLEDGE_CATEGORY_SUGGESTIONS,
+  type SmartTalkDifficulty,
+  normalizeSmartTalkDifficulty,
+  suggestKnowledgeCategory,
+} from "../utils/contentIntelligence";
 
 const SMART_TALK_REALTIME_LIMIT = 50;
 
@@ -41,6 +59,11 @@ interface Answer {
   content: string;
   likes: string[];
   dislikes: string[];
+  helpfulIds?: string[];
+  helpfulCount?: number | null;
+  misleadingIds?: string[];
+  misleadingCount?: number | null;
+  bestAnswer?: boolean;
   createdAt: number;
 }
 
@@ -51,9 +74,13 @@ interface Question {
   content: string;
   answers: Answer[];
   createdAt: number;
+  category?: string | null;
+  difficulty?: SmartTalkDifficulty | null;
+  savedBy?: string[];
+  saveCount?: number | null;
 }
 
-type VoteType = "like" | "dislike";
+type VoteType = "helpful" | "misleading";
 
 type SmartTalkPromptState =
   | { type: "ask" }
@@ -64,6 +91,7 @@ type SmartTalkPromptState =
       answerId: string;
       voteType: VoteType;
     }
+  | { type: "save"; question: Question }
   | null;
 
 interface SmartTalkProps {
@@ -117,14 +145,39 @@ function normalizeSmartTalkAnswer(
     | number
     | { toMillis?: () => number }
     | undefined;
+  const helpfulIds = mergeTrustIds(
+    normalizeTrustIdArray(answer.likes),
+    normalizeTrustIdArray(answer.helpfulIds),
+  );
+  const misleadingIds = mergeTrustIds(
+    normalizeTrustIdArray(answer.dislikes),
+    normalizeTrustIdArray(answer.misleadingIds),
+  );
+  const helpfulCount = Math.max(
+    helpfulIds.length,
+    normalizeTrustCount(answer.helpfulCount),
+  );
+  const misleadingCount = Math.max(
+    misleadingIds.length,
+    normalizeTrustCount(answer.misleadingCount),
+  );
 
   return {
-    id: answer.id || Math.random().toString(36).slice(2, 11),
-    author: answer.author || "Unknown",
-    authorId: answer.authorId || "",
-    content: answer.content || "",
-    likes: answer.likes || [],
-    dislikes: answer.dislikes || [],
+    id:
+      typeof answer.id === "string" && answer.id
+        ? answer.id
+        : Math.random().toString(36).slice(2, 11),
+    author:
+      typeof answer.author === "string" && answer.author ? answer.author : "Unknown",
+    authorId: typeof answer.authorId === "string" ? answer.authorId : "",
+    content: typeof answer.content === "string" ? answer.content : "",
+    likes: helpfulIds,
+    dislikes: misleadingIds,
+    helpfulIds,
+    helpfulCount,
+    misleadingIds,
+    misleadingCount,
+    bestAnswer: answer.bestAnswer === true,
     createdAt:
       rawCreatedAt &&
       typeof rawCreatedAt === "object" &&
@@ -152,14 +205,16 @@ function normalizeSmartTalkQuestion(
     | { toMillis?: () => number }
     | undefined;
 
+  const saveMetrics = getSaveMetrics(data);
+
   return {
     id,
-    author: data.author || "Unknown",
-    authorId: data.authorId || "",
-    content: data.content || "",
-    answers: (data.answers || []).map((answer) =>
-      normalizeSmartTalkAnswer(answer),
-    ),
+    author: typeof data.author === "string" && data.author ? data.author : "Unknown",
+    authorId: typeof data.authorId === "string" ? data.authorId : "",
+    content: typeof data.content === "string" ? data.content : "",
+    answers: Array.isArray(data.answers)
+      ? data.answers.map((answer) => normalizeSmartTalkAnswer(answer))
+      : [],
     createdAt:
       rawCreatedAt &&
       typeof rawCreatedAt === "object" &&
@@ -168,17 +223,28 @@ function normalizeSmartTalkQuestion(
         : typeof rawCreatedAt === "number"
           ? rawCreatedAt
           : Date.now(),
+    category: typeof data.category === "string" ? data.category : null,
+    difficulty: normalizeSmartTalkDifficulty(data.difficulty),
+    savedBy: saveMetrics.savedBy,
+    saveCount: saveMetrics.saveCount,
   };
 }
 
 function serializeSmartTalkAnswer(answer: Answer) {
+  const metrics = getTrustMetrics(answer);
+
   return {
     id: answer.id,
     author: answer.author,
     ...(answer.authorId ? { authorId: answer.authorId } : {}),
     content: answer.content,
-    likes: answer.likes || [],
-    dislikes: answer.dislikes || [],
+    likes: metrics.helpfulIds,
+    dislikes: metrics.misleadingIds,
+    helpfulIds: metrics.helpfulIds,
+    helpfulCount: metrics.helpfulCount,
+    misleadingIds: metrics.misleadingIds,
+    misleadingCount: metrics.misleadingCount,
+    ...(answer.bestAnswer ? { bestAnswer: true } : {}),
     createdAt: answer.createdAt,
   };
 }
@@ -188,27 +254,33 @@ function toggleSmartTalkVote(
   voterId: string,
   voteType: VoteType,
 ): Answer {
-  const likes = answer.likes || [];
-  const dislikes = answer.dislikes || [];
+  const metrics = getTrustMetrics(answer);
+  const likes = metrics.helpfulIds;
+  const dislikes = metrics.misleadingIds;
   const alreadyLiked = likes.includes(voterId);
   const alreadyDisliked = dislikes.includes(voterId);
 
-  if (voteType === "like") {
-    return {
-      ...answer,
-      likes: alreadyLiked
+  const nextHelpfulIds =
+    voteType === "helpful"
+      ? alreadyLiked
         ? likes.filter((id) => id !== voterId)
-        : [...likes, voterId],
-      dislikes: dislikes.filter((id) => id !== voterId),
-    };
-  }
+        : [...likes, voterId]
+      : likes.filter((id) => id !== voterId);
+  const nextMisleadingIds =
+    voteType === "misleading"
+      ? alreadyDisliked
+        ? dislikes.filter((id) => id !== voterId)
+        : [...dislikes, voterId]
+      : dislikes.filter((id) => id !== voterId);
 
   return {
     ...answer,
-    dislikes: alreadyDisliked
-      ? dislikes.filter((id) => id !== voterId)
-      : [...dislikes, voterId],
-    likes: likes.filter((id) => id !== voterId),
+    likes: nextHelpfulIds,
+    helpfulIds: nextHelpfulIds,
+    helpfulCount: nextHelpfulIds.length,
+    dislikes: nextMisleadingIds,
+    misleadingIds: nextMisleadingIds,
+    misleadingCount: nextMisleadingIds.length,
   };
 }
 
@@ -219,6 +291,10 @@ export function SmartTalk({
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newQuestion, setNewQuestion] = useState("");
+  const [newQuestionCategory, setNewQuestionCategory] = useState("");
+  const [newQuestionDifficulty, setNewQuestionDifficulty] =
+    useState<SmartTalkDifficulty | "">("");
+  const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [isModeratingQuestion, setIsModeratingQuestion] = useState(false);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
@@ -236,10 +312,17 @@ export function SmartTalk({
   const [expandedAnswers, setExpandedAnswers] = useState<
     Record<string, boolean>
   >({});
+  const [savingQuestionIds, setSavingQuestionIds] = useState<Record<string, boolean>>(
+    {},
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   const activeAuthorId = currentIdentity?.authorId || null;
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const suggestedQuestionCategory = useMemo(
+    () => suggestKnowledgeCategory(newQuestion, newQuestion),
+    [newQuestion],
+  );
 
   useEffect(() => {
     const smartTalkQuery = query(
@@ -269,7 +352,7 @@ export function SmartTalk({
 
   const submitQuestion = async (authorIdentity: KnowledgeIdentity) => {
     const questionText = newQuestion.trim();
-    if (!questionText) return;
+    if (!questionText) return false;
 
     setModerationMessage(null);
     setIsModeratingQuestion(true);
@@ -281,7 +364,7 @@ export function SmartTalk({
     if (!moderation.allowed) {
       setModerationMessage(moderation.message);
       setIsModeratingQuestion(false);
-      return;
+      return false;
     }
 
     setIsAsking(true);
@@ -292,24 +375,37 @@ export function SmartTalk({
         author: authorIdentity.displayName,
         authorId: authorIdentity.authorId,
         content: questionText,
+        ...(newQuestionCategory ? { category: newQuestionCategory } : {}),
+        ...(newQuestionDifficulty ? { difficulty: newQuestionDifficulty } : {}),
         answers: [],
+        savedBy: [],
+        saveCount: 0,
         createdAt: serverTimestamp(),
       });
       setNewQuestion("");
+      setNewQuestionCategory("");
+      setNewQuestionDifficulty("");
+      return true;
     } catch (error) {
       console.error("Failed to post question:", error);
+      return false;
     } finally {
       setIsAsking(false);
     }
   };
 
   const handleAsk = () => {
-    if (!newQuestion.trim()) return;
+    if (!newQuestion.trim()) {
+      setIsAskModalOpen(true);
+      return;
+    }
 
     setModerationMessage(null);
 
     if (currentIdentity) {
-      void submitQuestion(currentIdentity);
+      void submitQuestion(currentIdentity).then((posted) => {
+        if (posted) setIsAskModalOpen(false);
+      });
       return;
     }
 
@@ -351,6 +447,10 @@ export function SmartTalk({
         content: answerText,
         likes: [],
         dislikes: [],
+        helpfulIds: [],
+        helpfulCount: 0,
+        misleadingIds: [],
+        misleadingCount: 0,
         createdAt: Date.now(),
       };
 
@@ -394,6 +494,9 @@ export function SmartTalk({
   ) => {
     try {
       const questionRef = doc(db, "smarttalk", question.id);
+      let bestAnswerNotification:
+        | { question: Question; answer: Answer }
+        | null = null;
 
       await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(questionRef);
@@ -404,16 +507,66 @@ export function SmartTalk({
           snapshot.data() as Partial<Question>,
         );
 
+        const previousRankedAnswers = [...(currentQuestion.answers || [])].sort(
+          (left, right) =>
+            getAnswerHelpfulScore(right) - getAnswerHelpfulScore(left) ||
+            left.createdAt - right.createdAt,
+        );
+        const previousPositiveTopAnswer =
+          previousRankedAnswers[0] &&
+          getAnswerHelpfulScore(previousRankedAnswers[0]) > 0
+            ? previousRankedAnswers[0]
+            : null;
+        const previousBestAnswerId =
+          (currentQuestion.answers || []).find((answer) => answer.bestAnswer)?.id ||
+          previousPositiveTopAnswer?.id ||
+          null;
         const updatedAnswers = (currentQuestion.answers || []).map((answer) =>
           answer.id === answerId
             ? toggleSmartTalkVote(answer, voterId, voteType)
             : answer,
         );
+        const rankedAnswers = [...updatedAnswers].sort(
+          (left, right) =>
+            getAnswerHelpfulScore(right) - getAnswerHelpfulScore(left) ||
+            left.createdAt - right.createdAt,
+        );
+        const topAnswer =
+          rankedAnswers[0] && getAnswerHelpfulScore(rankedAnswers[0]) > 0
+            ? rankedAnswers[0]
+            : null;
+        const answersWithBest = updatedAnswers.map((answer) => ({
+          ...answer,
+          bestAnswer: Boolean(topAnswer && answer.id === topAnswer.id),
+        }));
+
+        if (
+          voteType === "helpful" &&
+          topAnswer?.id === answerId &&
+          topAnswer.authorId &&
+          previousBestAnswerId !== topAnswer.id
+        ) {
+          bestAnswerNotification = {
+            question: currentQuestion,
+            answer: { ...topAnswer, bestAnswer: true },
+          };
+        }
 
         transaction.update(questionRef, {
-          answers: updatedAnswers.map(serializeSmartTalkAnswer),
+          answers: answersWithBest.map(serializeSmartTalkAnswer),
         });
       });
+
+      const notification = bestAnswerNotification;
+      if (notification) {
+        void import("../utils/notifications")
+          .then(({ notifyBestAnswerEarned }) =>
+            notifyBestAnswerEarned(notification.question, notification.answer),
+          )
+          .catch((error) => {
+            console.warn("Best answer notification failed; vote was saved.", error);
+          });
+      }
     } catch (error) {
       console.error("Failed to vote:", error);
     }
@@ -432,8 +585,30 @@ export function SmartTalk({
     await applyVote(question, answerId, voteType, currentIdentity.authorId);
   };
 
-  const getAnswerScore = (answer: Answer) =>
-    (answer.likes?.length || 0) - (answer.dislikes?.length || 0);
+  const handleToggleSaveQuestion = async (question: Question) => {
+    if (!currentIdentity) {
+      setNamePrompt({ type: "save", question });
+      return;
+    }
+
+    const metrics = getSaveMetrics(question);
+    const shouldSave = !metrics.savedBy.includes(currentIdentity.authorId);
+
+    setSavingQuestionIds((current) => ({ ...current, [question.id]: true }));
+    try {
+      await toggleSmartTalkSave({
+        question,
+        actorId: currentIdentity.authorId,
+        shouldSave,
+      });
+    } catch (error) {
+      console.error("Failed to update saved SmartTalk discussion:", error);
+    } finally {
+      setSavingQuestionIds((current) => ({ ...current, [question.id]: false }));
+    }
+  };
+
+  const getAnswerScore = (answer: Answer) => getAnswerHelpfulScore(answer);
 
   const getAnswerBorderClass = (
     answer: Answer,
@@ -461,13 +636,25 @@ export function SmartTalk({
 
     if (prompt.type === "ask") {
       setNamePrompt(null);
-      void submitQuestion(nextIdentity);
+      void submitQuestion(nextIdentity).then((posted) => {
+        if (posted) setIsAskModalOpen(false);
+      });
       return;
     }
 
     if (prompt.type === "answer") {
       setNamePrompt(null);
       void submitAnswer(prompt.questionId, nextIdentity);
+      return;
+    }
+
+    if (prompt.type === "save") {
+      setNamePrompt(null);
+      void toggleSmartTalkSave({
+        question: prompt.question,
+        actorId: nextIdentity.authorId,
+        shouldSave: true,
+      });
       return;
     }
 
@@ -518,6 +705,41 @@ export function SmartTalk({
       }),
     [visibleQuestions],
   );
+  const trendingDiscussions = useMemo(
+    () =>
+      questions
+        .filter((question) => question.answers.length >= 2)
+        .sort(
+          (left, right) =>
+            right.answers.length - left.answers.length ||
+            right.createdAt - left.createdAt,
+        )
+        .slice(0, 3),
+    [questions],
+  );
+  const questionsNeedingAnswers = useMemo(
+    () =>
+      questions
+        .filter((question) => question.answers.length === 0)
+        .sort((left, right) => right.createdAt - left.createdAt)
+        .slice(0, 3),
+    [questions],
+  );
+  const topAnswers = useMemo(
+    () =>
+      questions
+        .flatMap((question) =>
+          question.answers.map((answer) => ({
+            question,
+            answer,
+            score: getAnswerHelpfulScore(answer),
+          })),
+        )
+        .filter((item) => item.score > 0)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 3),
+    [questions],
+  );
   const renderAnswerCard = (
     question: Question,
     answer: Answer,
@@ -529,20 +751,21 @@ export function SmartTalk({
       isWorst?: boolean;
     } = {},
   ) => {
-    const likeCount = answer.likes?.length || 0;
-    const dislikeCount = answer.dislikes?.length || 0;
+    const trustMetrics = getTrustMetrics(answer);
+    const likeCount = trustMetrics.helpfulCount;
+    const dislikeCount = trustMetrics.misleadingCount;
     const score = getAnswerScore(answer);
     const userLiked = activeAuthorId
-      ? (answer.likes || []).includes(activeAuthorId)
+      ? trustMetrics.helpfulIds.includes(activeAuthorId)
       : false;
     const userDisliked = activeAuthorId
-      ? (answer.dislikes || []).includes(activeAuthorId)
+      ? trustMetrics.misleadingIds.includes(activeAuthorId)
       : false;
 
     return (
       <div
         key={answer.id}
-        className={`rounded-2xl p-4 transition-all duration-300 ${getAnswerBorderClass(
+        className={`rounded-lg p-4 transition-all duration-200 ${getAnswerBorderClass(
           answer,
           isTop,
           isWorst,
@@ -555,14 +778,14 @@ export function SmartTalk({
             </span>
 
             {isTop && (
-              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                <Trophy className="w-3 h-3" /> Top Answer
+              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                <Trophy className="h-3 w-3" /> Best Answer
               </span>
             )}
 
             {score !== 0 && (
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   score > 0
                     ? "bg-emerald-100 text-emerald-700"
                     : "bg-red-100 text-red-600"
@@ -571,6 +794,10 @@ export function SmartTalk({
                 {score > 0 ? `+${score}` : score}
               </span>
             )}
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+              <ShieldCheck className="h-3 w-3" />
+              {trustMetrics.communityTrustPercent}% trust
+            </span>
           </div>
 
           <span className="text-[10px] text-gray-400 flex-shrink-0">
@@ -585,30 +812,34 @@ export function SmartTalk({
           {renderRichText({ text: answer.content })}
         </p>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => void handleVote(question, answer.id, "like")}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+            onClick={() => void handleVote(question, answer.id, "helpful")}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
               userLiked
-                ? "text-emerald-600"
-                : "text-gray-400 hover:text-emerald-600"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
             }`}
           >
             <ThumbsUp
-              className={`w-4 h-4 ${userLiked ? "fill-current" : ""}`}
+              className={`h-4 w-4 ${userLiked ? "fill-current" : ""}`}
             />
+            Helpful
             {likeCount}
           </button>
 
           <button
-            onClick={() => void handleVote(question, answer.id, "dislike")}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-              userDisliked ? "text-red-500" : "text-gray-400 hover:text-red-500"
+            onClick={() => void handleVote(question, answer.id, "misleading")}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
+              userDisliked
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
             }`}
           >
-            <ThumbsDown
-              className={`w-4 h-4 ${userDisliked ? "fill-current" : ""}`}
+            <ShieldAlert
+              className={`h-4 w-4 ${userDisliked ? "fill-current" : ""}`}
             />
+            Misleading
             {dislikeCount}
           </button>
         </div>
@@ -631,62 +862,21 @@ export function SmartTalk({
         ]}
       />
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-4">
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+        <div className="flex items-center gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
               <ReadativeRMark className="h-5 w-5 text-xl tracking-tight" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-2xl font-black tracking-tight text-slate-950">
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
                 SmartTalk
               </h2>
-              {currentIdentity && (
-                <p className="truncate text-xs font-semibold text-slate-500">
-                  @{currentIdentity.displayName}
-                </p>
-              )}
+              <p className="truncate text-xs font-semibold text-slate-500">
+                {questions.length} questions
+                {currentIdentity ? ` / @${currentIdentity.displayName}` : ""}
+              </p>
             </div>
-          </div>
-        </div>
-
-        {moderationMessage && (
-          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            {moderationMessage}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          <textarea
-            value={newQuestion}
-            onChange={(e) => {
-              setNewQuestion(e.target.value);
-              if (moderationMessage) setModerationMessage(null);
-            }}
-            enterKeyHint="send"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleAsk();
-              }
-            }}
-            rows={3}
-            placeholder="Ask something useful..."
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-          />
-          <div className="flex justify-end">
-            <button
-              onClick={handleAsk}
-              disabled={isAsking || isModeratingQuestion || !newQuestion.trim()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
-            >
-              {isAsking || isModeratingQuestion ? (
-                <ReadativeLoader size="xs" tone="light" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              {isAsking || isModeratingQuestion ? "Posting..." : "Ask"}
-            </button>
           </div>
         </div>
       </div>
@@ -700,6 +890,47 @@ export function SmartTalk({
         ariaLabel="Search SmartTalk"
       />
 
+      {!isLoading &&
+        (trendingDiscussions.length >= 2 ||
+          questionsNeedingAnswers.length >= 2 ||
+          topAnswers.length >= 2) && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {trendingDiscussions.length >= 2 && (
+              <SmartTalkDiscoveryBlock
+                icon={<Flame className="h-4 w-4" />}
+                title="Trending Discussions"
+                items={trendingDiscussions.map((question) => ({
+                  id: question.id,
+                  text: question.content,
+                  meta: `${question.answers.length} answers`,
+                }))}
+              />
+            )}
+            {questionsNeedingAnswers.length >= 2 && (
+              <SmartTalkDiscoveryBlock
+                icon={<HelpCircle className="h-4 w-4" />}
+                title="Needs Answers"
+                items={questionsNeedingAnswers.map((question) => ({
+                  id: question.id,
+                  text: question.content,
+                  meta: "No answers yet",
+                }))}
+              />
+            )}
+            {topAnswers.length >= 2 && (
+              <SmartTalkDiscoveryBlock
+                icon={<Trophy className="h-4 w-4" />}
+                title="Top Answers"
+                items={topAnswers.map(({ answer, score }) => ({
+                  id: answer.id,
+                  text: answer.content,
+                  meta: `+${score} helpful`,
+                }))}
+              />
+            )}
+          </div>
+        )}
+
       {isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-live="polite">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -711,7 +942,7 @@ export function SmartTalk({
           No questions yet. Be the first to ask!
         </div>
       ) : visibleQuestions.length === 0 ? (
-        <div className="rounded-[30px] border border-dashed border-indigo-200 bg-white px-6 py-16 text-center shadow-sm">
+        <div className="rounded-lg border border-dashed border-indigo-200 bg-white px-6 py-16 text-center shadow-sm">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">
             No Search Matches
           </p>
@@ -735,12 +966,16 @@ export function SmartTalk({
             } = questionRow;
             const answersExpanded = Boolean(expandedAnswers[question.id]);
             const hiddenAnswerCount = hiddenAnswers.length;
+            const questionSaveMetrics = getSaveMetrics(question);
+            const isQuestionSaved = activeAuthorId
+              ? questionSaveMetrics.savedBy.includes(activeAuthorId)
+              : false;
 
             return (
               <div
                 key={question.id}
                 data-publisher-content="smarttalk-question"
-                className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_14px_38px_rgba(15,23,42,0.07)]"
               >
                 <div className="mb-5 flex items-start gap-3">
                   <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-50">
@@ -750,13 +985,51 @@ export function SmartTalk({
                     <h3 className="text-base font-bold leading-snug text-slate-950">
                       {renderRichText({ text: question.content })}
                     </h3>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span>
                       Asked by{" "}
                       <span className="font-semibold">{question.author}</span>
-                      {" · "}
+                      {" / "}
                       {new Date(question.createdAt).toLocaleDateString()}
-                    </p>
+                      </span>
+                      {question.category && (
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-indigo-700">
+                          {question.category}
+                        </span>
+                      )}
+                      {question.difficulty && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                          {question.difficulty}
+                        </span>
+                      )}
+                      {question.answers.length > 0 && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                          Best Discussion
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleSaveQuestion(question)}
+                    disabled={savingQuestionIds[question.id]}
+                    className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-colors disabled:opacity-60 ${
+                      isQuestionSaved
+                        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                    }`}
+                    aria-label={
+                      isQuestionSaved
+                        ? "Remove saved SmartTalk discussion"
+                        : "Save SmartTalk discussion"
+                    }
+                    title={isQuestionSaved ? "Saved" : "Save"}
+                  >
+                    <Bookmark className={`h-4 w-4 ${isQuestionSaved ? "fill-current" : ""}`} />
+                    {questionSaveMetrics.saveCount > 0 && (
+                      <span>{questionSaveMetrics.saveCount}</span>
+                    )}
+                  </button>
                 </div>
 
                 <div className="mb-5 ml-4 space-y-3 border-l border-slate-100 pl-4">
@@ -839,9 +1112,9 @@ export function SmartTalk({
                         handleAnswer(question.id);
                       }
                     }}
-                    rows={3}
+                    rows={2}
                     placeholder="Write an answer..."
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition-all focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                   />
                   <div className="flex justify-end">
                     <button
@@ -851,7 +1124,7 @@ export function SmartTalk({
                         isAnswering[question.id] ||
                         moderatingAnswerId === question.id
                       }
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 disabled:opacity-40 sm:w-auto"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 disabled:opacity-40 sm:w-auto"
                     >
                       {isAnswering[question.id] ||
                       moderatingAnswerId === question.id ? (
@@ -876,6 +1149,145 @@ export function SmartTalk({
         </div>
       )}
 
+      <button
+        type="button"
+        onClick={() => setIsAskModalOpen(true)}
+        className="fixed bottom-24 right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white shadow-[0_14px_34px_rgba(15,23,42,0.25)] transition-colors hover:bg-indigo-700 md:bottom-6 md:right-6"
+      >
+        <Send className="h-4 w-4" />
+        Ask
+      </button>
+
+      {isAskModalOpen && (
+        <div
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-950/35 p-3 backdrop-blur-[1px] sm:items-center"
+          onClick={() => {
+            if (isAsking || isModeratingQuestion) return;
+            setIsAskModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">
+                  SmartTalk
+                </p>
+                <h3 className="text-lg font-black tracking-tight text-slate-950">
+                  Ask a question
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAskModalOpen(false)}
+                disabled={isAsking || isModeratingQuestion}
+                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                aria-label="Close ask question"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 px-4 py-4">
+              {moderationMessage && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  {moderationMessage}
+                </div>
+              )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Category
+                  </label>
+                  <select
+                    value={newQuestionCategory}
+                    onChange={(event) => setNewQuestionCategory(event.target.value)}
+                    className="mt-1 w-full bg-transparent text-sm font-bold text-slate-700 outline-none"
+                    aria-label="SmartTalk category"
+                  >
+                    <option value="">Optional</option>
+                    {KNOWLEDGE_CATEGORY_SUGGESTIONS.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                    Difficulty
+                  </label>
+                  <select
+                    value={newQuestionDifficulty}
+                    onChange={(event) =>
+                      setNewQuestionDifficulty(
+                        event.target.value as SmartTalkDifficulty | "",
+                      )
+                    }
+                    className="mt-1 w-full bg-transparent text-sm font-bold text-slate-700 outline-none"
+                    aria-label="SmartTalk difficulty"
+                  >
+                    <option value="">Optional</option>
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </div>
+              </div>
+              {suggestedQuestionCategory &&
+                newQuestionCategory !== suggestedQuestionCategory.id && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewQuestionCategory(suggestedQuestionCategory.id)
+                    }
+                    className="inline-flex w-fit rounded-full bg-indigo-50 px-3 py-1.5 text-[11px] font-black text-indigo-700 transition-colors hover:bg-indigo-100"
+                  >
+                    Use suggested {suggestedQuestionCategory.label}
+                  </button>
+                )}
+              <textarea
+                value={newQuestion}
+                onChange={(event) => {
+                  setNewQuestion(event.target.value);
+                  if (moderationMessage) setModerationMessage(null);
+                }}
+                enterKeyHint="send"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleAsk();
+                  }
+                }}
+                rows={5}
+                autoFocus
+                placeholder="Ask something useful..."
+                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAsk}
+                  disabled={
+                    isAsking || isModeratingQuestion || !newQuestion.trim()
+                  }
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
+                >
+                  {isAsking || isModeratingQuestion ? (
+                    <ReadativeLoader size="xs" tone="light" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {isAsking || isModeratingQuestion ? "Posting..." : "Post question"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {namePrompt && (
         <GoogleSignInPrompt
           title={
@@ -883,7 +1295,9 @@ export function SmartTalk({
               ? "Sign in to ask"
               : namePrompt.type === "answer"
                 ? "Sign in to answer"
-                : "Sign in to vote"
+                : namePrompt.type === "save"
+                  ? "Sign in to save"
+                  : "Sign in to add trust feedback"
           }
           description="Use Google to keep SmartTalk synced with your profile."
           submitLabel="Continue with Google"
@@ -892,5 +1306,36 @@ export function SmartTalk({
         />
       )}
     </div>
+  );
+}
+
+function SmartTalkDiscoveryBlock({
+  icon,
+  title,
+  items,
+}: {
+  icon: ReactNode;
+  title: string;
+  items: Array<{ id: string; text: string; meta: string }>;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+        <span className="text-indigo-600">{icon}</span>
+        {title}
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
+            <p className="line-clamp-2 text-xs font-bold leading-5 text-slate-800">
+              {item.text}
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+              {item.meta}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

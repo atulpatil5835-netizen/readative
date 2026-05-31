@@ -1,6 +1,5 @@
 import {
   memo,
-  type CSSProperties,
   useEffect,
   useMemo,
   useRef,
@@ -13,13 +12,17 @@ import {
   UserProfile,
 } from "../types";
 import {
+  Award,
+  Bookmark,
   Globe2,
-  Heart,
   Lock,
   MessageCircle,
   Pencil,
   Save,
   Share2,
+  ShieldAlert,
+  ShieldCheck,
+  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,7 +31,10 @@ import { db } from "../firebase/firebase";
 import { cn } from "../utils/classNames";
 import { renderRichText } from "../utils/renderRichText";
 import { recordKnowledgeFeedActivity } from "../utils/feedPersonalization";
-import { toggleKnowledgeEntryLike } from "../utils/knowledgeFeedData";
+import {
+  toggleKnowledgeEntryLike,
+  toggleKnowledgeEntryMisleading,
+} from "../utils/knowledgeFeedData";
 import {
   getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
@@ -49,6 +55,12 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../utils/knowledgeEntryHelpers";
+import {
+  getTrustMetrics,
+  type ContributorReputation,
+} from "../utils/trustSystem";
+import { getSaveMetrics, toggleKnowledgeSave } from "../utils/bookmarks";
+import { formatReadingMinutes } from "../utils/contentIntelligence";
 
 function getProfileDisplayName(profile: UserProfile | undefined, fallback: string) {
   return profile?.displayName?.trim() || fallback;
@@ -85,14 +97,6 @@ async function copyShareTextToClipboard(text: string) {
   }
 }
 
-const LIKE_BURST_PARTICLES = [
-  { x: -24, y: -18, rotate: -24, delay: 0, scale: 1.05, color: "#fb7185" },
-  { x: -8, y: -28, rotate: -12, delay: 35, scale: 0.9, color: "#f43f5e" },
-  { x: 14, y: -26, rotate: 18, delay: 70, scale: 1.1, color: "#f97316" },
-  { x: 26, y: -12, rotate: 28, delay: 25, scale: 0.95, color: "#fb7185" },
-  { x: 18, y: 6, rotate: 18, delay: 90, scale: 0.8, color: "#fda4af" },
-  { x: -20, y: 4, rotate: -18, delay: 55, scale: 0.85, color: "#fecdd3" },
-] as const;
 const SEEN_VISIBILITY_THRESHOLD = 0.6;
 const SEEN_DWELL_MS = 450;
 
@@ -156,15 +160,20 @@ interface KnowledgeCardProps {
   currentIdentity: KnowledgeIdentity | null;
   profiles?: UserProfile[];
   profileMap?: ReadonlyMap<string, UserProfile>;
+  authorReputation?: ContributorReputation;
   onVisible?: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: {
-    type: "like" | "comment";
+    type: "helpful" | "misleading" | "comment" | "save";
     entryId: string;
   }) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag?: (tag: string) => void;
-  onLikeChange?: (entryId: string, likes: string[]) => void;
+  onLikeChange?: (
+    entryId: string,
+    helpfulIds: string[],
+    misleadingIds?: string[],
+  ) => void;
   highlighted?: boolean;
 }
 
@@ -178,6 +187,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   currentIdentity,
   profiles = [],
   profileMap: providedProfileMap,
+  authorReputation,
   onVisible,
   onIdentityRequired,
   onOpenProfile,
@@ -195,16 +205,36 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     null,
   );
   const [shareCopied, setShareCopied] = useState(false);
-  const [localLikes, setLocalLikes] = useState<string[]>(entry.likes || []);
+  const initialTrustMetrics = useMemo(() => getTrustMetrics(entry), [entry]);
+  const initialSaveMetrics = useMemo(() => getSaveMetrics(entry), [entry]);
+  const [localHelpfulIds, setLocalHelpfulIds] = useState<string[]>(
+    initialTrustMetrics.helpfulIds,
+  );
+  const [localMisleadingIds, setLocalMisleadingIds] = useState<string[]>(
+    initialTrustMetrics.misleadingIds,
+  );
+  const [localHelpfulCount, setLocalHelpfulCount] = useState(
+    initialTrustMetrics.helpfulCount,
+  );
+  const [localMisleadingCount, setLocalMisleadingCount] = useState(
+    initialTrustMetrics.misleadingCount,
+  );
   const [localComments, setLocalComments] = useState<KnowledgeComment[]>(
     entry.comments || [],
+  );
+  const [localSavedBy, setLocalSavedBy] = useState<string[]>(
+    initialSaveMetrics.savedBy,
+  );
+  const [localSaveCount, setLocalSaveCount] = useState(
+    initialSaveMetrics.saveCount,
   );
   const [actionIdentity, setActionIdentity] =
     useState<KnowledgeIdentity | null>(currentIdentity);
   const [activeCommentMention, setActiveCommentMention] =
     useState<CommentMentionState | null>(null);
-  const [likeAnimationVersion, setLikeAnimationVersion] = useState(0);
-  const [isUpdatingLike, setIsUpdatingLike] = useState(false);
+  const [helpfulAnimationVersion, setHelpfulAnimationVersion] = useState(0);
+  const [isUpdatingTrust, setIsUpdatingTrust] = useState(false);
+  const [isUpdatingSave, setIsUpdatingSave] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
@@ -213,10 +243,54 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
   const activeIdentity = currentIdentity || actionIdentity;
   const activeAuthorId = activeIdentity?.authorId || null;
-  const isLiked = activeAuthorId ? localLikes.includes(activeAuthorId) : false;
+  const isHelpful = activeAuthorId
+    ? localHelpfulIds.includes(activeAuthorId)
+    : false;
+  const isMisleading = activeAuthorId
+    ? localMisleadingIds.includes(activeAuthorId)
+    : false;
+  const isSaved = activeAuthorId ? localSavedBy.includes(activeAuthorId) : false;
+  const readingMinutes = formatReadingMinutes(
+    entry.readingMinutes || estimateReadMinutes(entry.content),
+  );
   const canManageEntry = currentIdentity?.authorId === entry.authorId;
   const entryVisibility = normalizeKnowledgeVisibility(entry.visibility);
   const mentions = entry.mentions || [];
+  const trustMetrics = useMemo(
+    () =>
+      getTrustMetrics({
+        helpfulIds: localHelpfulIds,
+        helpfulCount: localHelpfulCount,
+        likes: localHelpfulIds,
+        likeCount: localHelpfulCount,
+        misleadingIds: localMisleadingIds,
+        misleadingCount: localMisleadingCount,
+        dislikes: localMisleadingIds,
+        dislikeCount: localMisleadingCount,
+      }),
+    [
+      localHelpfulCount,
+      localHelpfulIds,
+      localMisleadingCount,
+      localMisleadingIds,
+    ],
+  );
+  const trustToneClass =
+    trustMetrics.tone === "strong"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : trustMetrics.tone === "positive"
+        ? "border-teal-200 bg-teal-50 text-teal-700"
+        : trustMetrics.tone === "neutral"
+          ? "border-sky-200 bg-sky-50 text-sky-700"
+          : "border-amber-200 bg-amber-50 text-amber-700";
+  const trustLabel =
+    trustMetrics.tone === "strong"
+      ? "Trusted"
+      : trustMetrics.tone === "positive"
+        ? "Helpful"
+        : trustMetrics.tone === "neutral"
+          ? "New Signal"
+          : "Review";
   const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
   const topComment = useMemo(
@@ -261,9 +335,29 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   }, [activeCommentMention, profiles]);
 
   useEffect(() => {
-    setLocalLikes(entry.likes || []);
+    const metrics = getTrustMetrics(entry);
+    setLocalHelpfulIds(metrics.helpfulIds);
+    setLocalMisleadingIds(metrics.misleadingIds);
+    setLocalHelpfulCount(metrics.helpfulCount);
+    setLocalMisleadingCount(metrics.misleadingCount);
     setLocalComments(entry.comments || []);
-  }, [entry.id, entry.likes, entry.comments]);
+    const saveMetrics = getSaveMetrics(entry);
+    setLocalSavedBy(saveMetrics.savedBy);
+    setLocalSaveCount(saveMetrics.saveCount);
+  }, [
+    entry.id,
+    entry.likes,
+    entry.likeCount,
+    entry.helpfulIds,
+    entry.helpfulCount,
+    entry.dislikes,
+    entry.dislikeCount,
+    entry.misleadingIds,
+    entry.misleadingCount,
+    entry.savedBy,
+    entry.saveCount,
+    entry.comments,
+  ]);
 
   useEffect(() => {
     setActionIdentity(currentIdentity);
@@ -317,7 +411,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     const handler = (event: Event) => {
       const detail = (
         event as CustomEvent<{
-          type: "like" | "comment";
+          type: "like" | "helpful" | "misleading" | "comment" | "save";
           entryId: string;
           username: string;
           authorId: string;
@@ -332,8 +426,18 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       };
       setActionIdentity(nextIdentity);
 
-      if (detail.type === "like") {
-        void updateLike(true, nextIdentity);
+      if (detail.type === "like" || detail.type === "helpful") {
+        void updateHelpful(true, nextIdentity);
+        return;
+      }
+
+      if (detail.type === "misleading") {
+        void updateMisleading(true, nextIdentity);
+        return;
+      }
+
+      if (detail.type === "save") {
+        void updateSave(true, nextIdentity);
         return;
       }
 
@@ -345,7 +449,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     window.addEventListener("knowledge-action", handler);
     return () => window.removeEventListener("knowledge-action", handler);
-  }, [commentText, entry.id, localLikes]);
+  }, [commentText, entry.id, localHelpfulIds, localMisleadingIds]);
 
   const updateCommentMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -383,31 +487,37 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     });
   };
 
-  const updateLike = async (
+  const updateHelpful = async (
     shouldLike: boolean,
     actorIdentity: KnowledgeIdentity | null = activeIdentity,
   ) => {
     if (!actorIdentity) {
-      onIdentityRequired({ type: "like", entryId: entry.id });
+      onIdentityRequired({ type: "helpful", entryId: entry.id });
       return;
     }
 
-    if (isUpdatingLike) {
+    if (isUpdatingTrust) {
       return;
     }
 
-    if (shouldLike && !localLikes.includes(actorIdentity.authorId)) {
-      setLikeAnimationVersion((current) => current + 1);
+    if (shouldLike && !localHelpfulIds.includes(actorIdentity.authorId)) {
+      setHelpfulAnimationVersion((current) => current + 1);
     }
 
-    const nextLikes = shouldLike
-      ? [...new Set([...localLikes, actorIdentity.authorId])]
-      : localLikes.filter((id) => id !== actorIdentity.authorId);
+    const nextHelpfulIds = shouldLike
+      ? [...new Set([...localHelpfulIds, actorIdentity.authorId])]
+      : localHelpfulIds.filter((id) => id !== actorIdentity.authorId);
+    const nextMisleadingIds = shouldLike
+      ? localMisleadingIds.filter((id) => id !== actorIdentity.authorId)
+      : localMisleadingIds;
 
-    setLocalLikes(nextLikes);
-    onLikeChange?.(entry.id, nextLikes);
+    setLocalHelpfulIds(nextHelpfulIds);
+    setLocalHelpfulCount(nextHelpfulIds.length);
+    setLocalMisleadingIds(nextMisleadingIds);
+    setLocalMisleadingCount(nextMisleadingIds.length);
+    onLikeChange?.(entry.id, nextHelpfulIds, nextMisleadingIds);
     setInteractionMessage(null);
-    setIsUpdatingLike(true);
+    setIsUpdatingTrust(true);
 
     try {
       await toggleKnowledgeEntryLike({
@@ -417,29 +527,144 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         shouldLike,
       });
     } catch (error) {
-      console.error("Failed to update like:", error);
-      setLocalLikes(entry.likes || []);
-      onLikeChange?.(entry.id, entry.likes || []);
+      console.error("Failed to update helpful trust:", error);
+      const metrics = getTrustMetrics(entry);
+      setLocalHelpfulIds(metrics.helpfulIds);
+      setLocalHelpfulCount(metrics.helpfulCount);
+      setLocalMisleadingIds(metrics.misleadingIds);
+      setLocalMisleadingCount(metrics.misleadingCount);
+      onLikeChange?.(entry.id, metrics.helpfulIds, metrics.misleadingIds);
       setInteractionMessage(
-        "Could not update the like right now. Please try again.",
+        "Could not update helpful feedback right now. Please try again.",
       );
     } finally {
-      setIsUpdatingLike(false);
+      setIsUpdatingTrust(false);
     }
   };
 
-  const handleLike = () => {
+  const updateMisleading = async (
+    shouldMarkMisleading: boolean,
+    actorIdentity: KnowledgeIdentity | null = activeIdentity,
+  ) => {
+    if (!actorIdentity) {
+      onIdentityRequired({ type: "misleading", entryId: entry.id });
+      return;
+    }
+
+    if (isUpdatingTrust) {
+      return;
+    }
+
+    const nextMisleadingIds = shouldMarkMisleading
+      ? [...new Set([...localMisleadingIds, actorIdentity.authorId])]
+      : localMisleadingIds.filter((id) => id !== actorIdentity.authorId);
+    const nextHelpfulIds = shouldMarkMisleading
+      ? localHelpfulIds.filter((id) => id !== actorIdentity.authorId)
+      : localHelpfulIds;
+
+    setLocalHelpfulIds(nextHelpfulIds);
+    setLocalHelpfulCount(nextHelpfulIds.length);
+    setLocalMisleadingIds(nextMisleadingIds);
+    setLocalMisleadingCount(nextMisleadingIds.length);
+    onLikeChange?.(entry.id, nextHelpfulIds, nextMisleadingIds);
+    setInteractionMessage(null);
+    setIsUpdatingTrust(true);
+
+    try {
+      await toggleKnowledgeEntryMisleading({
+        entry,
+        actorId: actorIdentity.authorId,
+        shouldMarkMisleading,
+      });
+    } catch (error) {
+      console.error("Failed to update misleading trust:", error);
+      const metrics = getTrustMetrics(entry);
+      setLocalHelpfulIds(metrics.helpfulIds);
+      setLocalHelpfulCount(metrics.helpfulCount);
+      setLocalMisleadingIds(metrics.misleadingIds);
+      setLocalMisleadingCount(metrics.misleadingCount);
+      onLikeChange?.(entry.id, metrics.helpfulIds, metrics.misleadingIds);
+      setInteractionMessage(
+        "Could not update misleading feedback right now. Please try again.",
+      );
+    } finally {
+      setIsUpdatingTrust(false);
+    }
+  };
+
+  const handleHelpful = () => {
     if (!activeIdentity) {
-      onIdentityRequired({ type: "like", entryId: entry.id });
+      onIdentityRequired({ type: "helpful", entryId: entry.id });
       return;
     }
 
-    if (isLiked) {
-      void updateLike(false, activeIdentity);
+    if (isHelpful) {
+      void updateHelpful(false, activeIdentity);
       return;
     }
 
-    void updateLike(true, activeIdentity);
+    void updateHelpful(true, activeIdentity);
+  };
+
+  const handleMisleading = () => {
+    if (!activeIdentity) {
+      onIdentityRequired({ type: "misleading", entryId: entry.id });
+      return;
+    }
+
+    if (isMisleading) {
+      void updateMisleading(false, activeIdentity);
+      return;
+    }
+
+    void updateMisleading(true, activeIdentity);
+  };
+
+  const updateSave = async (
+    shouldSave: boolean,
+    actorIdentity: KnowledgeIdentity | null = activeIdentity,
+  ) => {
+    if (!actorIdentity) {
+      onIdentityRequired({ type: "save", entryId: entry.id });
+      return;
+    }
+
+    if (isUpdatingSave) return;
+
+    const nextSavedBy = shouldSave
+      ? [...new Set([...localSavedBy, actorIdentity.authorId])]
+      : localSavedBy.filter((id) => id !== actorIdentity.authorId);
+
+    setLocalSavedBy(nextSavedBy);
+    setLocalSaveCount(nextSavedBy.length);
+    setInteractionMessage(null);
+    setIsUpdatingSave(true);
+
+    try {
+      await toggleKnowledgeSave({
+        entry,
+        actorId: actorIdentity.authorId,
+        shouldSave,
+      });
+      setInteractionMessage(shouldSave ? "Saved to your profile." : "Removed from saved.");
+    } catch (error) {
+      console.error("Failed to update saved post:", error);
+      const saveMetrics = getSaveMetrics(entry);
+      setLocalSavedBy(saveMetrics.savedBy);
+      setLocalSaveCount(saveMetrics.saveCount);
+      setInteractionMessage("Could not update saved posts right now. Please try again.");
+    } finally {
+      setIsUpdatingSave(false);
+    }
+  };
+
+  const handleSaveToggle = () => {
+    if (!activeIdentity) {
+      onIdentityRequired({ type: "save", entryId: entry.id });
+      return;
+    }
+
+    void updateSave(!isSaved, activeIdentity);
   };
 
   const handleComment = async (
@@ -706,9 +931,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       id={`knowledge-${entry.id}`}
       data-publisher-content="knowledge-post"
       className={cn(
-        "overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]",
+        "overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.08)] transition-shadow duration-200 hover:shadow-[0_20px_54px_rgba(15,23,42,0.11)]",
         highlighted &&
-          "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#F5F5F0]",
+          "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
       )}
     >
       {entryImages.length > 0 && (
@@ -719,8 +944,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         />
       )}
 
-      <div className="p-4 sm:p-5">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="p-3.5 sm:p-4">
+        <div className="mb-2.5 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => handleOpenAuthorProfile(entry.authorId)}
@@ -756,14 +981,45 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                 <span>@{authorUsername}</span>
                 <span>&bull;</span>
                 <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
+                <span>&bull;</span>
+                <span>{readingMinutes}</span>
+                {authorReputation && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="inline-flex items-center gap-1 text-slate-500">
+                      <Award className="h-3.5 w-3.5 text-emerald-600" />
+                      {authorReputation.level}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">
-              Insight
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${trustToneClass}`}
+              title={`${trustMetrics.communityTrustPercent}% trust: ${trustMetrics.helpfulCount} helpful, ${trustMetrics.misleadingCount} misleading`}
+            >
+              <ShieldCheck className="h-3 w-3" />
+              {trustLabel}
             </span>
+            {trustMetrics.helpfulCount >= 5 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                Most Helpful
+              </span>
+            )}
+            {localSaveCount >= 3 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                <Bookmark className="h-3 w-3" />
+                Most Saved
+              </span>
+            )}
+            {entry.contentKind === "tutorial" && trustMetrics.helpfulCount >= 3 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-700">
+                Top Tutorial
+              </span>
+            )}
             {entryVisibility === "private" && (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
                 <Lock className="h-3 w-3" />
@@ -798,11 +1054,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           onClick={handleOpenEntryDetails}
           className="text-left transition-colors hover:text-emerald-700"
         >
-          <h3 className="text-xl font-black leading-tight tracking-tight text-slate-950 sm:text-2xl">
+          <h3 className="text-lg font-black leading-snug tracking-tight text-slate-950 sm:text-xl">
             {entry.title}
           </h3>
         </button>
-        <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-600">
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
           {renderRichText({
             text: entry.content,
             mentions,
@@ -811,7 +1067,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         </p>
 
         {entry.hashtags.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
+            {entry.contentKind && (
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500">
+                {entry.contentKind}
+              </span>
+            )}
             {entry.hashtags.map((tag) => (
               <button
                 key={tag}
@@ -839,7 +1100,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         )}
 
         {topComment && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Top comment
             </p>
@@ -886,89 +1147,105 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           </div>
         )}
 
-        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-          <div className="flex items-center gap-5">
+        <div className="mt-4 flex flex-col gap-2.5 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
             <button
-              onClick={handleLike}
-              disabled={isUpdatingLike}
-              aria-label={isLiked ? "Unlike post" : "Like post"}
+              onClick={handleHelpful}
+              disabled={isUpdatingTrust}
+              aria-label={
+                isHelpful ? "Remove helpful feedback" : "Mark post helpful"
+              }
+              title={isHelpful ? "Remove helpful feedback" : "Helpful"}
               className={cn(
-                "relative overflow-visible flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70",
-                isLiked
-                  ? "text-rose-500"
-                  : "text-slate-400 hover:text-rose-500",
+                "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
+                isHelpful
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700",
               )}
             >
               <span className="relative inline-flex h-5 w-5 items-center justify-center">
                 <span
-                  key={`like-icon-${likeAnimationVersion}`}
+                  key={`helpful-icon-${helpfulAnimationVersion}`}
                   className={cn(
                     "inline-flex h-5 w-5 items-center justify-center",
-                    likeAnimationVersion > 0 && "readative-like-pop",
+                    helpfulAnimationVersion > 0 && "readative-like-pop",
                   )}
                 >
-                  <Heart
-                    className={cn("h-5 w-5", isLiked ? "fill-current" : "")}
+                  <ThumbsUp
+                    className={cn("h-4 w-4", isHelpful ? "fill-current" : "")}
                   />
                 </span>
-
-                {likeAnimationVersion > 0 && (
-                  <span
-                    key={`like-burst-${likeAnimationVersion}`}
-                    className="pointer-events-none absolute inset-0"
-                    aria-hidden="true"
-                  >
-                    {LIKE_BURST_PARTICLES.map((particle, index) => (
-                      <span
-                        key={`${particle.x}-${particle.y}-${index}`}
-                        className="readative-like-burst-heart"
-                        style={
-                          {
-                            "--like-x": `${particle.x}px`,
-                            "--like-y": `${particle.y}px`,
-                            "--like-rotate": `${particle.rotate}deg`,
-                            "--like-delay": `${particle.delay}ms`,
-                            "--like-scale": `${particle.scale}`,
-                            color: particle.color,
-                          } as CSSProperties
-                        }
-                      >
-                        <Heart className="h-2.5 w-2.5 fill-current" />
-                      </span>
-                    ))}
-                  </span>
-                )}
               </span>
-              <span>{localLikes.length}</span>
+              <span>Helpful</span>
+              <span>{trustMetrics.helpfulCount}</span>
+            </button>
+
+            <button
+              onClick={handleMisleading}
+              disabled={isUpdatingTrust}
+              aria-label={
+                isMisleading
+                  ? "Remove misleading feedback"
+                  : "Mark post misleading"
+              }
+              title={isMisleading ? "Remove misleading feedback" : "Misleading"}
+              className={cn(
+                "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
+                isMisleading
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700",
+              )}
+            >
+              <ShieldAlert
+                className={cn("h-4 w-4", isMisleading ? "fill-current" : "")}
+              />
+              <span>Misleading</span>
+              <span>{trustMetrics.misleadingCount}</span>
             </button>
 
             <button
               onClick={() => setShowComments((current) => !current)}
               aria-label={showComments ? "Hide comments" : "Show comments"}
               className={cn(
-                "flex items-center gap-1.5 text-sm font-semibold transition-colors",
+                "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all",
                 showComments
-                  ? "text-emerald-600"
-                  : "text-slate-400 hover:text-emerald-600",
+                  ? "border-sky-200 bg-sky-50 text-sky-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700",
               )}
             >
-              <MessageCircle className="h-5 w-5" />
+              <MessageCircle className="h-4 w-4" />
               <span>{localComments.length}</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3">
             {shareCopied && (
               <span className="text-xs font-semibold text-emerald-600">
                 Link ready
               </span>
             )}
             <button
-              onClick={() => void handleShare()}
-              className="text-slate-400 transition-colors hover:text-emerald-600"
-              aria-label="Share knowledge"
+              onClick={handleSaveToggle}
+              disabled={isUpdatingSave}
+              className={cn(
+                "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors disabled:opacity-60",
+                isSaved
+                  ? "border-sky-200 bg-sky-50 text-sky-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700",
+              )}
+              aria-label={isSaved ? "Remove saved post" : "Save post"}
+              title={isSaved ? "Saved" : "Save"}
             >
-              <Share2 className="h-5 w-5" />
+              <Bookmark className={cn("h-4 w-4", isSaved && "fill-current")} />
+              {localSaveCount > 0 && <span>{localSaveCount}</span>}
+            </button>
+            <button
+              onClick={() => void handleShare()}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+              aria-label="Share knowledge"
+              title="Share"
+            >
+              <Share2 className="h-4 w-4" />
             </button>
           </div>
         </div>

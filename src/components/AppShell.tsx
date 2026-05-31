@@ -175,7 +175,7 @@ export function FirebaseSetupRoute({ missingKeys }: { missingKeys: string[] }) {
       </h2>
       <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
         Add a valid {missingKeys.join(", ")} value in the hosting environment
-        and redeploy. The app is paused here so posts, likes, comments, and
+        and redeploy. The app is paused here so posts, helpful feedback, comments, and
         profiles do not load with a broken connection.
       </p>
     </div>

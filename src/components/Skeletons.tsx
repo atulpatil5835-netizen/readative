@@ -41,7 +41,7 @@ export const KnowledgeCardSkeleton = memo(function KnowledgeCardSkeleton({
 }) {
   return (
     <article
-      className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]"
+      className="overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]"
       aria-hidden="true"
     >
       {showImage && <SkeletonBlock className="aspect-video rounded-none" />}

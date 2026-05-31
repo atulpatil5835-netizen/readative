@@ -1,5 +1,20 @@
 import { type UserProfile, type UserSocialLinks } from "../types";
 import { normalizeProfileImage } from "./profileImageOptimizer";
+import { normalizeTrustCount } from "./trustSystem";
+
+function normalizeProfileTimestamp(value: unknown): number {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: unknown }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : Date.now();
+}
 
 function normalizeProfilePhotoUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) {
@@ -46,6 +61,15 @@ function normalizeProfileSocialLinks(value: unknown): UserSocialLinks {
       : {}),
     ...(normalizeProfileSocialUrl(links.instagram)
       ? { instagram: normalizeProfileSocialUrl(links.instagram) }
+      : {}),
+    ...(normalizeProfileSocialUrl(links.github)
+      ? { github: normalizeProfileSocialUrl(links.github) }
+      : {}),
+    ...(normalizeProfileSocialUrl(links.twitter)
+      ? { twitter: normalizeProfileSocialUrl(links.twitter) }
+      : {}),
+    ...(normalizeProfileSocialUrl(links.website)
+      ? { website: normalizeProfileSocialUrl(links.website) }
       : {}),
     ...(normalizeProfileSocialUrl(links.youtube)
       ? { youtube: normalizeProfileSocialUrl(links.youtube) }
@@ -96,11 +120,21 @@ export function hydrateUserProfile(
     socialLinks: normalizeProfileSocialLinks(data.socialLinks),
     showSocialLinksOnPosts: data.showSocialLinksOnPosts === true,
     likedKnowledgeIds: normalizeProfileKnowledgeIds(data.likedKnowledgeIds),
+    savedKnowledgeIds: normalizeProfileKnowledgeIds(data.savedKnowledgeIds),
+    savedSmartTalkIds: normalizeProfileKnowledgeIds(data.savedSmartTalkIds),
     bannerImage: normalizeProfileImage(data.bannerImage),
     profileImage: normalizeProfileImage(data.profileImage),
     photoUrl: normalizeProfilePhotoUrl(data.photoUrl),
-    createdAt: data.createdAt || Date.now(),
-    updatedAt: data.updatedAt || Date.now(),
-    lastUsernameChangedAt: data.lastUsernameChangedAt ?? null,
+    createdAt: normalizeProfileTimestamp(data.createdAt),
+    updatedAt: normalizeProfileTimestamp(data.updatedAt),
+    lastUsernameChangedAt:
+      data.lastUsernameChangedAt === null ||
+      data.lastUsernameChangedAt === undefined
+        ? null
+        : normalizeProfileTimestamp(data.lastUsernameChangedAt),
+    reputationScore: normalizeTrustCount(data.reputationScore),
+    helpfulCount: normalizeTrustCount(data.helpfulCount),
+    misleadingCount: normalizeTrustCount(data.misleadingCount),
+    bestAnswerCount: normalizeTrustCount(data.bestAnswerCount),
   };
 }

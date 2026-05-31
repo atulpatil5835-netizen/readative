@@ -15,6 +15,10 @@
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
     { "source": "/api/posts/:id/comments", "destination": "/api/posts?id=:id&action=comments" },
-    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" }
+    { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" },
+    { "source": "/explore", "destination": "/index.html" },
+    { "source": "/explore/:path*", "destination": "/index.html" },
+    { "source": "/topic", "destination": "/index.html" },
+    { "source": "/topic/:path*", "destination": "/index.html" }
   ]
 }

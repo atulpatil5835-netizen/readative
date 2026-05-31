@@ -2,10 +2,10 @@ import { useState } from "react";
 import {
   AtSign,
   CheckCircle,
-  Heart,
   LogIn,
   MessageCircle,
   ShieldCheck,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import { firebaseAuthDomain } from "../firebase/firebase";
@@ -21,7 +21,7 @@ interface IdentityPromptProps {
 
 export function IdentityPrompt({
   title = "Choose your username",
-  description = "You only need to do this once. We remember this username on this browser for posting, liking, commenting, tagging, and notifications.",
+  description = "You only need to do this once. We remember this username on this browser for posting, helpful feedback, commenting, tagging, and notifications.",
   submitLabel = "Save username",
   initialValue = "",
   onConfirm,
@@ -74,7 +74,7 @@ export function IdentityPrompt({
             <p className="font-semibold text-slate-900">What we save</p>
             <p className="mt-2 leading-6">
               Your username is remembered on this device and tied to your posts,
-              likes, comments, tags, and realtime notifications.
+              helpful feedback, comments, tags, and realtime notifications.
             </p>
           </div>
 
@@ -140,12 +140,12 @@ export function UsernamePrompt({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const resolvedTitle =
-    title || (action === "like" ? "Like this knowledge?" : "Add a comment?");
+    title || (action === "like" ? "Mark this helpful?" : "Add a comment?");
   const resolvedDescription =
     description || "Share your username once before joining in";
   const resolvedSubmitLabel =
-    submitLabel || (action === "like" ? "Like" : "Continue");
-  const PromptIcon = action === "like" ? Heart : MessageCircle;
+    submitLabel || (action === "like" ? "Helpful" : "Continue");
+  const PromptIcon = action === "like" ? ThumbsUp : MessageCircle;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

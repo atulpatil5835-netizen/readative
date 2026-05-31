@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Rocket,
   Send,
+  Sparkles,
   Smartphone,
   Tag,
   Wrench,
@@ -99,8 +100,25 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../utils/knowledgeEntryHelpers";
+import {
+  mergeTrustIds,
+  normalizeTrustCount,
+  normalizeTrustIdArray,
+} from "../utils/trustSystem";
+import {
+  CONTENT_KIND_OPTIONS,
+  KNOWLEDGE_CATEGORY_SUGGESTIONS,
+  type KnowledgeContentKind,
+  formatReadingMinutes,
+  getContentQualityFeedback,
+  suggestKnowledgeCategory,
+  suggestKnowledgeTags,
+} from "../utils/contentIntelligence";
+import { getSaveMetrics } from "../utils/bookmarks";
 
-type PendingAction = { type: "like" | "comment"; entryId: string } | null;
+type PendingAction =
+  | { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }
+  | null;
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
@@ -685,81 +703,136 @@ function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
   ];
 }
 
-function normalizeKnowledgeComments(comments: KnowledgeComment[] = []) {
-  return comments.map((comment) => ({
-    ...comment,
-    createdAt:
-      (comment.createdAt as { toMillis?: () => number })?.toMillis?.() ||
-      comment.createdAt ||
-      Date.now(),
-  }));
+function normalizeKnowledgeTimestamp(value: unknown, fallback = Date.now()) {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: unknown }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : fallback;
+}
+
+function normalizeKnowledgeStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return [...new Set(value)]
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.replace(/^#/, "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeKnowledgeComments(comments: unknown): KnowledgeComment[] {
+  if (!Array.isArray(comments)) return [];
+
+  return comments
+    .filter((comment): comment is Partial<KnowledgeComment> =>
+      Boolean(comment && typeof comment === "object"),
+    )
+    .map((comment) => ({
+      id:
+        typeof comment.id === "string" && comment.id.trim()
+          ? comment.id
+          : Math.random().toString(36).slice(2, 11),
+      author: typeof comment.author === "string" ? comment.author : "Unknown",
+      ...(typeof comment.authorId === "string" && comment.authorId
+        ? { authorId: comment.authorId }
+        : {}),
+      text: typeof comment.text === "string" ? comment.text : "",
+      mentions: Array.isArray(comment.mentions) ? comment.mentions : [],
+      createdAt: normalizeKnowledgeTimestamp(comment.createdAt),
+    }));
 }
 
 function normalizeKnowledgeEntry(
   id: string,
   data: Partial<KnowledgeEntry> & {
-    comments?: KnowledgeComment[];
-    createdAt?: number | { toMillis?: () => number };
-    updatedAt?: number | { toMillis?: () => number };
+    createdAt?: unknown;
+    updatedAt?: unknown;
   },
 ): KnowledgeEntry {
   const {
+    author,
+    authorId,
+    authorEmail,
+    title,
+    content,
+    hashtags,
     comments,
     createdAt,
     updatedAt,
     likes,
     likeCount,
+    helpfulIds,
+    helpfulCount,
+    dislikes,
+    dislikeCount,
+    misleadingIds,
+    misleadingCount,
+    savedBy,
+    saveCount,
     mentions,
     images,
     imageLayout,
     visibility,
     ...restData
   } = data;
-  const rawCreatedAt = createdAt as
-    | number
-    | { toMillis?: () => number }
-    | undefined;
-  const rawUpdatedAt = updatedAt as
-    | number
-    | { toMillis?: () => number }
-    | undefined;
+  const normalizedHelpfulIds = mergeTrustIds(
+    normalizeTrustIdArray(likes),
+    normalizeTrustIdArray(helpfulIds),
+  );
+  const normalizedMisleadingIds = mergeTrustIds(
+    normalizeTrustIdArray(dislikes),
+    normalizeTrustIdArray(misleadingIds),
+  );
+  const normalizedHelpfulCount = Math.max(
+    normalizedHelpfulIds.length,
+    normalizeTrustCount(likeCount),
+    normalizeTrustCount(helpfulCount),
+  );
+  const normalizedMisleadingCount = Math.max(
+    normalizedMisleadingIds.length,
+    normalizeTrustCount(dislikeCount),
+    normalizeTrustCount(misleadingCount),
+  );
+  const normalizedCreatedAt = normalizeKnowledgeTimestamp(createdAt);
+  const normalizedUpdatedAt =
+    updatedAt === null || updatedAt === undefined
+      ? null
+      : normalizeKnowledgeTimestamp(updatedAt, normalizedCreatedAt);
+  const saveMetrics = getSaveMetrics({ savedBy, saveCount });
 
   return {
-    author: "",
-    authorId: "",
-    authorEmail: "",
-    title: "",
-    content: "",
+    author: typeof author === "string" ? author : "",
+    authorId: typeof authorId === "string" ? authorId : "",
+    authorEmail: typeof authorEmail === "string" ? authorEmail : "",
+    title: typeof title === "string" ? title : "",
+    content: typeof content === "string" ? content : "",
     visibility: normalizeKnowledgeVisibility(visibility),
-    hashtags: [],
     ...restData,
     id,
-    likes: likes || [],
-    likeCount:
-      typeof likeCount === "number" && Number.isFinite(likeCount)
-        ? Math.max(0, likeCount)
-        : (likes || []).length,
-    mentions: mentions || [],
+    hashtags: normalizeKnowledgeStringArray(hashtags),
+    likes: normalizedHelpfulIds,
+    likeCount: normalizedHelpfulCount,
+    helpfulIds: normalizedHelpfulIds,
+    helpfulCount: normalizedHelpfulCount,
+    dislikes: normalizedMisleadingIds,
+    dislikeCount: normalizedMisleadingCount,
+    misleadingIds: normalizedMisleadingIds,
+    misleadingCount: normalizedMisleadingCount,
+    savedBy: saveMetrics.savedBy,
+    saveCount: saveMetrics.saveCount,
+    mentions: Array.isArray(mentions) ? mentions : [],
     images: Array.isArray(images) ? images : [],
     imageLayout:
       imageLayout === "wide" || imageLayout === "portrait" ? imageLayout : null,
-    comments: normalizeKnowledgeComments(comments || []),
-    createdAt:
-      rawCreatedAt &&
-      typeof rawCreatedAt === "object" &&
-      typeof rawCreatedAt.toMillis === "function"
-        ? rawCreatedAt.toMillis()
-        : typeof rawCreatedAt === "number"
-          ? rawCreatedAt
-          : Date.now(),
-    updatedAt:
-      rawUpdatedAt &&
-      typeof rawUpdatedAt === "object" &&
-      typeof rawUpdatedAt.toMillis === "function"
-        ? rawUpdatedAt.toMillis()
-        : typeof rawUpdatedAt === "number"
-          ? rawUpdatedAt
-          : null,
+    comments: normalizeKnowledgeComments(comments),
+    createdAt: normalizedCreatedAt,
+    updatedAt: normalizedUpdatedAt,
   };
 }
 
@@ -1666,6 +1739,9 @@ export function KnowledgeFeed({
   const [publishAfterAccess, setPublishAfterAccess] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
+  const [draftContentKind, setDraftContentKind] =
+    useState<KnowledgeContentKind>("insight");
+  const [draftCategory, setDraftCategory] = useState("");
   const [draftVisibility, setDraftVisibility] =
     useState<KnowledgeVisibility>("public");
   const [hashtagInput, setHashtagInput] = useState("");
@@ -3027,6 +3103,8 @@ export function KnowledgeFeed({
   const resetComposer = () => {
     setDraftTitle("");
     setDraftContent("");
+    setDraftContentKind("insight");
+    setDraftCategory("");
     setDraftVisibility("public");
     setHashtagInput("");
     setSelectedImages([]);
@@ -3042,6 +3120,7 @@ export function KnowledgeFeed({
 
     const seedHashtags = mergeHashtags(
       parseManualHashtags(hashtagInput),
+      draftCategory ? [draftCategory] : [],
       extractInlineHashtags(`${title}\n${content}`),
     );
 
@@ -3072,6 +3151,7 @@ export function KnowledgeFeed({
 
     try {
       const hashtags = seedHashtags;
+      const category = draftCategory || null;
       const mentions = resolveMentions(`${title}\n${content}`, profiles);
       const createdAt = Date.now();
       const reference = doc(collection(db, "knowledge"));
@@ -3083,11 +3163,21 @@ export function KnowledgeFeed({
         authorEmail: "",
         title,
         content,
+        contentKind: draftContentKind,
+        category,
         visibility: draftVisibility,
         hashtags,
         comments: [],
         likes: [],
         likeCount: 0,
+        helpfulIds: [],
+        helpfulCount: 0,
+        dislikes: [],
+        dislikeCount: 0,
+        misleadingIds: [],
+        misleadingCount: 0,
+        savedBy: [],
+        saveCount: 0,
         mentions,
         images: preparedImages,
         imageLayout: preparedImages.length > 0 ? selectedImageLayout : null,
@@ -3361,7 +3451,7 @@ export function KnowledgeFeed({
   );
 
   const handleLikeChange = useCallback(
-    (entryId: string, likes: string[]) => {
+    (entryId: string, likes: string[], misleadingIds: string[] = []) => {
       const likedByCurrentUser = Boolean(
         currentAuthorId && likes.includes(currentAuthorId),
       );
@@ -3394,7 +3484,17 @@ export function KnowledgeFeed({
           if (entry.id !== entryId) return entry;
 
           didUpdateEntries = true;
-          return { ...entry, likes, likeCount: likes.length };
+          return {
+            ...entry,
+            likes,
+            likeCount: likes.length,
+            helpfulIds: likes,
+            helpfulCount: likes.length,
+            dislikes: misleadingIds,
+            dislikeCount: misleadingIds.length,
+            misleadingIds,
+            misleadingCount: misleadingIds.length,
+          };
         });
         if (!didUpdateEntries) return currentEntries;
 
@@ -3411,7 +3511,17 @@ export function KnowledgeFeed({
             if (entry.id !== entryId) return entry;
 
             didUpdateState = true;
-            return { ...entry, likes, likeCount: likes.length };
+            return {
+              ...entry,
+              likes,
+              likeCount: likes.length,
+              helpfulIds: likes,
+              helpfulCount: likes.length,
+              dislikes: misleadingIds,
+              dislikeCount: misleadingIds.length,
+              misleadingIds,
+              misleadingCount: misleadingIds.length,
+            };
           });
 
           if (!didUpdateState) return;
@@ -3527,7 +3637,9 @@ export function KnowledgeFeed({
               aria-label="Post categories"
             >
               <div className="flex min-w-max items-center gap-2 pb-1">
-                {FEED_TOPIC_FILTERS.map((topic) => {
+                {FEED_TOPIC_FILTERS.filter(
+                  (topic) => topic.id === "all" || topic.id === "trending",
+                ).map((topic) => {
                   const TopicIcon = topic.icon;
                   const isActive = topic.id === activeFeedTopic.id;
 
@@ -3553,6 +3665,33 @@ export function KnowledgeFeed({
                     </button>
                   );
                 })}
+                <label className="relative inline-flex h-9 shrink-0 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700">
+                  <span className="pointer-events-none mr-2">All Categories</span>
+                  <select
+                    value={
+                      activeFeedTopic.id === "all" ||
+                      activeFeedTopic.id === "trending"
+                        ? ""
+                        : activeFeedTopic.id
+                    }
+                    onChange={(event) =>
+                      handleSelectFeedTopic(
+                        (event.target.value || "all") as FeedTopicId,
+                      )
+                    }
+                    className="max-w-[8.5rem] bg-transparent text-xs font-bold outline-none"
+                    aria-label="All categories"
+                  >
+                    <option value="">Select</option>
+                    {FEED_TOPIC_FILTERS.filter(
+                      (topic) => topic.id !== "all" && topic.id !== "trending",
+                    ).map((topic) => (
+                      <option key={topic.id} value={topic.id}>
+                        {topic.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
           </div>
@@ -3716,6 +3855,10 @@ export function KnowledgeFeed({
           setDraftTitle={setDraftTitle}
           draftContent={draftContent}
           setDraftContent={setDraftContent}
+          draftContentKind={draftContentKind}
+          setDraftContentKind={setDraftContentKind}
+          draftCategory={draftCategory}
+          setDraftCategory={setDraftCategory}
           draftVisibility={draftVisibility}
           setDraftVisibility={setDraftVisibility}
           hashtagInput={hashtagInput}
@@ -3755,9 +3898,13 @@ export function KnowledgeFeed({
       {pendingAction && (
         <GoogleSignInPrompt
           title={
-            pendingAction.type === "like"
-              ? "Sign in to like"
-              : "Sign in to comment"
+            pendingAction.type === "helpful"
+              ? "Sign in to mark helpful"
+              : pendingAction.type === "misleading"
+                ? "Sign in to mark misleading"
+                : pendingAction.type === "save"
+                  ? "Sign in to save"
+                  : "Sign in to comment"
           }
           description="Use your Google account so this activity is saved to your Readative profile on every browser and device."
           submitLabel="Continue with Google"
@@ -3777,6 +3924,10 @@ function ComposerModal({
   setDraftTitle,
   draftContent,
   setDraftContent,
+  draftContentKind,
+  setDraftContentKind,
+  draftCategory,
+  setDraftCategory,
   draftVisibility,
   setDraftVisibility,
   hashtagInput,
@@ -3805,6 +3956,10 @@ function ComposerModal({
   setDraftTitle: (value: string) => void;
   draftContent: string;
   setDraftContent: (value: string) => void;
+  draftContentKind: KnowledgeContentKind;
+  setDraftContentKind: (value: KnowledgeContentKind) => void;
+  draftCategory: string;
+  setDraftCategory: (value: string) => void;
   draftVisibility: KnowledgeVisibility;
   setDraftVisibility: (value: KnowledgeVisibility) => void;
   hashtagInput: string;
@@ -3828,6 +3983,30 @@ function ComposerModal({
 }) {
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
+  const selectedKind =
+    CONTENT_KIND_OPTIONS.find((option) => option.id === draftContentKind) ||
+    CONTENT_KIND_OPTIONS[0];
+  const suggestedCategory = useMemo(
+    () => suggestKnowledgeCategory(draftTitle, draftContent),
+    [draftContent, draftTitle],
+  );
+  const suggestedTags = useMemo(
+    () => suggestKnowledgeTags(draftTitle, draftContent),
+    [draftContent, draftTitle],
+  );
+  const acceptedTags = useMemo(
+    () => parseManualHashtags(hashtagInput),
+    [hashtagInput],
+  );
+  const qualityFeedback = useMemo(
+    () => getContentQualityFeedback(draftTitle, draftContent),
+    [draftContent, draftTitle],
+  );
+  const readingMinutes = formatReadingMinutes(estimateReadMinutes(draftContent));
+  const addSuggestedTag = (tag: string) => {
+    const nextTags = mergeHashtags(acceptedTags, [tag]);
+    setHashtagInput(nextTags.map((value) => `#${value}`).join(" "));
+  };
 
   return (
     <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
@@ -3871,6 +4050,32 @@ function ComposerModal({
               </div>
             )}
 
+            <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                <Sparkles className="h-4 w-4 text-emerald-600" />
+                What would you like to share?
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {CONTENT_KIND_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setDraftContentKind(option.id)}
+                    className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                      draftContentKind === option.id
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:bg-emerald-50/70"
+                    }`}
+                  >
+                    <p className="text-sm font-black">{option.label}</p>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold opacity-75">
+                      {option.helper}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
               {(
                 [
@@ -3898,7 +4103,7 @@ function ComposerModal({
               <input
                 value={draftTitle}
                 onChange={(event) => setDraftTitle(event.target.value)}
-                placeholder="Post title"
+                placeholder={`${selectedKind.label} title`}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               />
 
@@ -3920,7 +4125,7 @@ function ComposerModal({
                       event.currentTarget.selectionStart,
                     )
                   }
-                  placeholder="Write your post. Tag people with @username."
+                  placeholder={`Write your ${selectedKind.label.toLowerCase()}. Tag people with @username.`}
                   className="min-h-[180px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] leading-7 text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
 
@@ -3946,14 +4151,60 @@ function ComposerModal({
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                     <Tag className="h-4 w-4" />
-                    Hashtags
+                    Category & Tags
+                  </div>
+                  <div className="mb-3 space-y-2">
+                    <select
+                      value={draftCategory}
+                      onChange={(event) => setDraftCategory(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-emerald-300 focus:bg-white"
+                      aria-label="Post category"
+                    >
+                      <option value="">No category</option>
+                      {KNOWLEDGE_CATEGORY_SUGGESTIONS.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.label}
+                        </option>
+                      ))}
+                    </select>
+                    {suggestedCategory && draftCategory !== suggestedCategory.id && (
+                      <button
+                        type="button"
+                        onClick={() => setDraftCategory(suggestedCategory.id)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        Use suggested {suggestedCategory.label}
+                      </button>
+                    )}
                   </div>
                   <input
                     value={hashtagInput}
                     onChange={(event) => setHashtagInput(event.target.value)}
-                    placeholder="#science #history #productivity"
+                    placeholder="#ai #programming #productivity"
                     className="w-full bg-transparent text-sm text-slate-700 outline-none"
                   />
+                  {suggestedTags.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {suggestedTags.map((tag) => {
+                        const isAccepted = acceptedTags.includes(tag);
+
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => addSuggestedTag(tag)}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-black transition-colors ${
+                              isAccepted
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700"
+                            }`}
+                          >
+                            #{tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -4038,6 +4289,26 @@ function ComposerModal({
                 >
                   <p className="font-bold">{feedMessage.title}</p>
                   <p className="mt-1 leading-6">{feedMessage.body}</p>
+                </div>
+              )}
+
+              {(draftTitle.trim() || draftContent.trim()) && (
+                <div
+                  className={`rounded-2xl border px-4 py-3 text-sm ${
+                    qualityFeedback.tone === "strong"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : qualityFeedback.tone === "positive"
+                        ? "border-sky-200 bg-sky-50 text-sky-800"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-black">{qualityFeedback.label}</p>
+                    <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-black">
+                      {readingMinutes}
+                    </span>
+                  </div>
+                  <p className="mt-1 leading-6">{qualityFeedback.hint}</p>
                 </div>
               )}
             </div>

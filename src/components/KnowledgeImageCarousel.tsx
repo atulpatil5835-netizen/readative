@@ -47,7 +47,7 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
           return (
             <figure
               key={imageKey}
-              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-[24px] bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
+              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-lg bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
             >
               <div
                 className={`absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.85),transparent_32%),linear-gradient(135deg,#e2e8f0,#f8fafc_44%,#cbd5e1)] transition-opacity duration-500 ${

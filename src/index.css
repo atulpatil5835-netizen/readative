@@ -5,8 +5,27 @@
 }
 
 @layer base {
+  :root {
+    color-scheme: light;
+    background: #f7f8fb;
+  }
+
   body {
-    @apply font-sans antialiased;
+    @apply bg-[#f7f8fb] font-sans antialiased;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
   }
 }
 

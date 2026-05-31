@@ -16,6 +16,9 @@ import {
   getKnowledgeEntryImageLayout,
   getKnowledgeEntryImages,
 } from "../utils/knowledgeImages";
+import {
+  getContributorReputationFromEntries,
+} from "../utils/trustSystem";
 import { KnowledgeCardSkeleton } from "./Skeletons";
 
 const knowledgeCardModulePromise = import("./KnowledgeCard");
@@ -33,14 +36,18 @@ interface KnowledgeCardListProps {
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: {
-    type: "like" | "comment";
+    type: "helpful" | "misleading" | "comment" | "save";
     entryId: string;
   }) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   onVisible?: (entry: KnowledgeEntry) => void;
   onSelectHashtag?: (tag: string) => void;
-  onLikeChange?: (entryId: string, likes: string[]) => void;
+  onLikeChange?: (
+    entryId: string,
+    helpfulIds: string[],
+    misleadingIds?: string[],
+  ) => void;
   highlightedEntryId?: string | null;
 }
 
@@ -225,6 +232,23 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
     () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
     [profiles],
   );
+  const authorReputationMap = useMemo(() => {
+    const authorIds = new Set(entries.map((entry) => entry.authorId).filter(Boolean));
+
+    return new Map(
+      [...authorIds].map(
+        (authorId) =>
+          [
+            authorId,
+            getContributorReputationFromEntries(
+              entries,
+              authorId,
+              profileMap.get(authorId),
+            ),
+          ] as const,
+      ),
+    );
+  }, [entries, profileMap]);
 
   const itemLayout = useMemo<ItemLayout>(() => {
     const offsets: number[] = [];
@@ -351,6 +375,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 currentIdentity={currentIdentity}
                 profiles={profiles}
                 profileMap={profileMap}
+                authorReputation={authorReputationMap.get(entry.authorId)}
                 onVisible={onVisible}
                 onIdentityRequired={onIdentityRequired}
                 onOpenProfile={onOpenProfile}

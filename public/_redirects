@@ -2,6 +2,12 @@
 /smarttalk /index.html 200
 /smarttalk/ /index.html 200
 /smarttalk/* /index.html 200
+/explore /index.html 200
+/explore/ /index.html 200
+/explore/* /index.html 200
+/topic /index.html 200
+/topic/ /index.html 200
+/topic/* /index.html 200
 /profile /index.html 200
 /profile/ /index.html 200
 /profile/* /index.html 200

@@ -1,15 +1,19 @@
 import { HelmetProvider } from "react-helmet-async";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import { MessageSquareMore } from "lucide-react";
+import {
+  CirclePlus,
+  Compass,
+  Home,
+  MessageSquareMore,
+  UserRound,
+} from "lucide-react";
 import { Header } from "./components/Header";
 import {
   AppFooter,
   BannerNotice,
   FirebaseSetupRoute,
-  HomeIcon,
   NotFoundRoute,
   SectionSkeleton,
-  UserIcon,
 } from "./components/AppShell";
 import { GoogleSignInPrompt } from "./components/Auth";
 import {
@@ -55,6 +59,12 @@ const Profile = lazy(() =>
   }))
 );
 
+const Explore = lazy(() =>
+  import("./components/Explore").then((module) => ({
+    default: module.Explore,
+  }))
+);
+
 const InfoPanel = lazy(() =>
   import("./components/AppPanels").then((module) => ({
     default: module.InfoPanel,
@@ -79,6 +89,9 @@ export default function App() {
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(
     initialRoute.focusedEntryId
   );
+  const [exploreTopic, setExploreTopic] = useState<string | null>(
+    initialRoute.tab === "explore" ? initialRoute.selectedTopic : null,
+  );
   const [routeErrorPath, setRouteErrorPath] = useState<string | null>(
     initialRoute.tab === "notFound" ? initialRoute.attemptedLocation : null
   );
@@ -102,6 +115,7 @@ export default function App() {
     setActiveTab(route.tab);
     setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
     setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
+    setExploreTopic(route.tab === "explore" ? route.selectedTopic : null);
     setRouteErrorPath(route.tab === "notFound" ? route.attemptedLocation : null);
   }, []);
 
@@ -125,6 +139,12 @@ export default function App() {
   const handleOpenEntry = useCallback((entryId: string) => {
     handleTabChange("knowledge", null, entryId);
   }, [handleTabChange]);
+
+  const handleOpenTopic = useCallback((topicId: string | null) => {
+    setShowInfoPanel(false);
+    setShowNotificationsPanel(false);
+    navigateToRoute("explore", { selectedTopic: topicId });
+  }, []);
 
   const handleHomeAction = useCallback(() => {
     setShowInfoPanel(false);
@@ -225,7 +245,7 @@ export default function App() {
 
   useEffect(() => {
     trackPageView();
-  }, [activeTab, profileAuthorId, focusedEntryId, routeErrorPath]);
+  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, routeErrorPath]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -377,7 +397,7 @@ export default function App() {
 
   return (
     <HelmetProvider>
-      <div className="min-h-screen bg-[#F5F5F0] font-sans text-[#1A1A1A]">
+      <div className="min-h-screen bg-[#f7f8fb] font-sans text-slate-950">
         <Header
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -386,12 +406,12 @@ export default function App() {
           unreadNotificationCount={unreadNotificationCount}
           onOpenComposer={handleOpenComposer}
           onOpenNotifications={handleOpenNotifications}
-          onOpenInfo={handleOpenAboutPanel}
+          onOpenInfo={handleOpenInfoPanel}
           onOpenSignIn={handleOpenSignInPrompt}
           onSignOut={handleHeaderSignOut}
         />
 
-        <main className="mx-auto max-w-2xl px-4 pb-24 pt-20">
+        <main className="mx-auto max-w-2xl px-4 pb-28 pt-20">
           {notificationsError && (
             <BannerNotice
               title="Notifications unavailable"
@@ -454,6 +474,18 @@ export default function App() {
               />
             </Suspense>
           )}
+          {firebaseConfigReady && activeTab === "explore" && (
+            <Suspense fallback={<SectionSkeleton label="Loading Explore..." />}>
+              <Explore
+                currentIdentity={identity}
+                selectedTopic={exploreTopic}
+                onOpenProfile={handleOpenProfile}
+                onOpenEntry={handleOpenEntry}
+                onOpenTopic={handleOpenTopic}
+                onOpenSmartTalk={() => handleTabChange("smarttalk")}
+              />
+            </Suspense>
+          )}
         </main>
 
         <AppFooter onOpenInfo={handleOpenInfoPanel} />
@@ -482,6 +514,10 @@ export default function App() {
                 setShowNotificationsPanel(false);
                 handleOpenEntry(entryId);
               }}
+              onOpenSmartTalk={() => {
+                setShowNotificationsPanel(false);
+                handleTabChange("smarttalk");
+              }}
             />
           </Suspense>
         )}
@@ -493,30 +529,65 @@ export default function App() {
           />
         )}
 
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between border-t border-black/5 bg-white px-6 py-3 md:hidden">
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 border-t border-slate-200 bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_36px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
+          aria-label="Primary mobile navigation"
+        >
           <button
             onClick={handleHomeAction}
-            className={`p-2 ${
-              activeTab === "knowledge" ? "text-emerald-600" : "text-gray-400"
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+              activeTab === "knowledge"
+                ? "bg-emerald-50 text-emerald-700"
+                : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
+            aria-label="Home"
           >
-            <HomeIcon />
+            <Home className="h-5 w-5" />
+            <span>Home</span>
           </button>
           <button
             onClick={() => handleTabChange("smarttalk")}
-            className={`p-2 ${
-              activeTab === "smarttalk" ? "text-emerald-600" : "text-gray-400"
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+              activeTab === "smarttalk"
+                ? "bg-indigo-50 text-indigo-700"
+                : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
+            aria-label="SmartTalk"
           >
-            <MessageSquareMore className="h-6 w-6" />
+            <MessageSquareMore className="h-5 w-5" />
+            <span>SmartTalk</span>
+          </button>
+          <button
+            onClick={handleOpenComposer}
+            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg bg-slate-950 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.2)] transition-colors hover:bg-emerald-700"
+            aria-label="Create"
+          >
+            <CirclePlus className="h-5 w-5" />
+            <span>Create</span>
+          </button>
+          <button
+            onClick={() => handleTabChange("explore")}
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+              activeTab === "explore"
+                ? "bg-sky-50 text-sky-700"
+                : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+            aria-label="Explore"
+          >
+            <Compass className="h-5 w-5" />
+            <span>Explore</span>
           </button>
           <button
             onClick={() => handleTabChange("profile")}
-            className={`p-2 ${
-              activeTab === "profile" ? "text-emerald-600" : "text-gray-400"
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+              activeTab === "profile"
+                ? "bg-emerald-50 text-emerald-700"
+                : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
+            aria-label="Profile"
           >
-            <UserIcon />
+            <UserRound className="h-5 w-5" />
+            <span>Profile</span>
           </button>
         </nav>
       </div>

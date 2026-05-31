@@ -24,14 +24,17 @@ import {
 import { getGuestId, getSavedGuestId, saveGuestName } from "./guestIdentity";
 import { saveKnowledgeIdentity } from "./knowledgeIdentity";
 import { hydrateUserProfile } from "./profileData";
+import { getTrustMetrics } from "./trustSystem";
 
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
   USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
 const GOOGLE_MIGRATION_KEY_PREFIX = "readativeGoogleMigration";
-const SOCIAL_HOSTS: Record<keyof UserSocialLinks, string[]> = {
+const SOCIAL_HOSTS: Partial<Record<keyof UserSocialLinks, string[]>> = {
   linkedin: ["linkedin.com"],
   instagram: ["instagram.com"],
+  github: ["github.com"],
+  twitter: ["x.com", "twitter.com"],
   youtube: ["youtube.com", "youtu.be"],
 };
 
@@ -174,12 +177,14 @@ function normalizeSocialLink(
 
   const hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
   const allowedHosts = SOCIAL_HOSTS[platform];
-  const isAllowedHost = allowedHosts.some(
-    (host) => hostname === host || hostname.endsWith(`.${host}`),
-  );
+  if (allowedHosts) {
+    const isAllowedHost = allowedHosts.some(
+      (host) => hostname === host || hostname.endsWith(`.${host}`),
+    );
 
-  if (!isAllowedHost) {
-    throw new Error(`Use a valid ${platform} profile URL.`);
+    if (!isAllowedHost) {
+      throw new Error(`Use a valid ${platform} profile URL.`);
+    }
   }
 
   return url.toString();
@@ -194,6 +199,15 @@ function normalizeSocialLinksInput(
       : {}),
     ...(normalizeSocialLink("instagram", rawSocialLinks.instagram)
       ? { instagram: normalizeSocialLink("instagram", rawSocialLinks.instagram) }
+      : {}),
+    ...(normalizeSocialLink("github", rawSocialLinks.github)
+      ? { github: normalizeSocialLink("github", rawSocialLinks.github) }
+      : {}),
+    ...(normalizeSocialLink("twitter", rawSocialLinks.twitter)
+      ? { twitter: normalizeSocialLink("twitter", rawSocialLinks.twitter) }
+      : {}),
+    ...(normalizeSocialLink("website", rawSocialLinks.website)
+      ? { website: normalizeSocialLink("website", rawSocialLinks.website) }
       : {}),
     ...(normalizeSocialLink("youtube", rawSocialLinks.youtube)
       ? { youtube: normalizeSocialLink("youtube", rawSocialLinks.youtube) }
@@ -257,7 +271,9 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
       payload.author = username;
     }
 
-    const nextComments = (data.comments || []).map((comment) =>
+    const currentComments = Array.isArray(data.comments) ? data.comments : [];
+    const currentMentions = Array.isArray(data.mentions) ? data.mentions : [];
+    const nextComments = currentComments.map((comment) =>
       comment.authorId === authorId && comment.author !== username
         ? {
             ...comment,
@@ -265,7 +281,7 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
           }
         : comment
     );
-    const nextMentions = (data.mentions || []).map((mention) =>
+    const nextMentions = currentMentions.map((mention) =>
       mention.authorId === authorId && mention.username !== username
         ? {
             ...mention,
@@ -275,9 +291,9 @@ async function syncUsernameAcrossContent(authorId: string, username: string) {
     );
 
     const commentsChanged =
-      JSON.stringify(nextComments) !== JSON.stringify(data.comments || []);
+      JSON.stringify(nextComments) !== JSON.stringify(currentComments);
     const mentionsChanged =
-      JSON.stringify(nextMentions) !== JSON.stringify(data.mentions || []);
+      JSON.stringify(nextMentions) !== JSON.stringify(currentMentions);
 
     if (!commentsChanged && !mentionsChanged) {
       if (Object.keys(payload).length === 0) {
@@ -337,18 +353,40 @@ async function migrateGuestActivityToGoogleProfile(
       payload.authorEmail = profile.email || "";
     }
 
-    if (Array.isArray(data.likes) && data.likes.includes(guestAuthorId)) {
+    const trustMetrics = getTrustMetrics(data);
+
+    if (trustMetrics.helpfulIds.includes(guestAuthorId)) {
       migratedLikedEntryIds.push(item.id);
-      payload.likes = [
+      const nextHelpfulIds = [
         ...new Set(
-          data.likes.map((authorId) =>
+          trustMetrics.helpfulIds.map((authorId) =>
             authorId === guestAuthorId ? profile.id : authorId,
           ),
         ),
       ];
+      payload.likes = nextHelpfulIds;
+      payload.likeCount = nextHelpfulIds.length;
+      payload.helpfulIds = nextHelpfulIds;
+      payload.helpfulCount = nextHelpfulIds.length;
     }
 
-    const nextComments = (data.comments || []).map((comment) =>
+    if (trustMetrics.misleadingIds.includes(guestAuthorId)) {
+      const nextMisleadingIds = [
+        ...new Set(
+          trustMetrics.misleadingIds.map((authorId) =>
+            authorId === guestAuthorId ? profile.id : authorId,
+          ),
+        ),
+      ];
+      payload.dislikes = nextMisleadingIds;
+      payload.dislikeCount = nextMisleadingIds.length;
+      payload.misleadingIds = nextMisleadingIds;
+      payload.misleadingCount = nextMisleadingIds.length;
+    }
+
+    const currentComments = Array.isArray(data.comments) ? data.comments : [];
+    const currentMentions = Array.isArray(data.mentions) ? data.mentions : [];
+    const nextComments = currentComments.map((comment) =>
       comment.authorId === guestAuthorId
         ? {
             ...comment,
@@ -357,7 +395,7 @@ async function migrateGuestActivityToGoogleProfile(
           }
         : comment,
     );
-    const nextMentions = (data.mentions || []).map((mention) =>
+    const nextMentions = currentMentions.map((mention) =>
       mention.authorId === guestAuthorId
         ? {
             ...mention,
@@ -367,11 +405,11 @@ async function migrateGuestActivityToGoogleProfile(
         : mention,
     );
 
-    if (JSON.stringify(nextComments) !== JSON.stringify(data.comments || [])) {
+    if (JSON.stringify(nextComments) !== JSON.stringify(currentComments)) {
       payload.comments = nextComments;
     }
 
-    if (JSON.stringify(nextMentions) !== JSON.stringify(data.mentions || [])) {
+    if (JSON.stringify(nextMentions) !== JSON.stringify(currentMentions)) {
       payload.mentions = nextMentions;
     }
 
@@ -534,6 +572,8 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     socialLinks: {},
     showSocialLinksOnPosts: false,
     likedKnowledgeIds: [],
+    savedKnowledgeIds: [],
+    savedSmartTalkIds: [],
     bannerImage: null,
     profileImage: null,
     photoUrl,
@@ -591,6 +631,8 @@ export async function ensureGuestProfile(
     socialLinks: {},
     showSocialLinksOnPosts: false,
     likedKnowledgeIds: [],
+    savedKnowledgeIds: [],
+    savedSmartTalkIds: [],
     bannerImage: null,
     profileImage: null,
     createdAt: now,

@@ -1,4 +1,4 @@
-export type AppTab = "knowledge" | "smarttalk" | "profile";
+export type AppTab = "knowledge" | "smarttalk" | "explore" | "profile";
 
 export interface RouteOptions {
   focusedEntryId?: string | null;
@@ -42,7 +42,12 @@ function normalizeTag(tag: string | null | undefined) {
 }
 
 function normalizeTopic(topic: string | null | undefined) {
-  const normalized = topic?.trim().toLowerCase();
+  const normalized = topic
+    ?.replace(/^#/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return normalized && normalized !== "all" ? normalized : null;
 }
 
@@ -126,6 +131,27 @@ function parseProfileRoute(
   return null;
 }
 
+function parseTopicRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  const topicPrefix = source === "hash" ? "topic/" : "/topic/";
+
+  if (!routePart.startsWith(topicPrefix)) {
+    return null;
+  }
+
+  const selectedTopic = normalizeTopic(safeDecode(routePart.slice(topicPrefix.length)));
+  if (!selectedTopic) {
+    return createRoute("notFound", source, attemptedLocation);
+  }
+
+  return createRoute("explore", source, attemptedLocation, {
+    selectedTopic,
+  });
+}
+
 function parseHashRoute(hash: string) {
   const cleanedHash = hash.replace(/^#/, "").trim();
   const attemptedLocation = cleanedHash ? `#${cleanedHash}` : "#";
@@ -140,7 +166,12 @@ function parseHashRoute(hash: string) {
     return createRoute("smarttalk", "hash", attemptedLocation);
   }
 
+  if (routePart === "explore" || routePart === "jobs") {
+    return createRoute("explore", "hash", attemptedLocation);
+  }
+
   return (
+    parseTopicRoute(routePart, "hash", attemptedLocation) ||
     parseKnowledgeRoute(routePart, search, "hash", attemptedLocation) ||
     parseProfileRoute(routePart, "hash", attemptedLocation) ||
     createRoute("notFound", "hash", attemptedLocation)
@@ -164,6 +195,10 @@ function parsePathRoute(pathname: string, search: string) {
     return createRoute("smarttalk", "path", attemptedLocation);
   }
 
+  if (normalizedPathname === "/explore" || normalizedPathname === "/jobs") {
+    return createRoute("explore", "path", attemptedLocation);
+  }
+
   if (normalizedPathname === "/404" || normalizedPathname === "/not-found") {
     return createRoute(
       "notFound",
@@ -173,6 +208,7 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   return (
+    parseTopicRoute(normalizedPathname, "path", attemptedLocation) ||
     parseKnowledgeRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseProfileRoute(normalizedPathname, "path", attemptedLocation) ||
     createRoute("notFound", "path", attemptedLocation)
@@ -217,6 +253,16 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
 
   if (tab === "profile") {
     return "/profile";
+  }
+
+  if (tab === "explore" && options.selectedTopic) {
+    const selectedTopic = normalizeTopic(options.selectedTopic);
+
+    return selectedTopic ? `/topic/${encodeURIComponent(selectedTopic)}` : "/explore";
+  }
+
+  if (tab === "explore") {
+    return "/explore";
   }
 
   if (tab === "smarttalk") {
@@ -267,6 +313,18 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
 
   if (tab === "smarttalk") {
     return "#smarttalk";
+  }
+
+  if (tab === "explore" && options.selectedTopic) {
+    const selectedTopic = normalizeTopic(options.selectedTopic);
+
+    return selectedTopic
+      ? `#topic/${encodeURIComponent(selectedTopic)}`
+      : "#explore";
+  }
+
+  if (tab === "explore") {
+    return "#explore";
   }
 
   return "#knowledge";
