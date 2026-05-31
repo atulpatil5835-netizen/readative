@@ -48,7 +48,7 @@ export interface UserProfileDetailsInput {
 
 function syncLocalProfileIdentity(profile: UserProfile) {
   saveGuestName(profile.username);
-  saveKnowledgeIdentity(profile.username, profile.id);
+  saveKnowledgeIdentity(profile.username, profile.id, profile.email);
 }
 
 function normalizeGooglePhotoUrl(value: string | null): string | null {

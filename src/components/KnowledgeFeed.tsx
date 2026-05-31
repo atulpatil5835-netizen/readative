@@ -748,6 +748,29 @@ function normalizeKnowledgeComments(comments: unknown): KnowledgeComment[] {
     }));
 }
 
+function readLegacyKnowledgeAuthorId(
+  data: Partial<KnowledgeEntry> & Record<string, unknown>,
+) {
+  const candidates = [
+    data.authorId,
+    data.userId,
+    data.uid,
+    data.authorUid,
+    data.userUid,
+    data.creatorId,
+    data.ownerId,
+    data.createdBy,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "";
+}
+
 function normalizeKnowledgeEntry(
   id: string,
   data: Partial<KnowledgeEntry> & {
@@ -805,10 +828,13 @@ function normalizeKnowledgeEntry(
       ? null
       : normalizeKnowledgeTimestamp(updatedAt, normalizedCreatedAt);
   const saveMetrics = getSaveMetrics({ savedBy, saveCount });
+  const normalizedAuthorId = readLegacyKnowledgeAuthorId(
+    data as Partial<KnowledgeEntry> & Record<string, unknown>,
+  );
 
   return {
     author: typeof author === "string" ? author : "",
-    authorId: typeof authorId === "string" ? authorId : "",
+    authorId: normalizedAuthorId,
     authorEmail: typeof authorEmail === "string" ? authorEmail : "",
     title: typeof title === "string" ? title : "",
     content: typeof content === "string" ? content : "",
@@ -2532,20 +2558,10 @@ export function KnowledgeFeed({
   );
   const activeTopicFeedState =
     topicFeedStates[independentFeedKey] || EMPTY_TOPIC_FEED_STATE;
-  const visibleLikedEntryIdSet = useMemo(
-    () => new Set(visibleLikedEntryIds),
-    [visibleLikedEntryIds],
-  );
   const viewableEntries = useMemo(
     () =>
-      entries.filter(
-        (entry) =>
-          canViewKnowledgeEntry(entry, currentAuthorId) &&
-          (entry.id === focusedEntryId ||
-            !isEntryLikedByAuthor(entry, currentAuthorId) ||
-            visibleLikedEntryIdSet.has(entry.id)),
-      ),
-    [currentAuthorId, entries, focusedEntryId, visibleLikedEntryIdSet],
+      entries.filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId)),
+    [currentAuthorId, entries],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -2585,10 +2601,7 @@ export function KnowledgeFeed({
 
     return activeTopicFeedState.entries
       .filter(
-        (entry) =>
-          canViewKnowledgeEntry(entry, currentAuthorId) &&
-          (!isEntryLikedByAuthor(entry, currentAuthorId) ||
-            visibleLikedEntryIdSet.has(entry.id)),
+        (entry) => canViewKnowledgeEntry(entry, currentAuthorId),
       )
       .filter((entry) => {
         if (!normalizedSelectedHashtag) return true;
@@ -2613,7 +2626,6 @@ export function KnowledgeFeed({
     currentAuthorId,
     normalizedSelectedHashtag,
     shouldUseIndependentFeed,
-    visibleLikedEntryIdSet,
   ]);
   const visibleEntries = independentFeedEntries || orderedEntries;
   const activeFeedPersistenceKey = shouldUseIndependentFeed

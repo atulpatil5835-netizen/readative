@@ -6,6 +6,7 @@ export const KNOWLEDGE_IDENTITY_EVENT = "knowledge-identity-changed";
 export interface KnowledgeIdentity {
   displayName: string;
   authorId: string;
+  email?: string;
 }
 
 function emitIdentityChange(identity: KnowledgeIdentity | null) {
@@ -29,6 +30,9 @@ function normalizeIdentity(parsed: Partial<KnowledgeIdentity> | null) {
   return {
     displayName,
     authorId,
+    ...(typeof parsed?.email === "string" && parsed.email.trim()
+      ? { email: parsed.email.trim().toLowerCase() }
+      : {}),
   };
 }
 
@@ -62,11 +66,13 @@ export function getKnowledgeIdentity(): KnowledgeIdentity | null {
 
 export function saveKnowledgeIdentity(
   displayName: string,
-  authorId: string = getGuestId()
+  authorId: string = getGuestId(),
+  email?: string | null,
 ): KnowledgeIdentity {
   const identity: KnowledgeIdentity = {
     displayName: displayName.trim(),
     authorId,
+    ...(email?.trim() ? { email: email.trim().toLowerCase() } : {}),
   };
 
   localStorage.setItem(KNOWLEDGE_IDENTITY_KEY, JSON.stringify(identity));

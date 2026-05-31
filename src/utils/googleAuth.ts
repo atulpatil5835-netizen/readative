@@ -122,7 +122,7 @@ export async function resolveGoogleUserIdentity(
   user: User,
 ): Promise<KnowledgeIdentity> {
   const profile = await ensureGoogleProfile(user);
-  return saveKnowledgeIdentity(profile.username, profile.id);
+  return saveKnowledgeIdentity(profile.username, profile.id, profile.email);
 }
 
 export async function signInWithGoogleAccount(): Promise<KnowledgeIdentity> {

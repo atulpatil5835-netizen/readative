@@ -97,12 +97,21 @@ type KnowledgePendingAction = {
   entryId: string;
 };
 
-const PROFILE_POST_PAGE_SIZE = 10;
-const PROFILE_POST_FALLBACK_PAGE_SIZE = 20;
+const PROFILE_POST_PAGE_SIZE = 20;
+const PROFILE_POST_FALLBACK_PAGE_SIZE = 40;
+const PROFILE_SHARED_COMPATIBILITY_LIMIT = 40;
 const PROFILE_TRACKED_LIKE_LOOKUP_LIMIT = 120;
 const FIRESTORE_IN_QUERY_LIMIT = 30;
 const PROFILE_DIRECTORY_LIMIT = 80;
 const PROFILE_SMARTTALK_SUMMARY_LIMIT = 50;
+
+type ProfileSharedMatchField = "authorId" | "authorEmail" | "author";
+
+interface ProfileSharedMatchSource {
+  key: string;
+  field: ProfileSharedMatchField;
+  value: string;
+}
 
 const EXPERTISE_KEYWORDS = [
   {
@@ -201,6 +210,109 @@ function mergeProfileKnowledgeEntries(
   });
 
   return sortKnowledge([...entriesById.values()]);
+}
+
+function normalizeProfileMatchValue(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function normalizeProfileMatchKey(value: unknown) {
+  return normalizeProfileMatchValue(value).toLowerCase();
+}
+
+function uniqueProfileMatchValues(values: unknown[], normalize = false) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  values.forEach((value) => {
+    const normalized = normalize
+      ? normalizeProfileMatchKey(value)
+      : normalizeProfileMatchValue(value);
+    if (!normalized) return;
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    output.push(normalized);
+  });
+
+  return output;
+}
+
+function getProfileSharedMatchSources({
+  activeAuthorId,
+  profile,
+  currentIdentity,
+  isOwnProfile,
+}: {
+  activeAuthorId: string;
+  profile: UserProfile;
+  currentIdentity: KnowledgeIdentity | null;
+  isOwnProfile: boolean;
+}): ProfileSharedMatchSource[] {
+  const ownIdentityValues = isOwnProfile
+    ? [
+        currentIdentity?.authorId,
+        currentIdentity?.displayName,
+        currentIdentity?.email,
+      ]
+    : [];
+  const authorIdValues = uniqueProfileMatchValues([
+    activeAuthorId,
+    profile.id,
+    profile.username,
+    profile.usernameLower,
+    profile.email,
+    ...ownIdentityValues,
+  ]);
+  const authorEmailValues = uniqueProfileMatchValues(
+    [profile.email, isOwnProfile ? currentIdentity?.email : null],
+    true,
+  );
+  const authorNameValues = uniqueProfileMatchValues([
+    profile.username,
+    profile.usernameLower,
+    profile.displayName,
+    isOwnProfile ? currentIdentity?.displayName : null,
+  ]);
+
+  return [
+    ...authorIdValues.map((value) => ({
+      key: `authorId:${value.toLowerCase()}`,
+      field: "authorId" as const,
+      value,
+    })),
+    ...authorEmailValues.map((value) => ({
+      key: `authorEmail:${value}`,
+      field: "authorEmail" as const,
+      value,
+    })),
+    ...authorNameValues.map((value) => ({
+      key: `author:${value.toLowerCase()}`,
+      field: "author" as const,
+      value,
+    })),
+  ];
+}
+
+function matchesProfileSharedSource(
+  entry: KnowledgeEntry,
+  source: ProfileSharedMatchSource,
+) {
+  if (source.field === "authorEmail") {
+    return normalizeProfileMatchKey(entry.authorEmail) === source.value;
+  }
+
+  if (source.field === "author") {
+    return normalizeProfileMatchKey(entry.author) === source.value.toLowerCase();
+  }
+
+  const entryAuthorId = normalizeProfileMatchValue(entry.authorId);
+  return (
+    entryAuthorId === source.value ||
+    entryAuthorId.toLowerCase() === source.value.toLowerCase()
+  );
 }
 
 function reconcileRealtimeProfilePage(
@@ -352,6 +464,29 @@ function readProfileTimestamp(value: unknown, fallback = Date.now()) {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : fallback;
+}
+
+function readLegacyKnowledgeAuthorId(data: Partial<KnowledgeEntry>) {
+  const legacyData = data as Partial<KnowledgeEntry> &
+    Record<string, unknown>;
+  const candidates = [
+    legacyData.authorId,
+    legacyData.userId,
+    legacyData.uid,
+    legacyData.authorUid,
+    legacyData.userUid,
+    legacyData.creatorId,
+    legacyData.ownerId,
+    legacyData.createdBy,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "";
 }
 
 function getProfileSmartTalkSummary(
@@ -566,7 +701,7 @@ function hydrateKnowledgeFromSnapshot(id: string, data: Partial<KnowledgeEntry>)
     ...data,
     id,
     author: typeof data.author === "string" ? data.author : "",
-    authorId: typeof data.authorId === "string" ? data.authorId : "",
+    authorId: readLegacyKnowledgeAuthorId(data),
     authorEmail: typeof data.authorEmail === "string" ? data.authorEmail : "",
     title: typeof data.title === "string" ? data.title : "",
     content: typeof data.content === "string" ? data.content : "",
@@ -990,6 +1125,114 @@ export function Profile({
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [activeAuthorId, currentIdentity?.authorId, isOwnProfile]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeAuthorId || !profile) {
+      return;
+    }
+
+    const sources = getProfileSharedMatchSources({
+      activeAuthorId,
+      profile,
+      currentIdentity,
+      isOwnProfile,
+    });
+
+    const loadCompatibleSharedEntries = async () => {
+      const sourceResults = await Promise.all(
+        sources.map(async (source) => {
+          const orderedQuery = query(
+            collection(db, "knowledge"),
+            where(source.field, "==", source.value),
+            orderBy("createdAt", "desc"),
+            limit(PROFILE_SHARED_COMPATIBILITY_LIMIT),
+          );
+          const fallbackQuery = query(
+            collection(db, "knowledge"),
+            where(source.field, "==", source.value),
+            limit(PROFILE_SHARED_COMPATIBILITY_LIMIT),
+          );
+
+          try {
+            const snapshot = await getDocs(orderedQuery);
+            if (snapshot.docs.length === 0) {
+              const fallbackSnapshot = await getDocs(fallbackQuery);
+              return { source, docs: fallbackSnapshot.docs };
+            }
+
+            return { source, docs: snapshot.docs };
+          } catch (error) {
+            if (!isMissingFirestoreIndexError(error)) {
+              console.warn("Profile shared compatibility query failed:", error);
+              return null;
+            }
+
+            try {
+              const snapshot = await getDocs(fallbackQuery);
+              return { source, docs: snapshot.docs };
+            } catch (fallbackError) {
+              console.warn(
+                "Profile shared compatibility fallback failed:",
+                fallbackError,
+              );
+              return null;
+            }
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const successfulResults = sourceResults.filter(
+        (
+          result,
+        ): result is {
+          source: ProfileSharedMatchSource;
+          docs: Array<QueryDocumentSnapshot<DocumentData>>;
+        } => Boolean(result),
+      );
+      const docsById = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+
+      successfulResults.forEach(({ docs }) => {
+        docs.forEach((item) => {
+          docsById.set(item.id, item);
+        });
+      });
+
+      const compatibleEntries = hydrateProfileKnowledgeDocs(
+        [...docsById.values()],
+        currentIdentity?.authorId,
+        (entry) =>
+          sources.some((source) => matchesProfileSharedSource(entry, source)),
+      );
+
+      if (compatibleEntries.length > 0) {
+        setSharedEntries((currentEntries) =>
+          mergeProfileKnowledgeEntries(currentEntries, compatibleEntries),
+        );
+        setProfileLoadError(null);
+      }
+
+      setHasMoreSharedEntries(
+        (current) =>
+          current ||
+          successfulResults.some(
+            ({ docs }) => docs.length === PROFILE_SHARED_COMPATIBILITY_LIMIT,
+          ),
+      );
+      setIsLoadingSharedEntries(false);
+    };
+
+    void loadCompatibleSharedEntries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAuthorId, currentIdentity, isOwnProfile, profile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1878,7 +2121,7 @@ export function Profile({
               active={section === "shared"}
               onClick={() => setSection("shared")}
               label="Posts"
-              count={sharedEntries.length}
+              count={hasMoreSharedEntries ? `${sharedEntries.length}+` : sharedEntries.length}
             />
             <SectionButton
               active={section === "activity"}
@@ -2680,7 +2923,7 @@ function SectionButton({
   active: boolean;
   onClick: () => void;
   label: string;
-  count: number;
+  count: number | string;
 }) {
   return (
     <button
