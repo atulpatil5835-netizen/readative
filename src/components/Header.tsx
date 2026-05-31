@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Info, MoreVertical, Palette, Settings, ShieldCheck } from "lucide-react";
+import { Bell, Info, LogOut, MoreVertical, Palette, ShieldCheck } from "lucide-react";
 import { Logo } from "./Logo";
 import { type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
@@ -151,28 +151,12 @@ export const Header = memo(function Header({
                 className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
               >
                 <button
-                  onClick={() => handleMenuAction(() => setActiveTab("profile"))}
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </button>
-                <button
                   onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
                   role="menuitem"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Privacy
-                </button>
-                <button
-                  onClick={() => handleMenuAction(onOpenNotifications)}
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
-                >
-                  <Bell className="h-4 w-4" />
-                  Notifications
                 </button>
                 <button
                   onClick={() => handleMenuAction(() => onOpenInfo("appearance"))}
@@ -189,6 +173,14 @@ export const Header = memo(function Header({
                 >
                   <Info className="h-4 w-4" />
                   About Readative
+                </button>
+                <button
+                  onClick={() => handleMenuAction(onSignOut)}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
                 </button>
               </div>
             )}
