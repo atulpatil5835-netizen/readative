@@ -1157,6 +1157,37 @@ function isEntryLikedByAuthor(entry: KnowledgeEntry, authorId?: string | null) {
   return Boolean(authorId && (entry.likes || []).includes(authorId));
 }
 
+function getHelpfulAwareVisibleEntries({
+  entries,
+  currentAuthorId,
+  focusedEntryId,
+  visibleLikedEntryIds,
+  canLoadMore,
+}: {
+  entries: KnowledgeEntry[];
+  currentAuthorId: string | null;
+  focusedEntryId: string | null;
+  visibleLikedEntryIds: Set<string>;
+  canLoadMore: boolean;
+}) {
+  if (!currentAuthorId) {
+    return entries;
+  }
+
+  const freshEntries = entries.filter(
+    (entry) =>
+      entry.id === focusedEntryId ||
+      visibleLikedEntryIds.has(entry.id) ||
+      !isEntryLikedByAuthor(entry, currentAuthorId),
+  );
+
+  if (freshEntries.length > 0 || canLoadMore) {
+    return freshEntries;
+  }
+
+  return entries;
+}
+
 function reconcileRealtimeKnowledgeFeedOrder({
   entries,
   currentOrder,
@@ -2558,10 +2589,28 @@ export function KnowledgeFeed({
   );
   const activeTopicFeedState =
     topicFeedStates[independentFeedKey] || EMPTY_TOPIC_FEED_STATE;
+  const visibleLikedEntryIdSet = useMemo(
+    () => new Set(visibleLikedEntryIds),
+    [visibleLikedEntryIds],
+  );
   const viewableEntries = useMemo(
     () =>
-      entries.filter((entry) => canViewKnowledgeEntry(entry, currentAuthorId)),
-    [currentAuthorId, entries],
+      getHelpfulAwareVisibleEntries({
+        entries: entries.filter((entry) =>
+          canViewKnowledgeEntry(entry, currentAuthorId),
+        ),
+        currentAuthorId,
+        focusedEntryId,
+        visibleLikedEntryIds: visibleLikedEntryIdSet,
+        canLoadMore: hasMoreServerEntries,
+      }),
+    [
+      currentAuthorId,
+      entries,
+      focusedEntryId,
+      hasMoreServerEntries,
+      visibleLikedEntryIdSet,
+    ],
   );
   const focusedEntry = useMemo(
     () => viewableEntries.find((entry) => entry.id === focusedEntryId) || null,
@@ -2599,10 +2648,15 @@ export function KnowledgeFeed({
   const independentFeedEntries = useMemo(() => {
     if (!shouldUseIndependentFeed) return null;
 
-    return activeTopicFeedState.entries
-      .filter(
-        (entry) => canViewKnowledgeEntry(entry, currentAuthorId),
-      )
+    return getHelpfulAwareVisibleEntries({
+      entries: activeTopicFeedState.entries.filter((entry) =>
+        canViewKnowledgeEntry(entry, currentAuthorId),
+      ),
+      currentAuthorId,
+      focusedEntryId,
+      visibleLikedEntryIds: visibleLikedEntryIdSet,
+      canLoadMore: activeTopicFeedState.hasMore,
+    })
       .filter((entry) => {
         if (!normalizedSelectedHashtag) return true;
 
@@ -2623,9 +2677,12 @@ export function KnowledgeFeed({
   }, [
     activeFeedTopic,
     activeTopicFeedState.entries,
+    activeTopicFeedState.hasMore,
     currentAuthorId,
+    focusedEntryId,
     normalizedSelectedHashtag,
     shouldUseIndependentFeed,
+    visibleLikedEntryIdSet,
   ]);
   const visibleEntries = independentFeedEntries || orderedEntries;
   const activeFeedPersistenceKey = shouldUseIndependentFeed

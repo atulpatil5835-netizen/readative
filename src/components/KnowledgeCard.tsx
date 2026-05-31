@@ -17,6 +17,7 @@ import {
   Globe2,
   Lock,
   MessageCircle,
+  MoreVertical,
   Pencil,
   Save,
   Share2,
@@ -60,10 +61,40 @@ import {
   type ContributorReputation,
 } from "../utils/trustSystem";
 import { getSaveMetrics, toggleKnowledgeSave } from "../utils/bookmarks";
-import { formatReadingMinutes } from "../utils/contentIntelligence";
 
 function getProfileDisplayName(profile: UserProfile | undefined, fallback: string) {
   return profile?.displayName?.trim() || fallback;
+}
+
+function findAuthorProfile(
+  entry: KnowledgeEntry,
+  profiles: UserProfile[],
+  profileMap: ReadonlyMap<string, UserProfile>,
+) {
+  const directProfile = profileMap.get(entry.authorId);
+  if (directProfile) return directProfile;
+
+  const authorIdKey = entry.authorId.trim().toLowerCase();
+  const authorNameKey = entry.author.trim().toLowerCase();
+  const authorEmailKey = entry.authorEmail.trim().toLowerCase();
+
+  return profiles.find((profile) => {
+    const profileKeys = [
+      profile.id,
+      profile.username,
+      profile.usernameLower,
+      profile.displayName,
+      profile.email,
+    ]
+      .filter(Boolean)
+      .map((value) => value.trim().toLowerCase());
+
+    return (
+      (authorIdKey && profileKeys.includes(authorIdKey)) ||
+      (authorNameKey && profileKeys.includes(authorNameKey)) ||
+      (authorEmailKey && profileKeys.includes(authorEmailKey))
+    );
+  });
 }
 
 function isShareAbortError(error: unknown) {
@@ -236,9 +267,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const [isUpdatingTrust, setIsUpdatingTrust] = useState(false);
   const [isUpdatingSave, setIsUpdatingSave] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
   const hasTrackedVisibilityRef = useRef(false);
 
   const activeIdentity = currentIdentity || actionIdentity;
@@ -250,10 +283,6 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     ? localMisleadingIds.includes(activeAuthorId)
     : false;
   const isSaved = activeAuthorId ? localSavedBy.includes(activeAuthorId) : false;
-  const readingMinutes = formatReadingMinutes(
-    entry.readingMinutes || estimateReadMinutes(entry.content),
-  );
-  const canManageEntry = currentIdentity?.authorId === entry.authorId;
   const entryVisibility = normalizeKnowledgeVisibility(entry.visibility);
   const mentions = entry.mentions || [];
   const trustMetrics = useMemo(
@@ -310,9 +339,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       new Map(profiles.map((profile) => [profile.id, profile] as const)),
     [profiles, providedProfileMap],
   );
-  const authorProfile = profileMap.get(entry.authorId);
+  const authorProfile = findAuthorProfile(entry, profiles, profileMap);
+  const resolvedAuthorId = authorProfile?.id || entry.authorId;
   const authorDisplayName = getProfileDisplayName(authorProfile, entry.author);
   const authorUsername = authorProfile?.username || entry.author;
+  const canManageEntry =
+    Boolean(currentIdentity?.authorId) &&
+    (currentIdentity?.authorId === entry.authorId ||
+      currentIdentity?.authorId === resolvedAuthorId);
   const shouldShowAuthorSocialLinks =
     authorProfile?.showSocialLinksOnPosts &&
     Object.values(authorProfile.socialLinks || {}).some(Boolean);
@@ -374,6 +408,33 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   }, [shareCopied]);
 
   useEffect(() => {
+    if (!actionsOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        actionsMenuRef.current &&
+        !actionsMenuRef.current.contains(event.target as Node)
+      ) {
+        setActionsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActionsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionsOpen]);
+
+  useEffect(() => {
     if (!onVisible || typeof window === "undefined") return;
     if (hasTrackedVisibilityRef.current) return;
 
@@ -391,6 +452,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   }, [entry, onVisible]);
 
   const handleOpenAuthorProfile = (authorId: string) => {
+    if (!authorId) return;
+
     recordKnowledgeFeedActivity({
       type: "author",
       entry,
@@ -925,6 +988,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     setInteractionMessage("Post updated.");
   };
 
+  const handlePostMenuAction = (action: () => void | Promise<void>) => {
+    setActionsOpen(false);
+    void action();
+  };
+
   return (
     <article
       ref={articleRef}
@@ -936,6 +1004,119 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
       )}
     >
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => handleOpenAuthorProfile(resolvedAuthorId)}
+            className="shrink-0 rounded-full transition-transform hover:scale-[1.02]"
+            aria-label={`Open ${authorDisplayName}'s profile`}
+          >
+            <ProfileAvatar
+              authorId={resolvedAuthorId}
+              image={authorProfile?.profileImage}
+              photoUrl={authorProfile?.photoUrl}
+              username={authorDisplayName}
+              size="sm"
+              className="border-slate-200"
+            />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                onClick={() => handleOpenAuthorProfile(resolvedAuthorId)}
+                className="min-w-0 truncate text-left text-sm font-black text-slate-950 transition-colors hover:text-emerald-700 sm:text-base"
+              >
+                {authorDisplayName}
+              </button>
+              {shouldShowAuthorSocialLinks && (
+                <ProfileSocialLinks
+                  socialLinks={authorProfile?.socialLinks || {}}
+                  compact
+                  iconOnly
+                  className="shrink-0"
+                />
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-semibold leading-5 text-slate-500">
+              <span>@{authorUsername}</span>
+              {authorReputation && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700">
+                  <Award className="h-2.5 w-2.5" />
+                  {authorReputation.level}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div ref={actionsMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setActionsOpen((current) => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+              aria-label="Open post actions"
+              aria-expanded={actionsOpen}
+              aria-haspopup="menu"
+              title="Post actions"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+
+            {actionsOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1.5 text-sm shadow-xl shadow-slate-900/12"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handlePostMenuAction(handleSaveToggle)}
+                  disabled={isUpdatingSave}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left font-bold text-slate-700 transition-colors hover:bg-sky-50 hover:text-sky-700 disabled:opacity-60"
+                >
+                  <Bookmark className={cn("h-4 w-4", isSaved && "fill-current")} />
+                  {isSaved ? "Remove saved post" : "Save post"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handlePostMenuAction(handleShare)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left font-bold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share post
+                </button>
+                {canManageEntry && (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() =>
+                        handlePostMenuAction(() => setShowEditModal(true))
+                      }
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit post
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handlePostMenuAction(handleDeleteEntry)}
+                      disabled={isDeleting}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete post
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {entryImages.length > 0 && (
         <KnowledgeImageCarousel
           images={entryImages}
@@ -944,110 +1125,37 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         />
       )}
 
-      <div className="p-3.5 sm:p-4">
-        <div className="mb-2.5 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              onClick={() => handleOpenAuthorProfile(entry.authorId)}
-              className="shrink-0 rounded-full transition-transform hover:scale-[1.02]"
-              aria-label={`Open ${authorDisplayName}'s profile`}
-            >
-              <ProfileAvatar
-                authorId={entry.authorId}
-                image={authorProfile?.profileImage}
-                photoUrl={authorProfile?.photoUrl}
-                username={authorDisplayName}
-                size="sm"
-                className="border-slate-200"
-              />
-            </button>
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <button
-                  onClick={() => handleOpenAuthorProfile(entry.authorId)}
-                  className="min-w-0 truncate text-left text-sm font-bold text-slate-900 transition-colors hover:text-emerald-700"
-                >
-                  {authorDisplayName}
-                </button>
-                {shouldShowAuthorSocialLinks && (
-                  <ProfileSocialLinks
-                    socialLinks={authorProfile?.socialLinks || {}}
-                    compact
-                    iconOnly
-                  />
-                )}
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
-                <span>@{authorUsername}</span>
-                <span>&bull;</span>
-                <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
-                <span>&bull;</span>
-                <span>{readingMinutes}</span>
-                {authorReputation && (
-                  <>
-                    <span>&bull;</span>
-                    <span className="inline-flex items-center gap-1 text-slate-500">
-                      <Award className="h-3.5 w-3.5 text-emerald-600" />
-                      {authorReputation.level}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
+      <div className="p-4 pt-3 sm:p-5">
+        <div className="mb-3 flex flex-wrap gap-2">
             <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${trustToneClass}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] ${trustToneClass}`}
               title={`${trustMetrics.communityTrustPercent}% trust: ${trustMetrics.helpfulCount} helpful, ${trustMetrics.misleadingCount} misleading`}
             >
-              <ShieldCheck className="h-3 w-3" />
+              <ShieldCheck className="h-2.5 w-2.5" />
               {trustLabel}
             </span>
             {trustMetrics.helpfulCount >= 5 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-700">
                 Most Helpful
               </span>
             )}
             {localSaveCount >= 3 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-sky-700">
-                <Bookmark className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-sky-700">
+                <Bookmark className="h-2.5 w-2.5" />
                 Most Saved
               </span>
             )}
             {entry.contentKind === "tutorial" && trustMetrics.helpfulCount >= 3 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-indigo-700">
                 Top Tutorial
               </span>
             )}
             {entryVisibility === "private" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
-                <Lock className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-600">
+                <Lock className="h-2.5 w-2.5" />
                 Private
               </span>
             )}
-            {canManageEntry && (
-              <div className="flex items-center rounded-full border border-slate-200 bg-white p-1">
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(true)}
-                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-                  aria-label="Edit post"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteEntry()}
-                  disabled={isDeleting}
-                  className="rounded-full p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                  aria-label="Delete post"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-          </div>
         </div>
 
         <button
@@ -1218,36 +1326,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             </button>
           </div>
 
-          <div className="flex items-center justify-end gap-3">
-            {shareCopied && (
-              <span className="text-xs font-semibold text-emerald-600">
-                Link ready
-              </span>
-            )}
-            <button
-              onClick={handleSaveToggle}
-              disabled={isUpdatingSave}
-              className={cn(
-                "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors disabled:opacity-60",
-                isSaved
-                  ? "border-sky-200 bg-sky-50 text-sky-700"
-                  : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700",
-              )}
-              aria-label={isSaved ? "Remove saved post" : "Save post"}
-              title={isSaved ? "Saved" : "Save"}
-            >
-              <Bookmark className={cn("h-4 w-4", isSaved && "fill-current")} />
-              {localSaveCount > 0 && <span>{localSaveCount}</span>}
-            </button>
-            <button
-              onClick={() => void handleShare()}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
-              aria-label="Share knowledge"
-              title="Share"
-            >
-              <Share2 className="h-4 w-4" />
-            </button>
-          </div>
+          {shareCopied && (
+            <span className="text-xs font-semibold text-emerald-600">
+              Link ready
+            </span>
+          )}
         </div>
 
         {interactionMessage && (

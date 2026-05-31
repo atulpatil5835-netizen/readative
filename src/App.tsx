@@ -411,7 +411,7 @@ export default function App() {
           onSignOut={handleHeaderSignOut}
         />
 
-        <main className="mx-auto max-w-2xl px-4 pb-28 pt-20">
+        <main className="mx-auto max-w-3xl px-3 pb-28 pt-20 sm:px-4">
           {notificationsError && (
             <BannerNotice
               title="Notifications unavailable"
