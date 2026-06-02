@@ -1,3 +1,9 @@
+import {
+  SEO_CATEGORIES,
+  SEO_TAGS,
+  getBestCategoryForText,
+} from "./seoTaxonomy";
+
 export type KnowledgeContentKind =
   | "insight"
   | "tutorial"
@@ -33,38 +39,12 @@ export const CONTENT_KIND_OPTIONS: Array<{
   { id: "guide", label: "Guide", helper: "A practical reference." },
 ];
 
-export const KNOWLEDGE_CATEGORY_SUGGESTIONS: KnowledgeCategorySuggestion[] = [
-  {
-    id: "ai",
-    label: "AI",
-    keywords: ["ai", "openai", "chatgpt", "claude", "gemini", "llm", "prompt", "machine learning"],
-  },
-  {
-    id: "programming",
-    label: "Programming",
-    keywords: ["react", "next.js", "javascript", "typescript", "python", "api", "code", "developer"],
-  },
-  {
-    id: "cybersecurity",
-    label: "Cybersecurity",
-    keywords: ["security", "privacy", "auth", "password", "risk", "encryption", "cybersecurity"],
-  },
-  {
-    id: "startups",
-    label: "Startups",
-    keywords: ["startup", "founder", "mvp", "launch", "fundraising", "customer"],
-  },
-  {
-    id: "marketing",
-    label: "Marketing",
-    keywords: ["marketing", "growth", "seo", "brand", "campaign", "content", "ads"],
-  },
-  {
-    id: "productivity",
-    label: "Productivity",
-    keywords: ["productivity", "workflow", "automation", "focus", "template", "shortcut"],
-  },
-];
+export const KNOWLEDGE_CATEGORY_SUGGESTIONS: KnowledgeCategorySuggestion[] =
+  SEO_CATEGORIES.map((category) => ({
+    id: category.id,
+    label: category.label,
+    keywords: [...category.keywords, ...category.aliases, ...category.topicSlugs],
+  }));
 
 export function normalizeContentKind(value: unknown): KnowledgeContentKind {
   return CONTENT_KIND_OPTIONS.some((option) => option.id === value)
@@ -85,20 +65,7 @@ export function getKnowledgeText(title: string, content: string) {
 }
 
 export function suggestKnowledgeCategory(title: string, content: string) {
-  const text = getKnowledgeText(title, content);
-
-  return (
-    KNOWLEDGE_CATEGORY_SUGGESTIONS.map((category) => ({
-      category,
-      score: category.keywords.reduce(
-        (total, keyword) => total + (text.includes(keyword) ? 1 : 0),
-        0,
-      ),
-    }))
-      .filter((item) => item.score > 0)
-      .sort((left, right) => right.score - left.score || left.category.label.localeCompare(right.category.label))[0]
-      ?.category || null
-  );
+  return getBestCategoryForText(title, content);
 }
 
 export function suggestKnowledgeTags(title: string, content: string) {
@@ -106,20 +73,11 @@ export function suggestKnowledgeTags(title: string, content: string) {
   const categoryTags = KNOWLEDGE_CATEGORY_SUGGESTIONS.filter((category) =>
     category.keywords.some((keyword) => text.includes(keyword)),
   ).map((category) => category.id);
-  const explicitKeywords = [
-    "openai",
-    "claude",
-    "gemini",
-    "react",
-    "nextjs",
-    "typescript",
-    "python",
-    "seo",
-    "automation",
-    "privacy",
-    "saas",
-    "design",
-  ].filter((keyword) => text.includes(keyword.replace("nextjs", "next")));
+  const explicitKeywords = SEO_TAGS.filter((tag) =>
+    [tag.id, tag.label, ...tag.aliases].some((keyword) =>
+      text.includes(keyword.replace(/-/g, " ").toLowerCase()),
+    ),
+  ).map((tag) => tag.id);
 
   return [...new Set([...categoryTags, ...explicitKeywords])]
     .map((tag) => tag.replace(/\W+/g, "").toLowerCase())

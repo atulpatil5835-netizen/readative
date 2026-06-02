@@ -57,110 +57,36 @@ import {
   normalizeKnowledgeVisibility,
 } from "../utils/knowledgePrivacy";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import {
+  buildAbsoluteRouteUrl,
+  navigateToRoute,
+} from "../utils/routes";
+import {
+  buildBreadcrumbSchema,
+  buildCollectionPageSchema,
+  buildDiscussionForumPostingSchema,
+  buildItemListSchema,
+  buildOrganizationSchema,
+  buildWebSiteSchema,
+} from "../utils/seoSchemas";
+import {
+  SEO_TOPICS,
+  getCategoryBySlug,
+  getRelatedTopicsForCategory,
+  getTopicBySlug,
+  normalizeSeoSlug,
+  type SeoCategoryDefinition,
+  type SeoTopicDefinition,
+} from "../utils/seoTaxonomy";
 
 const EXPLORE_POST_LIMIT = 80;
 const EXPLORE_SMARTTALK_LIMIT = 50;
 const EXPLORE_PROFILE_LIMIT = 80;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const EXPLORE_TOPICS = [
-  {
-    id: "ai",
-    label: "AI",
-    collectionTitle: "AI Starter Pack",
-    keywords: [
-      "ai",
-      "artificial intelligence",
-      "machine learning",
-      "llm",
-      "prompt",
-      "openai",
-      "copilot",
-      "automation",
-    ],
-  },
-  {
-    id: "cybersecurity",
-    label: "Cybersecurity",
-    collectionTitle: "Cybersecurity Essentials",
-    keywords: [
-      "security",
-      "cybersecurity",
-      "privacy",
-      "auth",
-      "authentication",
-      "password",
-      "risk",
-      "encryption",
-    ],
-  },
-  {
-    id: "programming",
-    label: "Programming",
-    collectionTitle: "Programming Basics",
-    keywords: [
-      "programming",
-      "code",
-      "coding",
-      "developer",
-      "javascript",
-      "typescript",
-      "python",
-      "react",
-      "api",
-    ],
-  },
-  {
-    id: "startups",
-    label: "Startups",
-    collectionTitle: "Startup Fundamentals",
-    keywords: [
-      "startup",
-      "founder",
-      "mvp",
-      "launch",
-      "customer",
-      "fundraising",
-      "product market",
-    ],
-  },
-  {
-    id: "marketing",
-    label: "Marketing",
-    collectionTitle: "Marketing Playbook",
-    keywords: [
-      "marketing",
-      "growth",
-      "seo",
-      "brand",
-      "campaign",
-      "content",
-      "newsletter",
-      "ads",
-    ],
-  },
-  {
-    id: "productivity",
-    label: "Productivity",
-    collectionTitle: "Productivity Systems",
-    keywords: [
-      "productivity",
-      "workflow",
-      "automation",
-      "focus",
-      "template",
-      "shortcut",
-      "notion",
-    ],
-  },
-] as const;
+const EXPLORE_TOPICS = SEO_TOPICS;
 
-type ExploreTopic = (typeof EXPLORE_TOPICS)[number] | {
-  id: string;
-  label: string;
-  collectionTitle: string;
-  keywords: readonly string[];
-};
+type ExploreTopic = SeoTopicDefinition;
 
 interface ExploreQuestion {
   id: string;
@@ -231,13 +157,7 @@ function normalizeStringArray(value: unknown) {
 }
 
 function normalizeTopicSlug(value: string | null | undefined) {
-  const normalized = value
-    ?.replace(/^#/, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
+  const normalized = normalizeSeoSlug(value);
   return normalized && normalized !== "all" ? normalized : null;
 }
 
@@ -253,8 +173,23 @@ function getTopicDefinition(topicId: string | null): ExploreTopic | null {
   const normalized = normalizeTopicSlug(topicId);
   if (!normalized) return null;
 
-  const knownTopic = EXPLORE_TOPICS.find((topic) => topic.id === normalized);
+  const knownTopic = getTopicBySlug(normalized);
   if (knownTopic) return knownTopic;
+
+  const category = getCategoryBySlug(normalized);
+  if (category) {
+    return {
+      id: category.id,
+      label: category.label,
+      categoryId: category.id,
+      path: `/topic/${category.id}`,
+      collectionTitle: `${category.label} Essentials`,
+      description: category.description,
+      keywords: category.keywords,
+      tagSlugs: category.tagSlugs,
+      aliases: category.aliases,
+    };
+  }
 
   const label = titleCaseTopic(normalized);
   const phrase = normalized.replace(/-/g, " ");
@@ -262,9 +197,94 @@ function getTopicDefinition(topicId: string | null): ExploreTopic | null {
   return {
     id: normalized,
     label,
+    categoryId: "technology",
+    path: `/topic/${normalized}`,
     collectionTitle: `${label} Essentials`,
+    description: `Readative posts, discussions, contributors, and resources about ${label}.`,
     keywords: [normalized, phrase],
+    tagSlugs: [],
+    aliases: [],
   };
+}
+
+function summarizeSchemaText(value: string, maxLength = 160) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
+}
+
+function buildExploreSchemas({
+  activeTopic,
+  category,
+  pageUrl,
+  pageDescription,
+  topPosts,
+  activeDiscussions,
+}: {
+  activeTopic: ExploreTopic | null;
+  category: SeoCategoryDefinition | null;
+  pageUrl: string;
+  pageDescription: string;
+  topPosts: KnowledgeEntry[];
+  activeDiscussions: ExploreQuestion[];
+}) {
+  const collectionName = activeTopic
+    ? `${activeTopic.label} Topic`
+    : "Readative Explore";
+  const itemList = buildItemListSchema({
+    name: `${collectionName} Highlights`,
+    url: pageUrl,
+    items: [
+      ...topPosts.slice(0, 5).map((entry) => ({
+        name: entry.title,
+        url: buildAbsoluteRouteUrl("knowledge", { focusedEntryId: entry.id }),
+        description: entry.excerpt || summarizeSchemaText(entry.content),
+      })),
+      ...activeDiscussions.slice(0, 5).map((question) => ({
+        name: summarizeSchemaText(question.content, 90),
+        url: "/smarttalk",
+        description: `${question.answers.length} SmartTalk answer${
+          question.answers.length === 1 ? "" : "s"
+        }`,
+      })),
+    ],
+  });
+  const schemas = [
+    buildOrganizationSchema(),
+    buildWebSiteSchema(),
+    buildCollectionPageSchema({
+      name: collectionName,
+      url: pageUrl,
+      description: pageDescription,
+      about: activeTopic
+        ? [activeTopic.label, category?.label || "", ...activeTopic.keywords].filter(
+            (value): value is string => Boolean(value),
+          )
+        : "Technology topics, SmartTalk discussions, helpful posts, and contributors",
+      itemList,
+    }),
+    buildBreadcrumbSchema([
+      { name: "Home", url: "/" },
+      { name: "Explore", url: "/explore" },
+      ...(activeTopic ? [{ name: activeTopic.label, url: activeTopic.path }] : []),
+    ]),
+  ];
+
+  return [
+    ...schemas,
+    ...activeDiscussions.slice(0, 5).map((question) =>
+      buildDiscussionForumPostingSchema({
+        headline: summarizeSchemaText(question.content, 90),
+        text: question.content,
+        url: "/smarttalk",
+        authorName: question.author,
+        datePublished: new Date(question.createdAt).toISOString(),
+        answerCount: question.answers.length,
+        keywords: activeTopic ? [activeTopic.label, ...activeTopic.keywords] : [],
+      }),
+    ),
+  ];
 }
 
 function hydrateExploreComments(value: unknown): KnowledgeComment[] {
@@ -457,18 +477,59 @@ function getQuestionTopicText(question: ExploreQuestion) {
     .toLowerCase();
 }
 
-function matchesTopicText(text: string, topic: Pick<ExploreTopic, "keywords" | "id">) {
-  return topic.keywords.some((keyword) => text.includes(keyword));
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function includesTopicKeyword(text: string, keyword: string) {
+  const normalizedKeyword = keyword.toLowerCase().trim();
+  if (!normalizedKeyword) return false;
+
+  if (/^[a-z0-9+#]{1,3}$/.test(normalizedKeyword)) {
+    return new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedKeyword)}([^a-z0-9]|$)`).test(
+      text,
+    );
+  }
+
+  return text.includes(normalizedKeyword);
+}
+
+function getExploreTopicMatchValues(topic: ExploreTopic) {
+  return [
+    topic.id,
+    topic.label,
+    ...topic.aliases,
+    ...topic.keywords,
+    ...topic.tagSlugs,
+  ].map((value) => value.toLowerCase());
+}
+
+function matchesTopicText(text: string, topic: ExploreTopic) {
+  const normalizedText = text.toLowerCase();
+  return getExploreTopicMatchValues(topic).some((keyword) =>
+    includesTopicKeyword(normalizedText, keyword),
+  );
 }
 
 function matchesTopicEntry(entry: KnowledgeEntry, topic: ExploreTopic) {
   const hashtagMatch = entry.hashtags.some(
-    (tag) =>
-      normalizeTopicSlug(tag) === topic.id ||
-      topic.keywords.some((keyword) => keyword === tag.toLowerCase()),
-  );
+    (tag) => {
+      const normalizedTag = normalizeTopicSlug(tag);
+      if (!normalizedTag) return false;
 
-  return hashtagMatch || matchesTopicText(getEntryTopicText(entry), topic);
+      return (
+        normalizedTag === topic.id ||
+        getExploreTopicMatchValues(topic).some(
+          (keyword) => normalizeTopicSlug(keyword) === normalizedTag,
+        )
+      );
+    },
+  );
+  const categoryMatch =
+    topic.id === topic.categoryId &&
+    getCategoryBySlug(entry.category)?.id === topic.categoryId;
+
+  return categoryMatch || hashtagMatch || matchesTopicText(getEntryTopicText(entry), topic);
 }
 
 function matchesTopicQuestion(question: ExploreQuestion, topic: ExploreTopic) {
@@ -750,6 +811,19 @@ export function Explore({
   const activeTopic = useMemo(
     () => getTopicDefinition(selectedTopic),
     [selectedTopic],
+  );
+  const activeTopicCategory = useMemo(
+    () => (activeTopic ? getCategoryBySlug(activeTopic.categoryId) : null),
+    [activeTopic],
+  );
+  const relatedTopics = useMemo(
+    () =>
+      activeTopicCategory && activeTopic
+        ? getRelatedTopicsForCategory(activeTopicCategory.id)
+            .filter((topic) => topic.id !== activeTopic.id)
+            .slice(0, 5)
+        : [],
+    [activeTopic, activeTopicCategory],
   );
   const now = useMemo(() => Date.now(), [entries, questions]);
   const searchTerms = useMemo(
@@ -1039,14 +1113,23 @@ export function Explore({
     ? `${activeTopic.label} Topic | Readative`
     : "Explore | Readative";
   const pageDescription = activeTopic
-    ? `Explore ${activeTopic.label} posts, SmartTalk discussions, contributors, and learning collections on Readative.`
+    ? activeTopic.description
     : "Explore trending technology topics, active SmartTalk discussions, helpful posts, and top contributors on Readative.";
+  const pageUrl = activeTopic
+    ? buildAbsoluteRouteUrl("explore", { selectedTopic: activeTopic.id })
+    : buildAbsoluteRouteUrl("explore");
+  const shouldNoIndexExplorePage =
+    Boolean(activeTopic) &&
+    !isLoading &&
+    scopedEntries.length === 0 &&
+    scopedQuestions.length === 0;
 
   return (
     <div className="space-y-5 pb-20">
       <SEO
         title={pageTitle}
         description={pageDescription}
+        url={pageUrl}
         keywords={[
           "technology topics",
           "SmartTalk",
@@ -1054,6 +1137,15 @@ export function Explore({
           "contributors",
           ...(activeTopic ? [activeTopic.label] : []),
         ]}
+        robots={shouldNoIndexExplorePage ? "noindex" : "index"}
+        schema={buildExploreSchemas({
+          activeTopic,
+          category: activeTopicCategory,
+          pageUrl,
+          pageDescription,
+          topPosts,
+          activeDiscussions,
+        })}
       />
 
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
@@ -1088,6 +1180,18 @@ export function Explore({
           </div>
         </div>
       </div>
+
+      {activeTopic && activeTopicCategory && (
+        <TopicKnowledgeBrief
+          topic={activeTopic}
+          category={activeTopicCategory}
+          relatedTopics={relatedTopics}
+          onOpenTopic={onOpenTopic}
+          onOpenCategory={(categoryId) =>
+            navigateToRoute("knowledge", { selectedTopic: categoryId })
+          }
+        />
+      )}
 
       <DiscoverySearch
         theme="emerald"
@@ -1319,6 +1423,112 @@ function DailyPulse({
         ))}
       </div>
     </section>
+  );
+}
+
+function TopicKnowledgeBrief({
+  topic,
+  category,
+  relatedTopics,
+  onOpenTopic,
+  onOpenCategory,
+}: {
+  topic: ExploreTopic;
+  category: SeoCategoryDefinition;
+  relatedTopics: SeoTopicDefinition[];
+  onOpenTopic: (topicId: string | null) => void;
+  onOpenCategory: (categoryId: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-600">
+            Topic
+          </p>
+          <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+            {topic.label}
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            {topic.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenCategory(category.id)}
+          className="w-fit rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          {category.label}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <TopicBriefText label="What" value={topic.description} />
+        <TopicBriefText label="Why" value={category.why} />
+        <TopicBriefText label="Who" value={category.who} />
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Benefits
+          </p>
+          <ul className="mt-1 space-y-1.5 text-slate-600">
+            {category.benefits.map((benefit) => (
+              <li key={benefit} className="leading-5">
+                {benefit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Examples
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[topic.label, ...category.examples].slice(0, 6).map((example) => (
+              <span
+                key={example}
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600"
+              >
+                {example}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {relatedTopics.length > 0 && (
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Related Topics
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {relatedTopics.map((relatedTopic) => (
+                <button
+                  key={relatedTopic.id}
+                  type="button"
+                  onClick={() => onOpenTopic(relatedTopic.id)}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {relatedTopic.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TopicBriefText({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 leading-5 text-slate-600">{value}</p>
+    </div>
   );
 }
 

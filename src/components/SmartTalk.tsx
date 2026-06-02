@@ -49,6 +49,18 @@ import {
   normalizeSmartTalkDifficulty,
   suggestKnowledgeCategory,
 } from "../utils/contentIntelligence";
+import {
+  buildBreadcrumbSchema,
+  buildCollectionPageSchema,
+  buildDiscussionForumPostingSchema,
+  buildItemListSchema,
+  buildOrganizationSchema,
+  buildWebSiteSchema,
+} from "../utils/seoSchemas";
+import {
+  SEO_CATEGORIES,
+  getCategoryBySlug,
+} from "../utils/seoTaxonomy";
 
 const SMART_TALK_REALTIME_LIMIT = 50;
 
@@ -228,6 +240,65 @@ function normalizeSmartTalkQuestion(
     savedBy: saveMetrics.savedBy,
     saveCount: saveMetrics.saveCount,
   };
+}
+
+function summarizeSmartTalkText(value: string, maxLength = 160) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
+}
+
+function getSmartTalkCategoryLabel(category: string | null | undefined) {
+  if (!category) return null;
+
+  return getCategoryBySlug(category)?.label || category;
+}
+
+function buildSmartTalkSchemas(questions: Question[]) {
+  const pageUrl = "/smarttalk";
+  const itemList = buildItemListSchema({
+    name: "SmartTalk Discussion List",
+    url: pageUrl,
+    items: questions.slice(0, 10).map((question) => ({
+      name: summarizeSmartTalkText(question.content, 90),
+      url: pageUrl,
+      description: `${question.answers.length} answer${
+        question.answers.length === 1 ? "" : "s"
+      }`,
+    })),
+  });
+
+  return [
+    buildOrganizationSchema(),
+    buildWebSiteSchema(),
+    buildCollectionPageSchema({
+      name: "SmartTalk",
+      url: pageUrl,
+      description:
+        "SmartTalk is Readative's discussion space for knowledge questions, practical answers, and topic-focused learning conversations.",
+      about: SEO_CATEGORIES.map((category) => category.label),
+      itemList,
+    }),
+    buildBreadcrumbSchema([
+      { name: "Home", url: "/" },
+      { name: "SmartTalk", url: pageUrl },
+    ]),
+    ...questions.slice(0, 10).map((question) =>
+      buildDiscussionForumPostingSchema({
+        headline: summarizeSmartTalkText(question.content, 90),
+        text: question.content,
+        url: pageUrl,
+        authorName: question.author,
+        datePublished: new Date(question.createdAt).toISOString(),
+        answerCount: question.answers.length,
+        keywords: [
+          getSmartTalkCategoryLabel(question.category) || "SmartTalk",
+          question.difficulty || "",
+        ].filter((value): value is string => Boolean(value)),
+      }),
+    ),
+  ];
 }
 
 function serializeSmartTalkAnswer(answer: Answer) {
@@ -853,6 +924,7 @@ export function SmartTalk({
         title="SmartTalk - Q&A Community | Readative"
         description="Ask learning-focused questions and get thoughtful community answers on Readative."
         robots={!isLoading && questions.length === 0 ? "noindex" : "index"}
+        schema={buildSmartTalkSchemas(questions)}
         keywords={[
           "Q&A",
           "learning questions",
@@ -880,6 +952,8 @@ export function SmartTalk({
           </div>
         </div>
       </div>
+
+      <SmartTalkKnowledgeBrief />
 
       <DiscoverySearch
         theme="indigo"
@@ -994,7 +1068,7 @@ export function SmartTalk({
                       </span>
                       {question.category && (
                         <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-indigo-700">
-                          {question.category}
+                          {getSmartTalkCategoryLabel(question.category)}
                         </span>
                       )}
                       {question.difficulty && (
@@ -1334,6 +1408,32 @@ function SmartTalkDiscoveryBlock({
               {item.meta}
             </p>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SmartTalkKnowledgeBrief() {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">
+        Discussion Knowledge
+      </p>
+      <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+        Questions, answers, and topic discussions
+      </h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+        SmartTalk organizes practical questions and community answers around Readative's permanent knowledge pillars.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {SEO_CATEGORIES.map((category) => (
+          <span
+            key={category.id}
+            className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"
+          >
+            {category.label}
+          </span>
         ))}
       </div>
     </section>

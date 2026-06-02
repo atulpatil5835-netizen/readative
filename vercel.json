@@ -16,9 +16,20 @@
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
     { "source": "/api/posts/:id/comments", "destination": "/api/posts?id=:id&action=comments" },
     { "source": "/api/posts/:id", "destination": "/api/posts?id=:id" },
+    { "source": "/knowledge", "destination": "/index.html" },
+    { "source": "/knowledge/:path*", "destination": "/index.html" },
+    { "source": "/post", "destination": "/index.html" },
+    { "source": "/post/:path*", "destination": "/index.html" },
+    { "source": "/profile", "destination": "/index.html" },
+    { "source": "/profile/:path*", "destination": "/index.html" },
+    { "source": "/smarttalk", "destination": "/index.html" },
     { "source": "/explore", "destination": "/index.html" },
     { "source": "/explore/:path*", "destination": "/index.html" },
+    { "source": "/category", "destination": "/index.html" },
+    { "source": "/category/:path*", "destination": "/index.html" },
     { "source": "/topic", "destination": "/index.html" },
-    { "source": "/topic/:path*", "destination": "/index.html" }
+    { "source": "/topic/:path*", "destination": "/index.html" },
+    { "source": "/tag", "destination": "/index.html" },
+    { "source": "/tag/:path*", "destination": "/index.html" }
   ]
 }

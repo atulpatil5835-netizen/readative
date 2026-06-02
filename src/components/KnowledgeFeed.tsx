@@ -14,7 +14,9 @@ import {
   ArrowUp,
   BookOpenText,
   Bot,
+  Briefcase,
   Code2,
+  Cpu,
   Flame,
   Globe2,
   ImagePlus,
@@ -24,6 +26,7 @@ import {
   RefreshCw,
   Rocket,
   Send,
+  ShieldCheck,
   Sparkles,
   Smartphone,
   Tag,
@@ -115,6 +118,24 @@ import {
   suggestKnowledgeTags,
 } from "../utils/contentIntelligence";
 import { getSaveMetrics } from "../utils/bookmarks";
+import {
+  buildArticleSchema,
+  buildBreadcrumbSchema,
+  buildCollectionPageSchema,
+  buildItemListSchema,
+  buildOrganizationSchema,
+  buildWebSiteSchema,
+} from "../utils/seoSchemas";
+import {
+  SEO_CATEGORIES,
+  getCategoryBySlug,
+  getRelatedTopicsForCategory,
+  getTopicMatchValues,
+  normalizeSeoSlug,
+  type SeoCategoryDefinition,
+  type SeoCategoryId,
+  type SeoTopicDefinition,
+} from "../utils/seoTaxonomy";
 
 type PendingAction =
   | { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }
@@ -146,21 +167,14 @@ const FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT = 30;
 type FeedTopicId =
   | "all"
   | "trending"
-  | "ai"
-  | "apps"
-  | "productivity"
-  | "marketing"
-  | "software"
-  | "tools"
-  | "startups"
-  | "design"
-  | "learning";
+  | SeoCategoryId;
 
 interface FeedTopicFilter {
   id: FeedTopicId;
   label: string;
   icon: ComponentType<{ className?: string }>;
   keywords: string[];
+  category?: SeoCategoryDefinition;
 }
 
 function ReadativeTopicIcon({ className = "" }: { className?: string }) {
@@ -170,6 +184,27 @@ function ReadativeTopicIcon({ className = "" }: { className?: string }) {
     />
   );
 }
+
+const CATEGORY_ICON_BY_ID: Record<SeoCategoryId, ComponentType<{ className?: string }>> = {
+  ai: Bot,
+  technology: Cpu,
+  business: Briefcase,
+  marketing: Megaphone,
+  startup: Rocket,
+  productivity: Zap,
+  development: Code2,
+  cybersecurity: ShieldCheck,
+};
+
+const LEGACY_FEED_TOPIC_ALIASES: Record<string, SeoCategoryId> = {
+  apps: "technology",
+  tools: "technology",
+  design: "technology",
+  learning: "productivity",
+  programming: "development",
+  software: "development",
+  startups: "startup",
+};
 
 const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
   {
@@ -184,182 +219,19 @@ const FEED_TOPIC_FILTERS: FeedTopicFilter[] = [
     icon: Flame,
     keywords: [],
   },
-  {
-    id: "ai",
-    label: "AI",
-    icon: Bot,
+  ...SEO_CATEGORIES.map((category) => ({
+    id: category.id,
+    label: category.label,
+    icon: CATEGORY_ICON_BY_ID[category.id],
     keywords: [
-      "ai",
-      "artificial intelligence",
-      "chatgpt",
-      "openai",
-      "prompt",
-      "llm",
-      "generative ai",
-      "ai automation",
-      "ai tools",
-      "aitools",
-      "free ai",
-      "freeai",
-      "machine learning",
-      "claude",
-      "copilot",
+      ...category.keywords,
+      ...category.aliases,
+      ...category.examples,
+      ...category.topicSlugs,
+      ...getRelatedTopicsForCategory(category.id, 12).flatMap(getTopicMatchValues),
     ],
-  },
-  {
-    id: "apps",
-    label: "Apps",
-    icon: Smartphone,
-    keywords: [
-      "app",
-      "apps",
-      "application",
-      "mobile",
-      "ios",
-      "android",
-      "extension",
-      "saas",
-      "web app",
-    ],
-  },
-  {
-    id: "productivity",
-    label: "Productivity",
-    icon: Zap,
-    keywords: [
-      "productivity",
-      "workflow",
-      "time",
-      "focus",
-      "habit",
-      "automation",
-      "shortcut",
-      "notion",
-      "calendar",
-      "template",
-    ],
-  },
-  {
-    id: "marketing",
-    label: "Marketing",
-    icon: Megaphone,
-    keywords: [
-      "marketing",
-      "market",
-      "markettech",
-      "marketnews",
-      "digitalmarketing",
-      "socialmediamarketing",
-      "contentmarketing",
-      "emailmarketing",
-      "performancemarketing",
-      "growthmarketing",
-      "brandmarketing",
-      "growth",
-      "seo",
-      "ads",
-      "advertising",
-      "content",
-      "brand",
-      "growth hacking",
-      "growthhacking",
-      "newsletter",
-      "copywriting",
-      "campaign",
-      "social media",
-      "sales",
-    ],
-  },
-  {
-    id: "software",
-    label: "Software",
-    icon: Code2,
-    keywords: [
-      "software",
-      "coding",
-      "code",
-      "developer",
-      "programming",
-      "web",
-      "api",
-      "react",
-      "typescript",
-      "javascript",
-      "python",
-      "github",
-    ],
-  },
-  {
-    id: "tools",
-    label: "Tools",
-    icon: Wrench,
-    keywords: [
-      "tool",
-      "tools",
-      "resource",
-      "template",
-      "browser",
-      "chrome",
-      "extension",
-      "free tools",
-      "freetools",
-      "tech tips",
-      "techtips",
-      "tech hacks",
-      "techhacks",
-      "platform",
-    ],
-  },
-  {
-    id: "startups",
-    label: "Startups",
-    icon: Rocket,
-    keywords: [
-      "startup",
-      "founder",
-      "business",
-      "idea",
-      "launch",
-      "build",
-      "mvp",
-      "fundraising",
-      "customer",
-    ],
-  },
-  {
-    id: "design",
-    label: "Design",
-    icon: Palette,
-    keywords: [
-      "design",
-      "ui",
-      "ux",
-      "visual",
-      "creative",
-      "brand",
-      "figma",
-      "prototype",
-      "interface",
-      "photo editing",
-      "photoediting",
-    ],
-  },
-  {
-    id: "learning",
-    label: "Learning",
-    icon: BookOpenText,
-    keywords: [
-      "learning",
-      "study",
-      "education",
-      "guide",
-      "notes",
-      "course",
-      "tutorial",
-      "lesson",
-      "research",
-    ],
-  },
+    category,
+  })),
 ];
 
 interface SelectedImage extends KnowledgeImageAsset {
@@ -467,10 +339,14 @@ function readSelectedHashtagFromLocation() {
 }
 
 function normalizeFeedTopicId(value: string | null | undefined): FeedTopicId {
-  return (
-    FEED_TOPIC_FILTERS.find((topic) => topic.id === value)?.id ||
-    "all"
-  );
+  const normalized = normalizeSeoSlug(value);
+  if (!normalized) return "all";
+  if (normalized === "all" || normalized === "trending") return normalized;
+
+  const category = getCategoryBySlug(normalized);
+  if (category) return category.id;
+
+  return LEGACY_FEED_TOPIC_ALIASES[normalized] || "all";
 }
 
 function readSelectedFeedTopicFromLocation() {
@@ -662,44 +538,100 @@ function getKnowledgeEntryLikeCount(
   return Math.max((entry.likes || []).length, storedLikeCount);
 }
 
-function buildKnowledgeSchemas(entry: KnowledgeEntry | null) {
-  const baseUrl = buildAbsoluteRouteUrl("knowledge");
-  const primaryImage = entry ? getKnowledgeEntryImages(entry)[0] : null;
-
-  const collectionSchema = {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    name: "Readative Knowledge Feed",
-    url: baseUrl,
-    description:
-      "Readative's knowledge feed helps people discover practical insights, visual explainers, AI tools, study notes, and SmartTalk ideas from creators.",
-  };
+function buildKnowledgeSchemas({
+  entry,
+  activeTopic,
+  selectedHashtag,
+  entries,
+  pageUrl,
+}: {
+  entry: KnowledgeEntry | null;
+  activeTopic: FeedTopicFilter;
+  selectedHashtag: string | null;
+  entries: KnowledgeEntry[];
+  pageUrl: string;
+}) {
+  const category = activeTopic.category;
+  const collectionName = entry
+    ? "Readative Knowledge Feed"
+    : selectedHashtag
+      ? `#${selectedHashtag} Posts`
+      : category
+        ? `${category.label} Knowledge Posts`
+        : activeTopic.id === "trending"
+          ? "Trending Knowledge Posts"
+          : "Readative Knowledge Feed";
+  const collectionDescription = category
+    ? category.description
+    : selectedHashtag
+      ? `Readative posts tagged #${selectedHashtag}.`
+      : "Readative's knowledge feed helps people discover practical insights, visual explainers, AI tools, study notes, SmartTalk ideas, and creator expertise.";
+  const itemList = buildItemListSchema({
+    name: `${collectionName} List`,
+    url: pageUrl,
+    items: entries.slice(0, 10).map((listEntry) => ({
+      name: listEntry.title,
+      url: buildAbsoluteRouteUrl("knowledge", {
+        focusedEntryId: listEntry.id,
+      }),
+      description: createExcerpt(listEntry.content),
+    })),
+  });
+  const collectionSchema = buildCollectionPageSchema({
+    name: collectionName,
+    url: pageUrl,
+    description: collectionDescription,
+    about: category ? [category.label, ...category.examples] : selectedHashtag || "Knowledge",
+    itemList,
+  });
+  const breadcrumbItems = [
+    { name: "Home", url: "/" },
+    ...(category && !entry ? [{ name: category.label, url: category.path }] : []),
+    ...(selectedHashtag && !entry
+      ? [{ name: `#${selectedHashtag}`, url: `/tag/${selectedHashtag}` }]
+      : []),
+    ...(entry
+      ? [
+          {
+            name: entry.title,
+            url: buildAbsoluteRouteUrl("knowledge", {
+              focusedEntryId: entry.id,
+            }),
+          },
+        ]
+      : []),
+  ];
+  const baseSchemas = [
+    buildOrganizationSchema(),
+    buildWebSiteSchema(),
+    collectionSchema,
+    buildBreadcrumbSchema(breadcrumbItems),
+  ];
 
   if (!entry) {
-    return collectionSchema;
+    return baseSchemas;
   }
 
+  const primaryImage = getKnowledgeEntryImages(entry)[0] || null;
+
   return [
-    collectionSchema,
-    {
-      "@context": "https://schema.org",
-      "@type": "Article",
+    ...baseSchemas,
+    buildArticleSchema({
       headline: entry.title,
       description: createExcerpt(entry.content),
-      author: {
-        "@type": "Person",
-        name: `@${entry.author}`,
-      },
+      authorName: `@${entry.author}`,
       datePublished: new Date(entry.createdAt).toISOString(),
-      keywords: entry.hashtags.join(", "),
-      mainEntityOfPage: buildAbsoluteRouteUrl("knowledge", {
+      dateModified: entry.updatedAt ? new Date(entry.updatedAt).toISOString() : undefined,
+      keywords: entry.hashtags,
+      section: category?.label || entry.category || undefined,
+      url: buildAbsoluteRouteUrl("knowledge", {
         focusedEntryId: entry.id,
       }),
       image:
         primaryImage?.dataUrl && !primaryImage.dataUrl.startsWith("data:")
-          ? [primaryImage.dataUrl]
+          ? primaryImage.dataUrl
           : undefined,
-    },
+    }),
   ];
 }
 
@@ -2577,6 +2509,11 @@ export function KnowledgeFeed({
   const activeFeedTopic =
     FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
     FEED_TOPIC_FILTERS[0];
+  const activeCategory = activeFeedTopic.category || null;
+  const activeCategoryTopics = useMemo(
+    () => (activeCategory ? getRelatedTopicsForCategory(activeCategory.id) : []),
+    [activeCategory],
+  );
   const normalizedSelectedHashtag = selectedHashtag
     ? normalizeStoredHashtagValue(selectedHashtag)
     : null;
@@ -3609,15 +3546,19 @@ export function KnowledgeFeed({
     ? `${focusedEntry.title} | Readative`
     : selectedHashtag
       ? `#${selectedHashtag} posts | Readative`
-      : activeFeedTopic.id !== "all"
-        ? `${activeFeedTopic.label} posts | Readative`
+      : activeCategory
+        ? `${activeCategory.label} Knowledge Posts | Readative`
+        : activeFeedTopic.id !== "all"
+          ? `${activeFeedTopic.label} posts | Readative`
         : "Home Feed | Readative";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
       ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
-      : activeFeedTopic.id !== "all"
-        ? `Explore ${activeFeedTopic.label.toLowerCase()} knowledge posts on Readative.`
+      : activeCategory
+        ? activeCategory.description
+        : activeFeedTopic.id !== "all"
+          ? `Explore ${activeFeedTopic.label.toLowerCase()} knowledge posts on Readative.`
         : "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
   const pageUrl = focusedEntry
     ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
@@ -3634,6 +3575,7 @@ export function KnowledgeFeed({
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
   const shouldNoIndexKnowledgePage =
+    Boolean(selectedHashtag) ||
     !shouldShowInitialFeedSkeleton &&
     !shouldShowFeedErrorState &&
     !shouldHoldEmptyFeedState &&
@@ -3642,28 +3584,43 @@ export function KnowledgeFeed({
 
   return (
     <div className="pb-20">
-      <SEO
-        title={pageTitle}
-        description={pageDescription}
-        keywords={[
-          "homepage",
-          "knowledge posts",
-          "learning feed",
-          "readative",
-          ...(selectedHashtag ? [selectedHashtag] : []),
-        ]}
-        type={focusedEntry ? "article" : "website"}
-        url={pageUrl}
-        ampUrl={isActive && !focusedEntry && !selectedHashtag ? "/amp/" : undefined}
-        schema={buildKnowledgeSchemas(focusedEntry)}
-        robots={shouldNoIndexKnowledgePage ? "noindex" : "index"}
-        image={
-          focusedEntryPrimaryImage?.dataUrl &&
-          !focusedEntryPrimaryImage.dataUrl.startsWith("data:")
-            ? focusedEntryPrimaryImage.dataUrl
-            : undefined
-        }
-      />
+      {isActive && (
+        <SEO
+          title={pageTitle}
+          description={pageDescription}
+          keywords={[
+            "homepage",
+            "knowledge posts",
+            "learning feed",
+            "readative",
+            ...(selectedHashtag ? [selectedHashtag] : []),
+            ...(activeCategory
+              ? [activeCategory.label, ...activeCategory.examples, ...activeCategory.tagSlugs]
+              : []),
+          ]}
+          type={focusedEntry ? "article" : "website"}
+          url={pageUrl}
+          ampUrl={
+            !focusedEntry && !selectedHashtag && activeFeedTopic.id === "all"
+              ? "/amp/"
+              : undefined
+          }
+          schema={buildKnowledgeSchemas({
+            entry: focusedEntry,
+            activeTopic: activeFeedTopic,
+            selectedHashtag: normalizedSelectedHashtag,
+            entries: filteredEntries,
+            pageUrl,
+          })}
+          robots={shouldNoIndexKnowledgePage ? "noindex" : "index"}
+          image={
+            focusedEntryPrimaryImage?.dataUrl &&
+            !focusedEntryPrimaryImage.dataUrl.startsWith("data:")
+              ? focusedEntryPrimaryImage.dataUrl
+              : undefined
+          }
+        />
+      )}
 
       {shouldShowInitialFeedSkeleton ? (
         <KnowledgeFeedSkeleton showControls={false} />
@@ -3700,6 +3657,16 @@ export function KnowledgeFeed({
               onClear={() => setFeedSearchQuery("")}
               ariaLabel="Search home feed"
             />
+
+            {activeCategory && !focusedEntry && !selectedHashtag && (
+              <CategoryKnowledgeBrief
+                category={activeCategory}
+                topics={activeCategoryTopics}
+                onOpenTopic={(topicId) =>
+                  navigateToRoute("explore", { selectedTopic: topicId })
+                }
+              />
+            )}
 
             <div
               className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -4416,6 +4383,104 @@ function FeedNotice({ title, body }: { title: string; body: string }) {
     <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
       <p className="font-bold">{title}</p>
       <p className="mt-1 leading-6">{body}</p>
+    </div>
+  );
+}
+
+function CategoryKnowledgeBrief({
+  category,
+  topics,
+  onOpenTopic,
+}: {
+  category: SeoCategoryDefinition;
+  topics: SeoTopicDefinition[];
+  onOpenTopic: (topicId: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">
+            Category
+          </p>
+          <h1 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+            {category.label}
+          </h1>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            {category.description}
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
+          Permanent pillar
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <BriefText label="What" value={category.what} />
+        <BriefText label="Why" value={category.why} />
+        <BriefText label="Who" value={category.who} />
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Benefits
+          </p>
+          <ul className="mt-1 space-y-1.5 text-slate-600">
+            {category.benefits.map((benefit) => (
+              <li key={benefit} className="leading-5">
+                {benefit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Examples
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {category.examples.map((example) => (
+              <span
+                key={example}
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600"
+              >
+                {example}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {topics.length > 0 && (
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Related Topics
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {topics.map((topicDefinition) => (
+                <button
+                  key={topicDefinition.id}
+                  type="button"
+                  onClick={() => onOpenTopic(topicDefinition.id)}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {topicDefinition.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BriefText({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 leading-5 text-slate-600">{value}</p>
     </div>
   );
 }

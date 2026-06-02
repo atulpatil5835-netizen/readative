@@ -41,14 +41,59 @@ function normalizeTag(tag: string | null | undefined) {
   return normalized || null;
 }
 
-function normalizeTopic(topic: string | null | undefined) {
-  const normalized = topic
+const ROUTE_CATEGORY_ALIASES: Record<string, string> = {
+  ai: "ai",
+  "artificial-intelligence": "ai",
+  technology: "technology",
+  tech: "technology",
+  apps: "technology",
+  tools: "technology",
+  business: "business",
+  strategy: "business",
+  marketing: "marketing",
+  "digital-marketing": "marketing",
+  startup: "startup",
+  startups: "startup",
+  founders: "startup",
+  productivity: "productivity",
+  workflow: "productivity",
+  development: "development",
+  programming: "development",
+  coding: "development",
+  software: "development",
+  cybersecurity: "cybersecurity",
+  security: "cybersecurity",
+  privacy: "cybersecurity",
+};
+
+function normalizeRouteSlug(value: string | null | undefined) {
+  const normalized = value
     ?.replace(/^#/, "")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/&/g, " and ")
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
+  return normalized || null;
+}
+
+function normalizeCategorySlug(value: string | null | undefined) {
+  const normalized = normalizeRouteSlug(value);
+  return normalized ? ROUTE_CATEGORY_ALIASES[normalized] || null : null;
+}
+
+function normalizeTopic(topic: string | null | undefined) {
+  const normalized = normalizeRouteSlug(topic);
   return normalized && normalized !== "all" ? normalized : null;
+}
+
+function normalizeKnowledgeTopic(topic: string | null | undefined) {
+  const category = normalizeCategorySlug(topic);
+  if (category) return category;
+
+  return normalizeTopic(topic);
 }
 
 function getKnowledgeSearchOptions(search: string) {
@@ -56,7 +101,7 @@ function getKnowledgeSearchOptions(search: string) {
 
   return {
     selectedHashtag: normalizeTag(params.get("tag")),
-    selectedTopic: normalizeTopic(params.get("topic")),
+    selectedTopic: normalizeKnowledgeTopic(params.get("topic")),
   };
 }
 
@@ -152,6 +197,71 @@ function parseTopicRoute(
   });
 }
 
+function parseCategoryRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  const categoryPrefix = source === "hash" ? "category/" : "/category/";
+
+  if (!routePart.startsWith(categoryPrefix)) {
+    return null;
+  }
+
+  const selectedTopic = normalizeCategorySlug(
+    safeDecode(routePart.slice(categoryPrefix.length)),
+  );
+  if (!selectedTopic) {
+    return createRoute("notFound", source, attemptedLocation);
+  }
+
+  return createRoute("knowledge", source, attemptedLocation, {
+    selectedTopic,
+  });
+}
+
+function parseTagRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  const tagPrefix = source === "hash" ? "tag/" : "/tag/";
+
+  if (!routePart.startsWith(tagPrefix)) {
+    return null;
+  }
+
+  const selectedHashtag = normalizeRouteSlug(safeDecode(routePart.slice(tagPrefix.length)));
+  if (!selectedHashtag) {
+    return createRoute("notFound", source, attemptedLocation);
+  }
+
+  return createRoute("knowledge", source, attemptedLocation, {
+    selectedHashtag,
+  });
+}
+
+function parsePostRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  const postPrefix = source === "hash" ? "post/" : "/post/";
+
+  if (!routePart.startsWith(postPrefix)) {
+    return null;
+  }
+
+  const focusedEntryId = safeDecode(routePart.slice(postPrefix.length));
+  if (!focusedEntryId) {
+    return createRoute("notFound", source, attemptedLocation);
+  }
+
+  return createRoute("knowledge", source, attemptedLocation, {
+    focusedEntryId,
+  });
+}
+
 function parseHashRoute(hash: string) {
   const cleanedHash = hash.replace(/^#/, "").trim();
   const attemptedLocation = cleanedHash ? `#${cleanedHash}` : "#";
@@ -171,6 +281,9 @@ function parseHashRoute(hash: string) {
   }
 
   return (
+    parseCategoryRoute(routePart, "hash", attemptedLocation) ||
+    parseTagRoute(routePart, "hash", attemptedLocation) ||
+    parsePostRoute(routePart, "hash", attemptedLocation) ||
     parseTopicRoute(routePart, "hash", attemptedLocation) ||
     parseKnowledgeRoute(routePart, search, "hash", attemptedLocation) ||
     parseProfileRoute(routePart, "hash", attemptedLocation) ||
@@ -208,6 +321,9 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   return (
+    parseCategoryRoute(normalizedPathname, "path", attemptedLocation) ||
+    parseTagRoute(normalizedPathname, "path", attemptedLocation) ||
+    parsePostRoute(normalizedPathname, "path", attemptedLocation) ||
     parseTopicRoute(normalizedPathname, "path", attemptedLocation) ||
     parseKnowledgeRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseProfileRoute(normalizedPathname, "path", attemptedLocation) ||
@@ -227,13 +343,22 @@ export function parseRouteFromLocation(locationLike = window.location) {
 
 export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   if (tab === "knowledge" && options.focusedEntryId) {
-    return `/knowledge/${encodeURIComponent(options.focusedEntryId)}`;
+    return `/post/${encodeURIComponent(options.focusedEntryId)}`;
   }
 
   if (tab === "knowledge") {
     const params = new URLSearchParams();
     const selectedHashtag = normalizeTag(options.selectedHashtag);
-    const selectedTopic = normalizeTopic(options.selectedTopic);
+    const selectedTopic = normalizeKnowledgeTopic(options.selectedTopic);
+
+    if (selectedHashtag && !selectedTopic) {
+      return `/tag/${encodeURIComponent(selectedHashtag)}`;
+    }
+
+    const category = selectedTopic ? normalizeCategorySlug(selectedTopic) : null;
+    if (category && !selectedHashtag) {
+      return `/category/${encodeURIComponent(category)}`;
+    }
 
     if (selectedHashtag) {
       params.set("tag", selectedHashtag);
@@ -289,7 +414,7 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
   if (tab === "knowledge") {
     const params = new URLSearchParams();
     const selectedHashtag = normalizeTag(options.selectedHashtag);
-    const selectedTopic = normalizeTopic(options.selectedTopic);
+    const selectedTopic = normalizeKnowledgeTopic(options.selectedTopic);
 
     if (selectedHashtag) {
       params.set("tag", selectedHashtag);
