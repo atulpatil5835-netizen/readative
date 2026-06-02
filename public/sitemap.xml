@@ -1,142 +1,142 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://readative.com/</loc>
+    <loc>https://www.readative.com/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://readative.com/explore</loc>
+    <loc>https://www.readative.com/explore</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://readative.com/smarttalk</loc>
+    <loc>https://www.readative.com/smarttalk</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/ai</loc>
+    <loc>https://www.readative.com/category/ai</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/technology</loc>
+    <loc>https://www.readative.com/category/technology</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/business</loc>
+    <loc>https://www.readative.com/category/business</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/marketing</loc>
+    <loc>https://www.readative.com/category/marketing</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/startup</loc>
+    <loc>https://www.readative.com/category/startup</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/productivity</loc>
+    <loc>https://www.readative.com/category/productivity</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/development</loc>
+    <loc>https://www.readative.com/category/development</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://readative.com/category/cybersecurity</loc>
+    <loc>https://www.readative.com/category/cybersecurity</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/chatgpt</loc>
+    <loc>https://www.readative.com/topic/chatgpt</loc>
     <changefreq>weekly</changefreq>
     <priority>0.75</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/claude</loc>
+    <loc>https://www.readative.com/topic/claude</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/gemini</loc>
+    <loc>https://www.readative.com/topic/gemini</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/ai-tools</loc>
+    <loc>https://www.readative.com/topic/ai-tools</loc>
     <changefreq>weekly</changefreq>
     <priority>0.75</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/prompt-engineering</loc>
+    <loc>https://www.readative.com/topic/prompt-engineering</loc>
     <changefreq>weekly</changefreq>
     <priority>0.75</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/seo</loc>
+    <loc>https://www.readative.com/topic/seo</loc>
     <changefreq>weekly</changefreq>
     <priority>0.75</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/digital-marketing</loc>
+    <loc>https://www.readative.com/topic/digital-marketing</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/marketing-tools</loc>
+    <loc>https://www.readative.com/topic/marketing-tools</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/startup-tools</loc>
+    <loc>https://www.readative.com/topic/startup-tools</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/productivity-tools</loc>
+    <loc>https://www.readative.com/topic/productivity-tools</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/automation</loc>
+    <loc>https://www.readative.com/topic/automation</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/cursor</loc>
+    <loc>https://www.readative.com/topic/cursor</loc>
     <changefreq>weekly</changefreq>
     <priority>0.75</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/programming-resources</loc>
+    <loc>https://www.readative.com/topic/programming-resources</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/vercel</loc>
+    <loc>https://www.readative.com/topic/vercel</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/supabase</loc>
+    <loc>https://www.readative.com/topic/supabase</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/privacy</loc>
+    <loc>https://www.readative.com/topic/privacy</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>
   <url>
-    <loc>https://readative.com/topic/security-tools</loc>
+    <loc>https://www.readative.com/topic/security-tools</loc>
     <changefreq>weekly</changefreq>
     <priority>0.65</priority>
   </url>

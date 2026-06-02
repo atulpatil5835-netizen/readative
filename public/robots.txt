@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://readative.com/sitemap.xml
+Sitemap: https://www.readative.com/sitemap.xml
