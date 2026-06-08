@@ -1,4 +1,15 @@
-import { memo, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type KnowledgeImageAsset, type KnowledgeImageLayout } from "../types";
 import { Logo } from "./Logo";
 
@@ -22,6 +33,35 @@ function getSlideClassName(layout: KnowledgeImageLayout, mode: "feed" | "compose
     : "basis-[calc(100%-0.75rem)] sm:basis-[calc(100%-1rem)] aspect-video";
 }
 
+function clampImageIndex(index: number, imageCount: number) {
+  if (imageCount <= 0) return 0;
+  return Math.min(Math.max(index, 0), imageCount - 1);
+}
+
+function getNearestSlideIndex(scroller: HTMLDivElement) {
+  const slides = Array.from(scroller.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  );
+
+  if (slides.length === 0) return 0;
+
+  const scrollerCenter = scroller.scrollLeft + scroller.clientWidth / 2;
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  slides.forEach((slide, index) => {
+    const slideCenter = slide.offsetLeft + slide.offsetWidth / 2;
+    const distance = Math.abs(slideCenter - scrollerCenter);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
 export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
   images,
   layout,
@@ -31,12 +71,176 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
 }: KnowledgeImageCarouselProps) {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
+  const galleryTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const activeImageIndex = clampImageIndex(activeIndex, images.length);
+  const activeGalleryIndex =
+    galleryIndex === null ? null : clampImageIndex(galleryIndex, images.length);
+  const activeGalleryImage =
+    activeGalleryIndex === null ? null : images[activeGalleryIndex] || null;
+
+  const updateActiveIndex = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    setActiveIndex((current) => {
+      const nextIndex = clampImageIndex(getNearestSlideIndex(scroller), images.length);
+      return current === nextIndex ? current : nextIndex;
+    });
+  }, [images.length]);
+
+  const scheduleActiveIndexUpdate = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (scrollAnimationFrameRef.current !== null) return;
+
+    scrollAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      scrollAnimationFrameRef.current = null;
+      updateActiveIndex();
+    });
+  }, [updateActiveIndex]);
+
+  const openGallery = useCallback(
+    (index: number) => {
+      if (mode !== "feed") return;
+      setGalleryIndex(clampImageIndex(index, images.length));
+    },
+    [images.length, mode],
+  );
+
+  const closeGallery = useCallback(() => {
+    setGalleryIndex(null);
+    galleryTouchStartRef.current = null;
+  }, []);
+
+  const showNextGalleryImage = useCallback(() => {
+    setGalleryIndex((current) => {
+      if (current === null || images.length <= 1) return current;
+      return (current + 1) % images.length;
+    });
+  }, [images.length]);
+
+  const showPreviousGalleryImage = useCallback(() => {
+    setGalleryIndex((current) => {
+      if (current === null || images.length <= 1) return current;
+      return (current - 1 + images.length) % images.length;
+    });
+  }, [images.length]);
+
+  useEffect(() => {
+    setActiveIndex((current) => clampImageIndex(current, images.length));
+    setGalleryIndex((current) =>
+      current === null || images.length === 0
+        ? null
+        : clampImageIndex(current, images.length),
+    );
+  }, [images.length]);
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        scrollAnimationFrameRef.current !== null
+      ) {
+        window.cancelAnimationFrame(scrollAnimationFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (galleryIndex === null || typeof document === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [galleryIndex]);
+
+  useEffect(() => {
+    if (galleryIndex === null || typeof window === "undefined") return;
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeGallery();
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        showNextGalleryImage();
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        showPreviousGalleryImage();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    closeGallery,
+    galleryIndex,
+    showNextGalleryImage,
+    showPreviousGalleryImage,
+  ]);
+
+  const handleSlideKeyDown = (
+    event: KeyboardEvent<HTMLElement>,
+    index: number,
+    hasFailed: boolean,
+  ) => {
+    if (mode !== "feed" || hasFailed) return;
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openGallery(index);
+    }
+  };
+
+  const handleGalleryPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    galleryTouchStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleGalleryPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const start = galleryTouchStartRef.current;
+    galleryTouchStartRef.current = null;
+    if (!start || images.length <= 1) return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      showNextGalleryImage();
+      return;
+    }
+
+    showPreviousGalleryImage();
+  };
 
   if (images.length === 0) return null;
 
   return (
     <div className="relative overflow-hidden bg-slate-100">
-      <div className="readative-scrollbar-hidden flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 py-4 sm:gap-4 sm:px-5">
+      <div
+        ref={scrollerRef}
+        onScroll={scheduleActiveIndexUpdate}
+        className="readative-scrollbar-hidden flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 py-4 sm:gap-4 sm:px-5"
+      >
         {images.map((image, index) => {
           const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
           const isLoaded = Boolean(loadedImages[imageKey]);
@@ -47,7 +251,24 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
           return (
             <figure
               key={imageKey}
-              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-lg bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)]`}
+              role={mode === "feed" && !hasFailed ? "button" : undefined}
+              tabIndex={mode === "feed" && !hasFailed ? 0 : undefined}
+              aria-label={
+                mode === "feed" && !hasFailed
+                  ? `Open image ${index + 1} of ${images.length}`
+                  : undefined
+              }
+              onClick={() => {
+                if (!hasFailed) {
+                  openGallery(index);
+                }
+              }}
+              onKeyDown={(event) => handleSlideKeyDown(event, index, hasFailed)}
+              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-lg bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)] ${
+                mode === "feed" && !hasFailed
+                  ? "cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
+                  : ""
+              }`}
             >
               <div
                 className={`absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.85),transparent_32%),linear-gradient(135deg,#e2e8f0,#f8fafc_44%,#cbd5e1)] transition-opacity duration-500 ${
@@ -103,7 +324,7 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                           },
                     )
                   }
-                  className={`relative h-full w-full object-cover transition-opacity duration-500 ${
+                  className={`relative h-full w-full object-contain transition-opacity duration-500 ${
                     shouldShowImage ? "opacity-100" : "opacity-0"
                   }`}
                 />
@@ -129,9 +350,71 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
 
       {images.length > 1 && (
         <div className="pointer-events-none absolute bottom-4 right-5 rounded-full bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-          {images.length} images
+          {activeImageIndex + 1}/{images.length}
         </div>
       )}
+
+      {activeGalleryImage &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex touch-pan-y select-none items-center justify-center bg-slate-950/95 px-4 py-6 text-white sm:px-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image gallery"
+            onPointerDown={handleGalleryPointerDown}
+            onPointerUp={handleGalleryPointerUp}
+          >
+            <button
+              type="button"
+              onClick={closeGallery}
+              className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="Close image gallery"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="absolute left-4 top-4 z-20 rounded-full bg-white/10 px-3 py-1.5 text-xs font-black tracking-[0.16em] text-white backdrop-blur-md">
+              {(activeGalleryIndex ?? 0) + 1}/{images.length}
+            </div>
+
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={showPreviousGalleryImage}
+                  className="absolute left-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:h-12 sm:w-12"
+                  aria-label="Previous image"
+                  title="Previous"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={showNextGalleryImage}
+                  className="absolute right-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:h-12 sm:w-12"
+                  aria-label="Next image"
+                  title="Next"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+
+            <img
+              key={`${activeGalleryImage.optimizedAt}-${activeGalleryIndex ?? 0}-${activeGalleryImage.dataUrl.length}`}
+              src={activeGalleryImage.dataUrl}
+              alt={`${altBase} ${(activeGalleryIndex ?? 0) + 1}`}
+              loading="eager"
+              decoding="async"
+              width={activeGalleryImage.width}
+              height={activeGalleryImage.height}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 });
