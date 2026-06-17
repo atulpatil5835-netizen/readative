@@ -1,5 +1,5 @@
 const SITE_NAME = "Readative";
-const SITE_URL = "https://readative.com";
+const SITE_URL = "https://www.readative.com";
 const DEFAULT_LOGO = "/logo.png";
 
 interface BreadcrumbItem {

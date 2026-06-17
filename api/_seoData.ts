@@ -1,0 +1,647 @@
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import {
+  SEO_CATEGORIES,
+  SEO_TAGS,
+  SEO_TOPICS,
+  normalizeSeoSlug,
+} from "../src/utils/seoTaxonomy";
+
+export const SITE_URL = "https://www.readative.com";
+export const DISCOVERY_INDEX_PATH = "/posts";
+
+const DEFAULT_PROJECT_ID = "readative-803b0";
+const PRIVATE_STATUSES = new Set(["archived", "deleted", "draft", "hidden", "private"]);
+
+export interface SeoPost {
+  id: string;
+  title: string;
+  description: string;
+  authorId: string;
+  authorName: string;
+  category: string | null;
+  hashtags: string[];
+  createdAt: number;
+  updatedAt: number | null;
+}
+
+export interface SeoProfile {
+  id: string;
+  name: string;
+  updatedAt: number | null;
+}
+
+export interface SeoTag {
+  id: string;
+  label: string;
+  lastmod: number | null;
+  postCount: number;
+}
+
+export interface SeoSmartTalk {
+  id: string;
+  title: string;
+  description: string;
+  authorName: string;
+  category: string | null;
+  answerCount: number;
+  answers: Array<{
+    authorName: string;
+    text: string;
+  }>;
+  createdAt: number;
+  updatedAt: number | null;
+}
+
+export interface SeoData {
+  source: "admin" | "rest" | "static";
+  generatedAt: number;
+  posts: SeoPost[];
+  profiles: SeoProfile[];
+  tags: SeoTag[];
+  smartTalks: SeoSmartTalk[];
+  errors: string[];
+}
+
+export interface SitemapEntry {
+  loc: string;
+  path: string;
+  lastmod: string;
+  changefreq: "daily" | "weekly" | "monthly";
+  priority: string;
+  type: "page" | "category" | "topic" | "tag" | "post" | "profile";
+}
+
+type FirestoreDocument = {
+  name: string;
+  fields?: Record<string, FirestoreValue>;
+};
+
+type FirestoreValue =
+  | { stringValue: string }
+  | { integerValue: string }
+  | { doubleValue: number }
+  | { booleanValue: boolean }
+  | { timestampValue: string }
+  | { arrayValue?: { values?: FirestoreValue[] } }
+  | { mapValue?: { fields?: Record<string, FirestoreValue> } }
+  | { nullValue: null };
+
+const STATIC_PAGES = [
+  { path: "/", priority: "1.0", changefreq: "daily" as const },
+  { path: "/explore", priority: "0.8", changefreq: "weekly" as const },
+  { path: "/smarttalk", priority: "0.8", changefreq: "weekly" as const },
+  { path: "/smarttalks", priority: "0.75", changefreq: "weekly" as const },
+  { path: DISCOVERY_INDEX_PATH, priority: "0.9", changefreq: "daily" as const },
+];
+
+function readEnv(name: string) {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function getProjectId() {
+  return (
+    readEnv("FIREBASE_PROJECT_ID") ||
+    readEnv("VITE_FIREBASE_PROJECT_ID") ||
+    DEFAULT_PROJECT_ID
+  );
+}
+
+function getApiKey() {
+  return (
+    readEnv("FIREBASE_API_KEY") ||
+    readEnv("VITE_FIREBASE_API_KEY") ||
+    readEnv("VITE_FIREBASE_WEB_API_KEY")
+  );
+}
+
+function getAdminDatabase() {
+  const projectId = getProjectId();
+  const clientEmail = readEnv("FIREBASE_CLIENT_EMAIL");
+  const privateKey = readEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n");
+
+  if (!clientEmail || !privateKey) {
+    return null;
+  }
+
+  const app =
+    getApps()[0] ||
+    initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    });
+
+  return getFirestore(app);
+}
+
+function decodeFirestoreValue(value: FirestoreValue | undefined): unknown {
+  if (!value || typeof value !== "object") return undefined;
+  if ("stringValue" in value) return value.stringValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return value.doubleValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("timestampValue" in value) return Date.parse(value.timestampValue);
+  if ("arrayValue" in value) {
+    return (value.arrayValue?.values || []).map((item) =>
+      decodeFirestoreValue(item),
+    );
+  }
+  if ("mapValue" in value) {
+    return Object.fromEntries(
+      Object.entries(value.mapValue?.fields || {}).map(([key, item]) => [
+        key,
+        decodeFirestoreValue(item),
+      ]),
+    );
+  }
+  return null;
+}
+
+function decodeRestDocument(document: FirestoreDocument) {
+  const id = document.name.split("/").pop() || "";
+  const data = Object.fromEntries(
+    Object.entries(document.fields || {}).map(([key, value]) => [
+      key,
+      decodeFirestoreValue(value),
+    ]),
+  );
+
+  return { id, data };
+}
+
+async function fetchRestCollection(collectionId: string) {
+  const projectId = getProjectId();
+  const apiKey = getApiKey();
+  const documents: Array<{ id: string; data: Record<string, unknown> }> = [];
+  let pageToken = "";
+
+  do {
+    const url = new URL(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionId}`,
+    );
+    url.searchParams.set("pageSize", "1000");
+    if (apiKey) url.searchParams.set("key", apiKey);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `${collectionId} REST fetch failed (${response.status}): ${body.slice(0, 220)}`,
+      );
+    }
+
+    const payload = (await response.json()) as {
+      documents?: FirestoreDocument[];
+      nextPageToken?: string;
+    };
+    documents.push(...(payload.documents || []).map(decodeRestDocument));
+    pageToken = payload.nextPageToken || "";
+  } while (pageToken);
+
+  return documents;
+}
+
+function normalizeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return [
+    ...new Set(
+      value
+        .map((item) => normalizeString(item))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function normalizeTimestamp(value: unknown, fallback: number | null = null) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: unknown }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { seconds?: unknown }).seconds === "number"
+  ) {
+    return Math.round((value as { seconds: number }).seconds * 1000);
+  }
+
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return fallback;
+}
+
+function createExcerpt(text: string, maxLength = 160) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trim()}...`;
+}
+
+function isPublishedPost(data: Record<string, unknown>) {
+  const visibility = normalizeString(data.visibility).toLowerCase();
+  const status = normalizeString(data.status || data.publishStatus).toLowerCase();
+
+  return (
+    visibility !== "private" &&
+    !PRIVATE_STATUSES.has(status) &&
+    !data.deletedAt &&
+    Boolean(normalizeString(data.title) && normalizeString(data.content))
+  );
+}
+
+function normalizePost(id: string, data: Record<string, unknown>): SeoPost | null {
+  if (!id || !isPublishedPost(data)) return null;
+
+  const createdAt =
+    normalizeTimestamp(data.createdAt) ||
+    normalizeTimestamp(data.updatedAt) ||
+    Date.now();
+  const updatedAt = normalizeTimestamp(data.updatedAt);
+  const authorName =
+    normalizeString(data.author) ||
+    normalizeString(data.username) ||
+    "Readative contributor";
+
+  return {
+    id,
+    title: normalizeString(data.title),
+    description: createExcerpt(normalizeString(data.excerpt) || normalizeString(data.content)),
+    authorId: normalizeString(data.authorId),
+    authorName,
+    category: normalizeSeoSlug(normalizeString(data.category)),
+    hashtags: normalizeStringArray(data.hashtags)
+      .map((tag) => normalizeSeoSlug(tag))
+      .filter((tag): tag is string => Boolean(tag)),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeProfile(
+  id: string,
+  data: Record<string, unknown>,
+): SeoProfile | null {
+  if (!id || data.deletedAt) return null;
+
+  const status = normalizeString(data.status).toLowerCase();
+  if (PRIVATE_STATUSES.has(status)) return null;
+
+  const name =
+    normalizeString(data.displayName) ||
+    normalizeString(data.username) ||
+    normalizeString(data.email) ||
+    id;
+
+  return {
+    id,
+    name,
+    updatedAt: normalizeTimestamp(data.updatedAt, normalizeTimestamp(data.createdAt)),
+  };
+}
+
+function normalizeSmartTalk(
+  id: string,
+  data: Record<string, unknown>,
+): SeoSmartTalk | null {
+  if (!id || data.deletedAt) return null;
+
+  const status = normalizeString(data.status).toLowerCase();
+  if (PRIVATE_STATUSES.has(status)) return null;
+
+  const content = normalizeString(data.content);
+  if (!content) return null;
+
+  const createdAt =
+    normalizeTimestamp(data.createdAt) ||
+    normalizeTimestamp(data.updatedAt) ||
+    Date.now();
+  const updatedAt = normalizeTimestamp(data.updatedAt);
+  const answers = Array.isArray(data.answers) ? data.answers : [];
+
+  return {
+    id,
+    title: createExcerpt(content, 90),
+    description: createExcerpt(content),
+    authorName: normalizeString(data.author) || "Readative contributor",
+    category: normalizeSeoSlug(normalizeString(data.category)),
+    answerCount: answers.length,
+    answers: answers
+      .map((answer) =>
+        answer && typeof answer === "object"
+          ? {
+              authorName:
+                normalizeString((answer as Record<string, unknown>).author) ||
+                "Readative contributor",
+              text: createExcerpt(
+                normalizeString((answer as Record<string, unknown>).content),
+                220,
+              ),
+            }
+          : null,
+      )
+      .filter(
+        (answer): answer is { authorName: string; text: string } =>
+          Boolean(answer?.text),
+      )
+      .slice(0, 5),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function buildTags(posts: SeoPost[]) {
+  const tagMap = new Map<string, SeoTag>();
+
+  for (const tag of SEO_TAGS) {
+    tagMap.set(tag.id, {
+      id: tag.id,
+      label: tag.label,
+      lastmod: null,
+      postCount: 0,
+    });
+  }
+
+  for (const post of posts) {
+    const postLastmod = post.updatedAt || post.createdAt;
+
+    for (const tagId of post.hashtags) {
+      const current = tagMap.get(tagId);
+      tagMap.set(tagId, {
+        id: tagId,
+        label: current?.label || tagId.replace(/-/g, " "),
+        lastmod: Math.max(current?.lastmod || 0, postLastmod),
+        postCount: (current?.postCount || 0) + 1,
+      });
+    }
+  }
+
+  return [...tagMap.values()].sort(
+    (left, right) => right.postCount - left.postCount || left.id.localeCompare(right.id),
+  );
+}
+
+async function loadFromAdmin(): Promise<SeoData | null> {
+  const database = getAdminDatabase();
+  if (!database) return null;
+
+  const [knowledgeSnapshot, profileSnapshot, smartTalkSnapshot] = await Promise.all([
+    database.collection("knowledge").get(),
+    database.collection("userProfiles").get(),
+    database.collection("smarttalk").get(),
+  ]);
+  const posts = knowledgeSnapshot.docs
+    .map((document) => normalizePost(document.id, document.data()))
+    .filter((post): post is SeoPost => Boolean(post))
+    .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+  const profiles = profileSnapshot.docs
+    .map((document) => normalizeProfile(document.id, document.data()))
+    .filter((profile): profile is SeoProfile => Boolean(profile))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const smartTalks = smartTalkSnapshot.docs
+    .map((document) => normalizeSmartTalk(document.id, document.data()))
+    .filter((question): question is SeoSmartTalk => Boolean(question))
+    .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+
+  return {
+    source: "admin",
+    generatedAt: Date.now(),
+    posts,
+    profiles,
+    tags: buildTags(posts),
+    smartTalks,
+    errors: [],
+  };
+}
+
+async function loadFromRest(): Promise<SeoData> {
+  const [knowledgeDocuments, profileDocuments, smartTalkDocuments] = await Promise.all([
+    fetchRestCollection("knowledge"),
+    fetchRestCollection("userProfiles").catch(() => []),
+    fetchRestCollection("smarttalk").catch(() => []),
+  ]);
+  const posts = knowledgeDocuments
+    .map((document) => normalizePost(document.id, document.data))
+    .filter((post): post is SeoPost => Boolean(post))
+    .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+  const profiles = profileDocuments
+    .map((document) => normalizeProfile(document.id, document.data))
+    .filter((profile): profile is SeoProfile => Boolean(profile))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const smartTalks = smartTalkDocuments
+    .map((document) => normalizeSmartTalk(document.id, document.data))
+    .filter((question): question is SeoSmartTalk => Boolean(question))
+    .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+
+  return {
+    source: "rest",
+    generatedAt: Date.now(),
+    posts,
+    profiles,
+    tags: buildTags(posts),
+    smartTalks,
+    errors: [],
+  };
+}
+
+export async function loadSeoData(): Promise<SeoData> {
+  const errors: string[] = [];
+
+  try {
+    const adminData = await loadFromAdmin();
+    if (adminData) return adminData;
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  try {
+    const restData = await loadFromRest();
+    return {
+      ...restData,
+      errors,
+    };
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  return {
+    source: "static",
+    generatedAt: Date.now(),
+    posts: [],
+    profiles: [],
+    tags: buildTags([]),
+    smartTalks: [],
+    errors,
+  };
+}
+
+function toIsoDate(value: number | null | undefined, fallback: number) {
+  return new Date(value || fallback).toISOString();
+}
+
+function getChangeFrequency(updatedAt: number | null | undefined, createdAt: number) {
+  const lastChanged = updatedAt || createdAt;
+  const ageDays = (Date.now() - lastChanged) / 86_400_000;
+
+  if (ageDays < 7) return "daily";
+  if (ageDays < 45) return "weekly";
+  return "monthly";
+}
+
+function maxPostLastmod(
+  posts: SeoPost[],
+  predicate: (post: SeoPost) => boolean,
+) {
+  return posts
+    .filter(predicate)
+    .reduce<number | null>(
+      (lastmod, post) => Math.max(lastmod || 0, post.updatedAt || post.createdAt),
+      null,
+    );
+}
+
+function buildEntry(
+  path: string,
+  type: SitemapEntry["type"],
+  lastmod: number | null,
+  fallbackLastmod: number,
+  changefreq: SitemapEntry["changefreq"],
+  priority: string,
+): SitemapEntry {
+  return {
+    loc: `${SITE_URL}${path}`,
+    path,
+    lastmod: toIsoDate(lastmod, fallbackLastmod),
+    changefreq,
+    priority,
+    type,
+  };
+}
+
+export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
+  const generatedAt = data.generatedAt;
+  const entries: SitemapEntry[] = [];
+
+  for (const page of STATIC_PAGES) {
+    entries.push(
+      buildEntry(page.path, "page", generatedAt, generatedAt, page.changefreq, page.priority),
+    );
+  }
+
+  for (const category of SEO_CATEGORIES) {
+    const categoryTagSlugs = category.tagSlugs as readonly string[];
+    entries.push(
+      buildEntry(
+        category.path,
+        "category",
+        maxPostLastmod(
+          data.posts,
+          (post) => post.category === category.id || post.hashtags.some((tag) => categoryTagSlugs.includes(tag)),
+        ),
+        generatedAt,
+        "weekly",
+        "0.9",
+      ),
+    );
+  }
+
+  for (const topic of SEO_TOPICS) {
+    entries.push(
+      buildEntry(
+        topic.path,
+        "topic",
+        maxPostLastmod(data.posts, (post) =>
+          post.hashtags.some((tag) => topic.tagSlugs.includes(tag) || tag === topic.id),
+        ),
+        generatedAt,
+        "weekly",
+        "0.75",
+      ),
+    );
+  }
+
+  for (const tag of data.tags) {
+    entries.push(
+      buildEntry(`/tag/${encodeURIComponent(tag.id)}`, "tag", tag.lastmod, generatedAt, "weekly", "0.6"),
+    );
+  }
+
+  for (const post of data.posts) {
+    entries.push(
+      buildEntry(
+        `/post/${encodeURIComponent(post.id)}`,
+        "post",
+        post.updatedAt || post.createdAt,
+        generatedAt,
+        getChangeFrequency(post.updatedAt, post.createdAt),
+        "0.8",
+      ),
+    );
+  }
+
+  for (const profile of data.profiles) {
+    entries.push(
+      buildEntry(
+        `/profile/${encodeURIComponent(profile.id)}`,
+        "profile",
+        profile.updatedAt,
+        generatedAt,
+        "weekly",
+        "0.7",
+      ),
+    );
+  }
+
+  const uniqueEntries = new Map(entries.map((entry) => [entry.loc, entry] as const));
+  return [...uniqueEntries.values()];
+}
+
+export function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+export function buildSitemapXml(entries: SitemapEntry[]) {
+  const urls = entries
+    .map(
+      (entry) => `  <url>
+    <loc>${escapeXml(entry.loc)}</loc>
+    <lastmod>${entry.lastmod}</lastmod>
+    <changefreq>${entry.changefreq}</changefreq>
+    <priority>${entry.priority}</priority>
+  </url>`,
+    )
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>`;
+}

@@ -5,6 +5,7 @@ import {
   ProfileSkeleton,
   SmartTalkSkeleton,
 } from "./Skeletons";
+import { SEO } from "./SEO";
 
 export function SectionSkeleton({ label }: { label: string }) {
   const normalizedLabel = label.toLowerCase();
@@ -127,37 +128,52 @@ export function NotFoundRoute({
   onOpenSmartTalk: () => void;
 }) {
   return (
-    <div className="rounded-[32px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-        <TriangleAlert className="h-8 w-8" />
-      </div>
-      <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">
-        Error 404
-      </p>
-      <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-        This page does not exist in Readative
-      </h2>
-      <p className="mt-3 text-sm leading-6 text-slate-500">
-        {attemptedPath
-          ? `We could not match ${attemptedPath} to a valid route.`
-          : "We could not match that URL to a valid route."}
-      </p>
+    <>
+      <SEO
+        title="Page Not Found | Readative"
+        description="The requested Readative page could not be found."
+        robots="noindex"
+      />
+      <div className="rounded-[32px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+          <TriangleAlert className="h-8 w-8" />
+        </div>
+        <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">
+          Error 404
+        </p>
+        <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+          This page does not exist in Readative
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-slate-500">
+          {attemptedPath
+            ? `We could not match ${attemptedPath} to a valid route.`
+            : "We could not match that URL to a valid route."}
+        </p>
 
-      <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <button
-          onClick={onGoHome}
-          className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
-        >
-          Go to home feed
-        </button>
-        <button
-          onClick={onOpenSmartTalk}
-          className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:text-emerald-700"
-        >
-          Open SmartTalk
-        </button>
+        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <a
+            href="/"
+            onClick={(event) => {
+              event.preventDefault();
+              onGoHome();
+            }}
+            className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+          >
+            Go to home feed
+          </a>
+          <a
+            href="/smarttalk"
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenSmartTalk();
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+          >
+            Open SmartTalk
+          </a>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

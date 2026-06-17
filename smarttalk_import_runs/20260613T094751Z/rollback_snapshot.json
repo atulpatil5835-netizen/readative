@@ -1,0 +1,1031 @@
+[
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/5W3DOI2Z7vkehEfoJTaD",
+    "fields": {
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "content": {
+        "stringValue": "Why do some people succeed easily while others struggle their whole life?"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "isAI": {
+                    "booleanValue": false
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "authorId": {
+                    "stringValue": "guest_tg5tkxqu5"
+                  },
+                  "content": {
+                    "stringValue": "Hard work is the engine, but leverage is the steering wheel. Without leverage, you're just spinning your tires."
+                  },
+                  "createdAt": {
+                    "integerValue": "1776247594757"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_rivqqb3dk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_bn93lf9om"
+                        },
+                        {
+                          "stringValue": "guest_mb7k5op02"
+                        },
+                        {
+                          "stringValue": "guest_ql1s9wqfn"
+                        }
+                      ]
+                    }
+                  },
+                  "id": {
+                    "stringValue": "2be21dufa"
+                  },
+                  "author": {
+                    "stringValue": "ap"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "authorId": {
+        "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+      },
+      "createdAt": {
+        "timestampValue": "2026-03-13T08:33:35.846Z"
+      },
+      "author": {
+        "stringValue": "Atul Hinge"
+      }
+    },
+    "createTime": "2026-03-13T08:33:35.884505Z",
+    "updateTime": "2026-04-27T11:59:04.584727Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/Bw3jocT2IcGmkGA1ih77",
+    "fields": {
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "content": {
+                    "stringValue": "I'm in meetings all day and honestly, [Otter.ai](https://otter.ai/) saved my sanity. I used to scramble taking notes, but now I just let it listen and it catches things I totally missed. If you're drowning in Zoom calls, it's a total game changer."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "authorId": {
+                    "stringValue": "guest_w1m8bnxt7"
+                  },
+                  "createdAt": {
+                    "integerValue": "1777292293960"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        }
+                      ]
+                    }
+                  },
+                  "id": {
+                    "stringValue": "kpz2u0sw1"
+                  },
+                  "author": {
+                    "stringValue": "Mark"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "id": {
+                    "stringValue": "xbn3hi4ft"
+                  },
+                  "author": {
+                    "stringValue": "Sarah"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777292321667"
+                  },
+                  "content": {
+                    "stringValue": "I found this tool called [Runway](https://runwayml.com/) for video stuff. I'm not a pro editor, but being able to just type what I want to change in a video is wild. It's like having a Hollywood studio in my browser. Definitely check out their Generative Fill feature."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "authorId": {
+                    "stringValue": "guest_w1m8bnxt7"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "id": {
+                    "stringValue": "yummcxrze"
+                  },
+                  "author": {
+                    "stringValue": "David k."
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_w1m8bnxt7"
+                        },
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_fqlpbrai6"
+                        },
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        },
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        }
+                      ]
+                    }
+                  },
+                  "createdAt": {
+                    "integerValue": "1777292358666"
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "content": {
+                    "stringValue": "I usually think most AI is overhyped, but [Perplexity](https://www.perplexity.ai/) actually won me over. It's basically what Google used to be before all the ads. It gives you direct answers with sources so you can actually verify stuff. It's the only AI app I use daily now."
+                  },
+                  "authorId": {
+                    "stringValue": "guest_w1m8bnxt7"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "What is one AI tool you started using that genuinely felt like 'magic' and changed how you work or live?"
+      },
+      "authorId": {
+        "stringValue": "guest_w1m8bnxt7"
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-27T12:17:45.159Z"
+      },
+      "author": {
+        "stringValue": "harry"
+      }
+    },
+    "createTime": "2026-04-27T12:17:45.195240Z",
+    "updateTime": "2026-05-07T08:33:04.584369Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/CXuUi5ePSwt3W4lxvlmT",
+    "fields": {
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_zn4azg6hw"
+                        },
+                        {
+                          "stringValue": "zOpaF4R5lvOx326sCsGnlcdDDXg1"
+                        },
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        },
+                        {
+                          "stringValue": "YtkdQNIZfze2I8rXtkEhVe1gUQ22"
+                        },
+                        {
+                          "stringValue": "832bnRR1LJNafC4mhDeyAopwOla2"
+                        }
+                      ]
+                    }
+                  },
+                  "author": {
+                    "stringValue": "Sid"
+                  },
+                  "id": {
+                    "stringValue": "9fjo4ekdb"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_rivqqb3dk"
+                  },
+                  "content": {
+                    "stringValue": "Depend on you password managers are more secure than save on browser"
+                  },
+                  "misleadingIds": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        }
+                      ]
+                    }
+                  },
+                  "dislikes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        }
+                      ]
+                    }
+                  },
+                  "helpfulIds": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_zn4azg6hw"
+                        },
+                        {
+                          "stringValue": "zOpaF4R5lvOx326sCsGnlcdDDXg1"
+                        },
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        },
+                        {
+                          "stringValue": "YtkdQNIZfze2I8rXtkEhVe1gUQ22"
+                        },
+                        {
+                          "stringValue": "832bnRR1LJNafC4mhDeyAopwOla2"
+                        }
+                      ]
+                    }
+                  },
+                  "misleadingCount": {
+                    "integerValue": "1"
+                  },
+                  "helpfulCount": {
+                    "integerValue": "7"
+                  },
+                  "bestAnswer": {
+                    "booleanValue": true
+                  },
+                  "createdAt": {
+                    "integerValue": "1777533758168"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "I keep seeing people talk about password managers. Why bother? Isn't it just easier to use the same password or let Chrome save it?"
+      },
+      "authorId": {
+        "stringValue": "guest_63hw91gyk"
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-29T13:52:10.730Z"
+      },
+      "author": {
+        "stringValue": "Harpreet S."
+      }
+    },
+    "createTime": "2026-04-29T13:52:10.767783Z",
+    "updateTime": "2026-06-08T16:06:45.530241Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/LBXvuKZ58ns0spWqNEZl",
+    "fields": {
+      "author": {
+        "stringValue": "Atul Hinge"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "author": {
+                    "stringValue": "Varsha Gavali"
+                  },
+                  "id": {
+                    "stringValue": "izp1g8bop"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_rivqqb3dk"
+                        },
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_bn93lf9om"
+                        },
+                        {
+                          "stringValue": "guest_mb7k5op02"
+                        },
+                        {
+                          "stringValue": "guest_ql1s9wqfn"
+                        }
+                      ]
+                    }
+                  },
+                  "createdAt": {
+                    "integerValue": "1773210708951"
+                  },
+                  "authorId": {
+                    "stringValue": "8oo72fgFdYW4j3Ozs2FiaIOxyhT2"
+                  },
+                  "content": {
+                    "stringValue": "Delete temporary files (type %temp% in Run and delete). Disable unnecessary startup apps in Task Manager. Increase RAM or switch to SSD if possible. Run antivirus scan. Restart PC regularly."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "Why does my PC or laptop become slow? How to fix it?"
+      },
+      "authorId": {
+        "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+      },
+      "createdAt": {
+        "timestampValue": "2026-03-11T06:30:26.040Z"
+      }
+    },
+    "createTime": "2026-03-11T06:30:26.100746Z",
+    "updateTime": "2026-04-27T11:59:08.256905Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/SzAb2lr4q30971s8O6jj",
+    "fields": {
+      "author": {
+        "stringValue": "ana j swan"
+      },
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-28T07:42:42.223Z"
+      },
+      "authorId": {
+        "stringValue": "guest_5gstjkokr"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777453282078"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_tg5tkxqu5"
+                  },
+                  "content": {
+                    "stringValue": "You have to learn is more beneficial to know which code is used for to do updates, and AI codes are bulky and might slow down performance, so you can easily alter and remedy this issue."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "dff5le9yj"
+                  },
+                  "author": {
+                    "stringValue": "api"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "author": {
+                    "stringValue": "codextest"
+                  },
+                  "id": {
+                    "stringValue": "1ljw712pz"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        },
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        },
+                        {
+                          "stringValue": "YtkdQNIZfze2I8rXtkEhVe1gUQ22"
+                        }
+                      ]
+                    }
+                  },
+                  "createdAt": {
+                    "integerValue": "1777455470947"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_pez5ae7wq"
+                  },
+                  "content": {
+                    "stringValue": "Learning to code still matters because AI can generate drafts, but humans still need judgment, debugging skill, and product understanding to turn code into something reliable."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "author": {
+                    "stringValue": "dev"
+                  },
+                  "id": {
+                    "stringValue": "ocqe53l0g"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "Ai write code but does not truly understand your problem so ....learn to understand your business logic"
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777456098214"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "Is it still worth learning how to code by hand when AI can just write the whole program for you?"
+      }
+    },
+    "createTime": "2026-04-28T07:42:42.258663Z",
+    "updateTime": "2026-05-21T06:08:17.997094Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/VdXBYzEW3BB6ho8fUDJT",
+    "fields": {
+      "authorId": {
+        "stringValue": "guest_5gstjkokr"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777361829286"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_5gstjkokr"
+                  },
+                  "content": {
+                    "stringValue": "In my experience, having two screens is a total lifesaver for my job. I usually keep my email or chat open on one and my actual work on the other. It saves so much time because I do not have to click back and forth. If you want to try it, [Dell Monitors](https://www.dell.com/en-us/shop/monitors-monitor-accessories/ac/4009) are a good place to start looking for a second display."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "83v8ty13g"
+                  },
+                  "author": {
+                    "stringValue": "zain"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_5gstjkokr"
+                        },
+                        {
+                          "stringValue": "wGp2Tb5R6Mcfw7N34sXQnimb9PS2"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "jehnzgarz"
+                  },
+                  "author": {
+                    "stringValue": "divansh217867"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_5gstjkokr"
+                  },
+                  "content": {
+                    "stringValue": "To be honest, I think two screens just make you lose focus. I tried it for a month and found that I spent more time looking at videos than actually working. I went back to just one screen and I am much faster now. I actually watched a helpful guide on [YouTube](https://www.youtube.com/) about how to stay focused with less stuff on your desk."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777361885491"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777361963364"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_5gstjkokr"
+                  },
+                  "content": {
+                    "stringValue": "Actually, the best way is to get one giant 'ultrawide' screen and use a special tool to split it into parts. I use [FancyZones](https://learn.microsoft.com/en-us/windows/powertoys/fancyzones) to snap my windows into place perfectly. It feels like having three screens but without all the messy wires and cables everywhere."
+                  },
+                  "dislikes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        }
+                      ]
+                    }
+                  },
+                  "id": {
+                    "stringValue": "c4r4kjb1x"
+                  },
+                  "author": {
+                    "stringValue": "tech-ronny"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_5gstjkokr"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "content": {
+                    "stringValue": "Two screens help because you can keep your main task on one display and references or chat on the other, which reduces window switching and mental friction while working."
+                  },
+                  "authorId": {
+                    "stringValue": "guest_pez5ae7wq"
+                  },
+                  "createdAt": {
+                    "integerValue": "1777455493030"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "35jxwkuio"
+                  },
+                  "author": {
+                    "stringValue": "codextest"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "Is it actually better to have two computer screens or is one big screen enough for most people?"
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-28T07:36:28.214Z"
+      },
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "author": {
+        "stringValue": "jay"
+      }
+    },
+    "createTime": "2026-04-28T07:36:28.225773Z",
+    "updateTime": "2026-05-07T08:33:00.661293Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/jCgVk2mhZXDwKiNKsRRp",
+    "fields": {
+      "author": {
+        "stringValue": "yash.nalawade"
+      },
+      "aiAnswered": {
+        "booleanValue": false
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-27T07:05:39.161Z"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777273592493"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "I honestly believe we are in a new era where the 'how' matters less than the 'what.' In my experience, AI is like a superpower that lets you skip the boring parts of learning. I used this for a recent project where I built a website without knowing much CSS, and it turned out great. I recommend jumping straight into building things and letting the tools help you. Check out Replit to see how easy it is to start a project from scratch today."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "5tgoeod20"
+                  },
+                  "author": {
+                    "stringValue": "TechGeek"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_bn93lf9om"
+                        },
+                        {
+                          "stringValue": "guest_rivqqb3dk"
+                        },
+                        {
+                          "stringValue": "guest_mb7k5op02"
+                        },
+                        {
+                          "stringValue": "guest_ql1s9wqfn"
+                        },
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        }
+                      ]
+                    }
+                  },
+                  "id": {
+                    "stringValue": "2pndnoxlw"
+                  },
+                  "author": {
+                    "stringValue": "Ryan"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "To be honest, I am a bit skeptical of people saying you don't need to learn the basics. Actually, I have seen AI generate code that looks perfect but is totally broken. If you don't have the foundation, you won't know how to fix it when things go sideways. I found that I still spend a lot of time on Stack Overflow double-checking what the AI tells me. It is a tool, not a replacement for your brain."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777273630053"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777273850020"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "I actually just started my first coding course, and I found that having an AI help me explain lines of code makes the learning process so much faster. It's not a waste of time because you need to know how to talk to the AI. I used a site called Codecademy to get the basics down, and now I use AI to help me with the homework. It feels like having a tutor right next to me 24/7."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "mi6iklt0k"
+                  },
+                  "author": {
+                    "stringValue": "Jen"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "Call me old-fashioned, but I think skipping the basics is a huge mistake. Relying on a machine to think for you makes your skills weak. In my experience, there is a grit you develop when you have to solve a problem with just a book and your own head. I still buy physical books from Amazon to learn new things because it forces me to focus and actually retain the knowledge without a shortcut."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777273910548"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "author": {
+                    "stringValue": "Gvincr26"
+                  },
+                  "id": {
+                    "stringValue": "c7o31wc92"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "content": {
+        "stringValue": "With AI getting so good at writing code and emails, is it actually worth learning these skills from scratch anymore, or are we just wasting our time?"
+      },
+      "authorId": {
+        "stringValue": "guest_63hw91gyk"
+      }
+    },
+    "createTime": "2026-04-27T07:05:39.197432Z",
+    "updateTime": "2026-04-30T09:14:01.240835Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/p2sC4ybvasavcDJp1Xlq",
+    "fields": {
+      "content": {
+        "stringValue": "I want to learn how to code but there are so many languages i see python, java, c++, and javaScript everywhere. I don't know where to start and which one should I pick first ??"
+      },
+      "answers": {
+        "arrayValue": {}
+      },
+      "authorId": {
+        "stringValue": "guest_tym8mz3sp"
+      },
+      "createdAt": {
+        "timestampValue": "2026-05-06T07:03:07.685Z"
+      },
+      "author": {
+        "stringValue": "gaurav_kumar"
+      }
+    },
+    "createTime": "2026-05-06T07:03:07.721639Z",
+    "updateTime": "2026-05-06T07:03:07.721639Z"
+  },
+  {
+    "name": "projects/readative-803b0/databases/(default)/documents/smarttalk/uhiEkeN2mXgwqyIQ3Uyb",
+    "fields": {
+      "author": {
+        "stringValue": "Farhan"
+      },
+      "authorId": {
+        "stringValue": "guest_63hw91gyk"
+      },
+      "content": {
+        "stringValue": "Is AI actually going to kill human creativity, or are we just overhyping a fancy autocomplete tool?"
+      },
+      "answers": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        },
+                        {
+                          "stringValue": "guest_rivqqb3dk"
+                        },
+                        {
+                          "stringValue": "guest_ql1s9wqfn"
+                        },
+                        {
+                          "stringValue": "guest_i6u73kegk"
+                        }
+                      ]
+                    }
+                  },
+                  "id": {
+                    "stringValue": "43ikszo9y"
+                  },
+                  "author": {
+                    "stringValue": "Marcus"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "I use AI every single day for my job as a designer. In my experience, it is not even close to replacing a human. I recommend looking at it like a digital intern. It can handle the boring stuff like resizing images or checking for basic errors, but it has no taste. I found that I spend way more time on the 'soul' of the project now because I am not stuck doing the repetitive tasks. Check out how I use it with Adobe Firefly to speed up my workflow."
+                  },
+                  "dislikes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_mb7k5op02"
+                        }
+                      ]
+                    }
+                  },
+                  "createdAt": {
+                    "integerValue": "1777273114264"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "To be honest, I was really worried at first, but after playing with a few tools, I am less scared. AI is just a mirror of what is already on the internet. Actually, I tried to make it write a short story and it was so generic that I almost fell asleep. It lacks that weird, human perspective that makes art interesting. I tried Midjourney and while the pictures are pretty, they all start to look the same after a while."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "createdAt": {
+                    "integerValue": "1777273173018"
+                  },
+                  "likes": {
+                    "arrayValue": {}
+                  },
+                  "author": {
+                    "stringValue": "Brad"
+                  },
+                  "id": {
+                    "stringValue": "cyfw3aa22"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "createdAt": {
+                    "integerValue": "1777273231718"
+                  },
+                  "authorId": {
+                    "stringValue": "guest_63hw91gyk"
+                  },
+                  "content": {
+                    "stringValue": "I just figured out how to use these tools last week and I am honestly blown away. I used to be terrified of writing professional emails, but now I use Grammarly to make sure I don't sound like a total mess. It has actually helped me learn how to write better myself because I see the corrections it makes in real-time. If you are a beginner like me, I recommend just starting small."
+                  },
+                  "dislikes": {
+                    "arrayValue": {}
+                  },
+                  "id": {
+                    "stringValue": "hllsu4re6"
+                  },
+                  "author": {
+                    "stringValue": "Nick_14"
+                  },
+                  "likes": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "guest_63hw91gyk"
+                        },
+                        {
+                          "stringValue": "guest_tg5tkxqu5"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "createdAt": {
+        "timestampValue": "2026-04-27T06:58:05.421Z"
+      },
+      "aiAnswered": {
+        "booleanValue": false
+      }
+    },
+    "createTime": "2026-04-27T06:58:05.456981Z",
+    "updateTime": "2026-04-30T09:14:05.118083Z"
+  }
+]

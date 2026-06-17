@@ -186,6 +186,15 @@ function observeEntryVisibilityOnce(target: Element, onVisible: () => void) {
   };
 }
 
+function buildProfilePath(authorId: string) {
+  return `/profile/${encodeURIComponent(authorId)}`;
+}
+
+function buildTagPath(tag: string) {
+  const normalized = tag.replace(/^#/, "").trim().toLowerCase();
+  return `/tag/${encodeURIComponent(normalized || tag)}`;
+}
+
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
   currentIdentity: KnowledgeIdentity | null;
@@ -469,6 +478,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     });
     onOpenEntry(entry.id);
   };
+  const authorProfilePath = buildProfilePath(resolvedAuthorId);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -1006,8 +1016,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     >
       <div className="p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <button
-            onClick={() => handleOpenAuthorProfile(resolvedAuthorId)}
+          <a
+            href={authorProfilePath}
+            onClick={(event) => {
+              event.preventDefault();
+              handleOpenAuthorProfile(resolvedAuthorId);
+            }}
             className="shrink-0 rounded-full transition-transform hover:scale-[1.02]"
             aria-label={`Open ${authorDisplayName}'s profile`}
           >
@@ -1019,15 +1033,19 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               size="sm"
               className="border-slate-200"
             />
-          </button>
+          </a>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
-              <button
-                onClick={() => handleOpenAuthorProfile(resolvedAuthorId)}
+              <a
+                href={authorProfilePath}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleOpenAuthorProfile(resolvedAuthorId);
+                }}
                 className="min-w-0 truncate text-left text-sm font-black text-slate-950 transition-colors hover:text-emerald-700 sm:text-base"
               >
                 {authorDisplayName}
-              </button>
+              </a>
               {shouldShowAuthorSocialLinks && (
                 <ProfileSocialLinks
                   socialLinks={authorProfile?.socialLinks || {}}
@@ -1158,14 +1176,18 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             )}
         </div>
 
-        <button
-          onClick={handleOpenEntryDetails}
+        <a
+          href={`/post/${entry.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            handleOpenEntryDetails();
+          }}
           className="text-left transition-colors hover:text-emerald-700"
         >
           <h3 className="text-lg font-black leading-snug tracking-tight text-slate-950 sm:text-xl">
             {entry.title}
           </h3>
-        </button>
+        </a>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
           {renderRichText({
             text: entry.content,
@@ -1182,13 +1204,17 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               </span>
             )}
             {entry.hashtags.map((tag) => (
-              <button
+              <a
                 key={tag}
-                onClick={() => handleSelectHashtag(tag)}
+                href={buildTagPath(tag)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleSelectHashtag(tag);
+                }}
                 className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
               >
                 #{tag}
-              </button>
+              </a>
             ))}
           </div>
         )}
@@ -1196,13 +1222,17 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         {mentions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {mentions.map((mention) => (
-              <button
+              <a
                 key={`${mention.authorId}-${mention.username}`}
-                onClick={() => handleOpenAuthorProfile(mention.authorId)}
+                href={buildProfilePath(mention.authorId)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleOpenAuthorProfile(mention.authorId);
+                }}
                 className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
               >
                 @{mention.username}
-              </button>
+              </a>
             ))}
           </div>
         )}
@@ -1227,12 +1257,16 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               />
               <div className="min-w-0 flex-1">
                 {topComment.authorId ? (
-                  <button
-                    onClick={() => handleOpenAuthorProfile(topComment.authorId)}
+                  <a
+                    href={buildProfilePath(topComment.authorId)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleOpenAuthorProfile(topComment.authorId);
+                    }}
                     className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                   >
                     {topCommentDisplayName}
-                  </button>
+                  </a>
                 ) : (
                   <span className="text-xs font-bold text-slate-800">
                     {topCommentDisplayName}
@@ -1464,14 +1498,16 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           {comment.authorId ? (
-                            <button
-                              onClick={() =>
-                                handleOpenAuthorProfile(comment.authorId)
-                              }
+                            <a
+                              href={buildProfilePath(comment.authorId)}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                handleOpenAuthorProfile(comment.authorId);
+                              }}
                               className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                             >
                               {commentDisplayName}
-                            </button>
+                            </a>
                           ) : (
                             <span className="text-xs font-bold text-slate-800">
                               {commentDisplayName}

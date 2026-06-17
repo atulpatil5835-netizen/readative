@@ -136,13 +136,17 @@ function renderRichTextNodes({
 
       if (mention && onOpenProfile) {
         nodes.push(
-          <button
+          <a
             key={`${keyPrefix}-mention-${index++}`}
-            onClick={() => onOpenProfile(mention.authorId)}
+            href={`/profile/${encodeURIComponent(mention.authorId)}`}
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenProfile(mention.authorId);
+            }}
             className={mentionClassName}
           >
             @{mention.username}
-          </button>
+          </a>
         );
       } else {
         nodes.push(

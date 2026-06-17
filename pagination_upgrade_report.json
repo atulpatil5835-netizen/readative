@@ -1,0 +1,88 @@
+﻿{
+    "generatedAt":  "2026-06-13T10:58:50.2286815Z",
+    "productionWritesPerformed":  false,
+    "firestoreTouchedDirectly":  false,
+    "frontendOnly":  true,
+    "sourceFile":  "src/components/SmartTalk.tsx",
+    "audit":  {
+                  "previousIssue":  "Realtime first-page snapshot was merged into existing rendered state, so stale cached/previously-loaded questions could survive a fresh first-page snapshot.",
+                  "staleStateLineage":  [
+                                            "Partial implementation used one questions state array for both realtime first page and paginated pages.",
+                                            "onSnapshot called mergeSmartTalkQuestions(data, current), which preserved current entries that were not in the latest first-page snapshot.",
+                                            "Browser validation observed initial render of 59 cards instead of 50 because older existing docs were retained from stale state."
+                                        ],
+                  "fix":  [
+                              "Introduced isolated firstPageQuestions state for realtime query results.",
+                              "Introduced isolated loadedPageQuestions state for cursor-loaded pages.",
+                              "Derived rendered questions with ID-deduped mergeSmartTalkQuestions(firstPageQuestions, loadedPageQuestions).",
+                              "First-page snapshots now replace firstPageQuestions instead of merging into all rendered questions.",
+                              "Load More appends only to loadedPageQuestions and advances the Firestore cursor."
+                          ],
+                  "hardPageSize":  50,
+                  "firestoreCountSource":  "SmartTalk header powered by getCountFromServer(collection(db, \"smarttalk\")) in local app validation."
+              },
+    "validation":  {
+                       "build":  {
+                                     "command":  "npm run build",
+                                     "result":  "passed",
+                                     "note":  "Initial sandbox run hit local spawn EPERM; rerun with process permission passed."
+                                 },
+                       "browser":  {
+                                       "route":  "http://localhost:5173/smarttalk",
+                                       "firestoreCountFromHeader":  109,
+                                       "initialRender":  {
+                                                             "expectedRendered":  50,
+                                                             "actualRendered":  50,
+                                                             "uniqueRenderedQuestionTextCount":  50,
+                                                             "loadMoreVisible":  true,
+                                                             "passed":  true
+                                                         },
+                                       "loadMore1":  {
+                                                         "expectedRendered":  100,
+                                                         "actualRendered":  100,
+                                                         "uniqueRenderedQuestionTextCount":  100,
+                                                         "loadMoreVisible":  true,
+                                                         "passed":  true
+                                                     },
+                                       "loadMore2":  {
+                                                         "expectedRendered":  109,
+                                                         "actualRendered":  109,
+                                                         "uniqueRenderedQuestionTextCount":  109,
+                                                         "loadMoreVisible":  false,
+                                                         "passed":  true
+                                                     },
+                                       "search":  {
+                                                      "query":  "PC or laptop",
+                                                      "expectedQuestion":  "Why does my PC or laptop become slow? How to fix it?",
+                                                      "renderedSearchCount":  1,
+                                                      "uniqueRenderedSearchQuestionTextCount":  1,
+                                                      "expectedQuestionFound":  true,
+                                                      "passed":  true
+                                                  },
+                                       "authorRegressionCheck":  {
+                                                                     "readativeImportVisible":  false,
+                                                                     "passed":  true
+                                                                 },
+                                       "exploreSmoke":  {
+                                                            "route":  "http://localhost:5173/explore",
+                                                            "loadedWithoutErrorText":  true,
+                                                            "smartTalkTextPresent":  true,
+                                                            "passed":  true,
+                                                            "note":  "Smoke check only; requested exact count validation was performed on SmartTalk."
+                                                        }
+                                   },
+                       "exactCountRequirements":  {
+                                                      "firestoreCount":  109,
+                                                      "initialRender":  50,
+                                                      "loadMore1":  100,
+                                                      "loadMore2":  109,
+                                                      "passed":  true
+                                                  }
+                   },
+    "result":  {
+                   "passed":  true,
+                   "duplicateRenderingPrevented":  true,
+                   "missingRenderingPrevented":  true,
+                   "searchWorksAcrossLoadedQuestions":  true
+               }
+}

@@ -1,0 +1,485 @@
+{
+  "productionTouched": false,
+  "importRun": false,
+  "inputFile": "C:\\Users\\Atul\\Downloads\\mindshare_tech_questions (1).csv",
+  "outputFiles": {
+    "cleanedImportCsv": "C:\\Users\\Atul\\OneDrive\\Documents\\readative (1)\\cleaned_import.csv",
+    "duplicateReviewCsv": "C:\\Users\\Atul\\OneDrive\\Documents\\readative (1)\\duplicate_review.csv",
+    "cleaningReportJson": "C:\\Users\\Atul\\OneDrive\\Documents\\readative (1)\\cleaning_report.json"
+  },
+  "rulesApplied": {
+    "embeddedHeaderRowsRemoved": true,
+    "questionTextPreservedUnchanged": true,
+    "answerTextPreservedUnchanged": true,
+    "newQuestionIdScheme": "import_q001, import_q002, ... by first unique exact question text appearance",
+    "newAnswerIdScheme": "import_a0001, import_a0002, ... by retained answer row source order",
+    "emptyAnswerRows": "Blank source answer rows were removed as answers. If their question had no valid answers anywhere, one zero-answer question record was retained to preserve valid question text.",
+    "nearDuplicateThreshold": 0.6
+  },
+  "counts": {
+    "sourceRowsRead": 317,
+    "embeddedHeaderRowsRemoved": 1,
+    "embeddedHeaderSourceLines": [
+      212
+    ],
+    "sourceRowsAfterHeaderRemoval": 316,
+    "uniqueQuestionTextsPreserved": 100,
+    "generatedQuestionIds": 100,
+    "validAnswerRowsPreserved": 309,
+    "generatedAnswerIds": 309,
+    "blankSourceAnswerRowsRemovedAsAnswers": 7,
+    "blankSourceAnswerLines": [
+      14,
+      28,
+      53,
+      80,
+      98,
+      122,
+      229
+    ],
+    "answerlessQuestionRecordsRetained": 6,
+    "cleanedImportRows": 315,
+    "duplicateReviewRows": 57,
+    "exactDuplicateQuestionBlockRows": 50,
+    "nearDuplicatePairsFlagged": 7
+  },
+  "sourceIdFindings": {
+    "originalQuestionIds": 50,
+    "originalQuestionIdsReusedForMultipleQuestionTexts": 50,
+    "originalQuestionIdsReusedForMultipleTopics": 38,
+    "originalNonEmptyAnswerIds": 309,
+    "originalUniqueNonEmptyAnswerIds": 122,
+    "originalDuplicateAnswerIds": 105
+  },
+  "manualReview": {
+    "exactDuplicateQuestionBlocks": [
+      {
+        "questionId": "import_q051",
+        "question": "Why do all websites look exactly the same now? It is just big pictures and large text everywhere.",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "106-108;213-215"
+      },
+      {
+        "questionId": "import_q052",
+        "question": "I am trying to learn Python but I am so lost. Where do I actually start without getting confused?",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "109-111;216-218"
+      },
+      {
+        "questionId": "import_q053",
+        "question": "Is Notion actually better than just using a simple paper notebook? It looks like too much work.",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "112-115;219-222"
+      },
+      {
+        "questionId": "import_q054",
+        "question": "My budget is 50 dollars. What is the absolute best computer mouse I can get for my office job?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "116-117;223-224"
+      },
+      {
+        "questionId": "import_q055",
+        "question": "Should I really be worried about my phone listening to me? I talked about shoes and now I see shoe ads everywhere.",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "118-121;225-228"
+      },
+      {
+        "questionId": "import_q056",
+        "question": "Will ChatGPT actually take my job or is it just hype? I work in answering customer service emails.",
+        "topic": "AI",
+        "sourceLineBlocks": "122;229"
+      },
+      {
+        "questionId": "import_q057",
+        "question": "Why do websites hide the menu behind those three little horizontal lines? I can never find anything.",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "123-124;230-231"
+      },
+      {
+        "questionId": "import_q058",
+        "question": "I spilled a whole glass of water on my laptop keyboard. I turned it off. What do I do right now?!",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "125-127;232-234"
+      },
+      {
+        "questionId": "import_q059",
+        "question": "I have 500 unread emails and the number keeps growing. How do I fix this without deleting everything?",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "128-130;235-237"
+      },
+      {
+        "questionId": "import_q060",
+        "question": "What is the best programming language to learn if I want to make a simple iPhone game?",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "131-132;238-239"
+      },
+      {
+        "questionId": "import_q061",
+        "question": "I clicked a link in a random text message about a package delivery. Did I just ruin my phone?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "133-134;240-241"
+      },
+      {
+        "questionId": "import_q062",
+        "question": "How does an AI actually generate a picture from just a few words? It feels like magic.",
+        "topic": "AI",
+        "sourceLineBlocks": "135-136;242-243"
+      },
+      {
+        "questionId": "import_q063",
+        "question": "Dark mode is actually terrible for reading long articles. Am I the only one who thinks this?",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "137-139;244-246"
+      },
+      {
+        "questionId": "import_q064",
+        "question": "What is the difference between a cheap 5 dollar TV cable and an expensive 50 dollar one?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "140-141;247-248"
+      },
+      {
+        "questionId": "import_q065",
+        "question": "I need a simple app to share a grocery list with my wife. What do you all use?",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "142-144;249-251"
+      },
+      {
+        "questionId": "import_q066",
+        "question": "Learning to code is a total waste of time now that AI can write it for you. Right?",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "145-146;252-253"
+      },
+      {
+        "questionId": "import_q067",
+        "question": "What is the easiest password manager for someone who is terrible with computers?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "147-148;254-255"
+      },
+      {
+        "questionId": "import_q068",
+        "question": "I have to build a website for my mom's bakery by Friday and I have no clue where to start. Help!",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "149-150;256-257"
+      },
+      {
+        "questionId": "import_q069",
+        "question": "I want to use AI to help me write better business emails. Is there a free tool that is good?",
+        "topic": "AI",
+        "sourceLineBlocks": "151-152;258-259"
+      },
+      {
+        "questionId": "import_q070",
+        "question": "I want to buy my dad a tablet just for reading the morning news. iPad or a cheap Amazon tablet?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "153-155;260-262"
+      },
+      {
+        "questionId": "import_q071",
+        "question": "Why does my work chat always send me notifications even when I set my status to away?",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "156;263"
+      },
+      {
+        "questionId": "import_q072",
+        "question": "I have been staring at this error message for two hours. It says syntax error but everything looks right!",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "157-158;264-265"
+      },
+      {
+        "questionId": "import_q073",
+        "question": "I actually do not care if big companies have my data. I like getting ads for things I want. Is that wrong?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "159-160;266-267"
+      },
+      {
+        "questionId": "import_q074",
+        "question": "Infinite scrolling is the worst thing to happen to the internet. I miss pages with numbers at the bottom.",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "161-162;268-269"
+      },
+      {
+        "questionId": "import_q075",
+        "question": "My phone battery dies by two in the afternoon every single day and it is only a year old. Why?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "163-164;270-271"
+      },
+      {
+        "questionId": "import_q076",
+        "question": "My teacher uses an AI checker for homework. I wrote my paper myself but I am scared it will flag me as fake.",
+        "topic": "AI",
+        "sourceLineBlocks": "165-166;272-273"
+      },
+      {
+        "questionId": "import_q077",
+        "question": "Do normal people actually use Trello for their personal lives? It looks like it is just for office project managers.",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "167-168;274-275"
+      },
+      {
+        "questionId": "import_q078",
+        "question": "What actually happens when a website goes down? Like, where did it go?",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "169-170;276-277"
+      },
+      {
+        "questionId": "import_q079",
+        "question": "I hate that I have to make an account just to read a single news article online. Why do they do this?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "171-172;278-279"
+      },
+      {
+        "questionId": "import_q080",
+        "question": "Mechanical keyboards are way too loud and annoying. Why do people pay so much money for them?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "173-174;280-281"
+      },
+      {
+        "questionId": "import_q081",
+        "question": "AI art looks entirely soulless and weird to me. People keep posting it and I can always tell it is fake.",
+        "topic": "AI",
+        "sourceLineBlocks": "175-176;282-283"
+      },
+      {
+        "questionId": "import_q082",
+        "question": "What is the best calendar app that works perfectly on both a Mac and a Windows computer?",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "177-178;284-285"
+      },
+      {
+        "questionId": "import_q083",
+        "question": "Why do pop-ups ask for my email the very second I open a store website? It makes me want to leave immediately.",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "179-180;286-287"
+      },
+      {
+        "questionId": "import_q084",
+        "question": "I accidentally uploaded a file with my email password to a public site. Am I going to get hacked right now?",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "181-182;288-289"
+      },
+      {
+        "questionId": "import_q085",
+        "question": "Does anyone actually need 32 gigabytes of memory for a normal computer, or is the store trying to trick me?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "183-184;290-291"
+      },
+      {
+        "questionId": "import_q086",
+        "question": "How do I know if an email from my bank is actually real or if it is a scam trying to trick me?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "185-186;292-293"
+      },
+      {
+        "questionId": "import_q087",
+        "question": "Too many productivity apps actually make you less productive because you waste time checking them.",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "187-188;294-295"
+      },
+      {
+        "questionId": "import_q088",
+        "question": "I just opened a new design app and there are way too many buttons. Where do I even click first without messing up?",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "189;296"
+      },
+      {
+        "questionId": "import_q089",
+        "question": "ChatGPT keeps giving me completely fake links when I ask it to find articles for me. Why is it lying?",
+        "topic": "AI",
+        "sourceLineBlocks": "190-191;297-298"
+      },
+      {
+        "questionId": "import_q090",
+        "question": "Why do programmers care so much about using tabs versus using spaces? It seems so silly to fight over.",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "192-193;299-300"
+      },
+      {
+        "questionId": "import_q091",
+        "question": "Why do home printers still suck so much? It always says offline when I just want to print one single page.",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "194-195;301-302"
+      },
+      {
+        "questionId": "import_q092",
+        "question": "I lost my phone and my authentication app was on it. Am I locked out of my accounts forever?",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "196-197;303-304"
+      },
+      {
+        "questionId": "import_q093",
+        "question": "Should I put a piece of tape over my laptop camera? I see people do it but it looks so ugly.",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "198-199;305-306"
+      },
+      {
+        "questionId": "import_q094",
+        "question": "What does UX even mean? Isn't it just making things look pretty with nice colors?",
+        "topic": "UX/UI Design",
+        "sourceLineBlocks": "200;307"
+      },
+      {
+        "questionId": "import_q095",
+        "question": "Curved monitors are a total gimmick and just look weird on a desk. Tell me I am wrong.",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "201-202;308-309"
+      },
+      {
+        "questionId": "import_q096",
+        "question": "Is math actually important for coding? I am terrible at math but I want to build websites.",
+        "topic": "Software/Coding",
+        "sourceLineBlocks": "203-204;310-311"
+      },
+      {
+        "questionId": "import_q097",
+        "question": "Why is everyone so obsessed with the Pomodoro timer thing? It is just a kitchen clock.",
+        "topic": "Productivity Tools",
+        "sourceLineBlocks": "205-206;312-313"
+      },
+      {
+        "questionId": "import_q098",
+        "question": "I use the same password for everything but I change the last number. Is that bad?",
+        "topic": "Cybersecurity/Privacy",
+        "sourceLineBlocks": "207;314"
+      },
+      {
+        "questionId": "import_q099",
+        "question": "I bought a new graphics card for gaming and it literally does not fit inside my computer case. What do I do?",
+        "topic": "Hardware/Gifts",
+        "sourceLineBlocks": "208-209;315-316"
+      },
+      {
+        "questionId": "import_q100",
+        "question": "Will learning to use AI make me lazy? I feel like I am cheating when I use it to write cover letters.",
+        "topic": "AI",
+        "sourceLineBlocks": "210-211;317-318"
+      }
+    ],
+    "nearDuplicateQuestions": [
+      {
+        "similarity": 0.897,
+        "questionIdA": "import_q002",
+        "topicA": "Software/Coding",
+        "questionA": "I am trying to learn Python but I am so lost, where do I actually start?",
+        "sourceLinesA": "4-6",
+        "questionIdB": "import_q052",
+        "topicB": "Software/Coding",
+        "questionB": "I am trying to learn Python but I am so lost. Where do I actually start without getting confused?",
+        "sourceLinesB": "109-111;216-218"
+      },
+      {
+        "similarity": 0.812,
+        "questionIdA": "import_q004",
+        "topicA": "Hardware/Gifts",
+        "questionA": "My budget is $50, what is the best mouse I can get for my office? My hand is cramping.",
+        "sourceLinesA": "9",
+        "questionIdB": "import_q054",
+        "topicB": "Hardware/Gifts",
+        "questionB": "My budget is 50 dollars. What is the absolute best computer mouse I can get for my office job?",
+        "sourceLinesB": "116-117;223-224"
+      },
+      {
+        "similarity": 0.804,
+        "questionIdA": "import_q005",
+        "topicA": "Cybersecurity/Privacy",
+        "questionA": "Should I really be worried about my phone listening to me? I talked about dog food and saw an ad for it!",
+        "sourceLinesA": "10-13",
+        "questionIdB": "import_q055",
+        "topicB": "Cybersecurity/Privacy",
+        "questionB": "Should I really be worried about my phone listening to me? I talked about shoes and now I see shoe ads everywhere.",
+        "sourceLinesB": "118-121;225-228"
+      },
+      {
+        "similarity": 0.718,
+        "questionIdA": "import_q003",
+        "topicA": "Productivity Tools",
+        "questionA": "Is Notion actually better than just using a simple notebook? I feel like learning it is a full-time job.",
+        "sourceLinesA": "7-8",
+        "questionIdB": "import_q053",
+        "topicB": "Productivity Tools",
+        "questionB": "Is Notion actually better than just using a simple paper notebook? It looks like too much work.",
+        "sourceLinesB": "112-115;219-222"
+      },
+      {
+        "similarity": 0.701,
+        "questionIdA": "import_q050",
+        "topicA": "Software/Coding",
+        "questionA": "Why do programmers argue so much about using the tab key versus the space bar?",
+        "sourceLinesA": "104-105",
+        "questionIdB": "import_q090",
+        "topicB": "Software/Coding",
+        "questionB": "Why do programmers care so much about using tabs versus using spaces? It seems so silly to fight over.",
+        "sourceLinesB": "192-193;299-300"
+      },
+      {
+        "similarity": 0.677,
+        "questionIdA": "import_q006",
+        "topicA": "AI",
+        "questionA": "Will ChatGPT actually take my job or is it just hype? I am an office assistant and I am freaking out.",
+        "sourceLinesA": "14",
+        "questionIdB": "import_q056",
+        "topicB": "AI",
+        "questionB": "Will ChatGPT actually take my job or is it just hype? I work in answering customer service emails.",
+        "sourceLinesB": "122;229"
+      },
+      {
+        "similarity": 0.67,
+        "questionIdA": "import_q001",
+        "topicA": "UX/UI Design",
+        "questionA": "Why do all websites look exactly the same now with massive text and boring colors?",
+        "sourceLinesA": "2-3",
+        "questionIdB": "import_q051",
+        "topicB": "UX/UI Design",
+        "questionB": "Why do all websites look exactly the same now? It is just big pictures and large text everywhere.",
+        "sourceLinesB": "106-108;213-215"
+      }
+    ],
+    "questionOnlyRecords": [
+      {
+        "questionId": "import_q006",
+        "topic": "AI",
+        "question": "Will ChatGPT actually take my job or is it just hype? I am an office assistant and I am freaking out.",
+        "sourceLines": "14"
+      },
+      {
+        "questionId": "import_q013",
+        "topic": "UX/UI Design",
+        "question": "Where did all the scrollbars go on modern websites? I can never tell how long a page is anymore!",
+        "sourceLines": "28"
+      },
+      {
+        "questionId": "import_q025",
+        "topic": "UX/UI Design",
+        "question": "I absolutely hate the new video updates on social media. Why is everything turning into TikTok?",
+        "sourceLines": "53"
+      },
+      {
+        "questionId": "import_q038",
+        "topic": "Software/Coding",
+        "question": "Are those three-month coding schools actually legit or just a scam to take my money?",
+        "sourceLines": "80"
+      },
+      {
+        "questionId": "import_q047",
+        "topic": "Cybersecurity/Privacy",
+        "question": "Why do some unsubscribe buttons at the bottom of emails just take me to an error page?",
+        "sourceLines": "98"
+      },
+      {
+        "questionId": "import_q056",
+        "topic": "AI",
+        "question": "Will ChatGPT actually take my job or is it just hype? I work in answering customer service emails.",
+        "sourceLines": "122;229"
+      }
+    ]
+  },
+  "validation": {
+    "cleanedColumnsMatchRequirement": true,
+    "generatedQuestionIdsUniquePerQuestionText": true,
+    "generatedAnswerIdsUnique": true,
+    "generatedQuestionIdMapsToSingleQuestionText": true,
+    "answerCountsMatchRetainedAnswers": true,
+    "answerCountMismatches": [],
+    "embeddedHeaderRowsRemaining": false,
+    "nonEmptyAnswerTextRowsWithoutAnswerId": []
+  }
+}

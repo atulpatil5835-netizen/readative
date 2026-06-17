@@ -1,0 +1,18 @@
+{
+  "totalFirestoreDocsUnchanged": true,
+  "beforeDocCount": 109,
+  "afterDocCount": 109,
+  "authorNamesUpdated": true,
+  "migratedAuthorMismatches": [],
+  "remainingImportedReadativeImportAuthors": [],
+  "noDuplicateQuestionIds": true,
+  "noDuplicateAnswerIds": true,
+  "duplicateAnswerIds": [],
+  "questionContentUnchanged": true,
+  "contentChanges": [],
+  "questionTimestampsUnchanged": true,
+  "timestampChanges": [],
+  "answerIdsUnchanged": true,
+  "answerIdChanges": [],
+  "passed": true
+}

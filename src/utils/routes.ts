@@ -1,5 +1,7 @@
 export type AppTab = "knowledge" | "smarttalk" | "explore" | "profile";
 
+export const CANONICAL_SITE_ORIGIN = "https://www.readative.com";
+
 export interface RouteOptions {
   focusedEntryId?: string | null;
   profileAuthorId?: string | null;
@@ -400,8 +402,7 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
 export function buildAbsoluteRouteUrl(
   tab: AppTab,
   options: RouteOptions = {},
-  origin =
-    typeof window === "undefined" ? "https://readative.com" : window.location.origin
+  origin = CANONICAL_SITE_ORIGIN,
 ) {
   return `${origin}${buildPublicPath(tab, options)}`;
 }

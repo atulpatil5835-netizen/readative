@@ -1,4 +1,5 @@
 import { Helmet } from "react-helmet-async";
+import { CANONICAL_SITE_ORIGIN } from "../utils/routes";
 
 interface SEOProps {
   title: string;
@@ -17,11 +18,7 @@ function toAbsoluteUrl(pathOrUrl: string) {
     return pathOrUrl;
   }
 
-  if (typeof window === "undefined") {
-    return `https://readative.com${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
-  }
-
-  return new URL(pathOrUrl, window.location.origin).toString();
+  return `${CANONICAL_SITE_ORIGIN}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
 }
 
 export function SEO({
@@ -36,11 +33,9 @@ export function SEO({
   robots = "index",
 }: SEOProps) {
   const siteTitle = "Readative";
-  const baseUrl =
-    typeof window === "undefined"
-      ? "https://readative.com"
-      : `${window.location.origin}${window.location.pathname}`;
-  const resolvedUrl = url || baseUrl;
+  const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
+  const baseUrl = `${CANONICAL_SITE_ORIGIN}${pathname}`;
+  const resolvedUrl = url ? toAbsoluteUrl(url) : baseUrl;
   const resolvedAmpUrl = ampUrl ? toAbsoluteUrl(ampUrl) : null;
   const resolvedImage = toAbsoluteUrl(image || "/logo.png");
   const fullTitle = title.includes(siteTitle) ? title : `${title} | ${siteTitle}`;

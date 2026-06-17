@@ -1150,14 +1150,17 @@ export function Explore({
 
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
         {activeTopic && (
-          <button
-            type="button"
-            onClick={() => onOpenTopic(null)}
+          <a
+            href="/explore"
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenTopic(null);
+            }}
             className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 transition-colors hover:border-sky-200 hover:text-sky-700"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Explore
-          </button>
+          </a>
         )}
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
@@ -1227,10 +1230,13 @@ export function Explore({
             <ExploreSection icon={<Flame className="h-4 w-4" />} title="Trending Topics">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {trendingTopics.map((topic) => (
-                  <button
+                  <a
                     key={topic.id}
-                    type="button"
-                    onClick={() => onOpenTopic(topic.id)}
+                    href={`/topic/${encodeURIComponent(topic.id)}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onOpenTopic(topic.id);
+                    }}
                     className={`rounded-2xl border px-3 py-3 text-left shadow-sm transition-colors ${
                       activeTopic?.id === topic.id
                         ? "border-sky-200 bg-sky-50"
@@ -1244,7 +1250,7 @@ export function Explore({
                     <p className="mt-1 text-xs font-semibold text-slate-500">
                       {topic.postCount} posts / {topic.discussionCount} talks
                     </p>
-                  </button>
+                  </a>
                 ))}
               </div>
             </ExploreSection>
@@ -1272,10 +1278,13 @@ export function Explore({
             >
               <div className="space-y-2">
                 {activeDiscussions.map((question) => (
-                  <button
+                  <a
                     key={question.id}
-                    type="button"
-                    onClick={onOpenSmartTalk}
+                    href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onOpenSmartTalk();
+                    }}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
                   >
                     <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">
@@ -1286,7 +1295,7 @@ export function Explore({
                       <span>/</span>
                       <span>{formatCompactDate(getDiscussionActivity(question, now).latestActivity)}</span>
                     </div>
-                  </button>
+                  </a>
                 ))}
               </div>
             </ExploreSection>
@@ -1310,43 +1319,52 @@ export function Explore({
                     className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => onOpenTopic(collection.id)}
+                      <a
+                        href={`/topic/${encodeURIComponent(collection.id)}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onOpenTopic(collection.id);
+                        }}
                         className="min-w-0 text-left font-black text-slate-950 transition-colors hover:text-sky-700"
                       >
                         {collection.collectionTitle}
-                      </button>
+                      </a>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">
                         {collection.total}
                       </span>
                     </div>
                     <div className="mt-3 space-y-2">
                       {collection.entries.map((entry) => (
-                        <button
+                        <a
                           key={entry.id}
-                          type="button"
-                          onClick={() => onOpenEntry(entry.id)}
+                          href={`/post/${entry.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onOpenEntry(entry.id);
+                          }}
                           className="flex w-full items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left transition-colors hover:bg-emerald-50"
                         >
                           <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                           <span className="line-clamp-1 text-xs font-bold text-slate-700">
                             {entry.title}
                           </span>
-                        </button>
+                        </a>
                       ))}
                       {collection.questions.map((question) => (
-                        <button
+                        <a
                           key={question.id}
-                          type="button"
-                          onClick={onOpenSmartTalk}
+                          href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            onOpenSmartTalk();
+                          }}
                           className="flex w-full items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-left transition-colors hover:bg-indigo-100"
                         >
                           <MessageSquareMore className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
                           <span className="line-clamp-1 text-xs font-bold text-slate-700">
                             {question.content}
                           </span>
-                        </button>
+                        </a>
                       ))}
                     </div>
                   </div>
@@ -1453,13 +1471,16 @@ function TopicKnowledgeBrief({
             {topic.description}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onOpenCategory(category.id)}
+        <a
+          href={`/category/${encodeURIComponent(category.id)}`}
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenCategory(category.id);
+          }}
           className="w-fit rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
         >
           {category.label}
-        </button>
+        </a>
       </div>
 
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
@@ -1504,14 +1525,17 @@ function TopicKnowledgeBrief({
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {relatedTopics.map((relatedTopic) => (
-                <button
+                <a
                   key={relatedTopic.id}
-                  type="button"
-                  onClick={() => onOpenTopic(relatedTopic.id)}
+                  href={`/topic/${encodeURIComponent(relatedTopic.id)}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onOpenTopic(relatedTopic.id);
+                  }}
                   className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
                 >
                   {relatedTopic.label}
-                </button>
+                </a>
               ))}
             </div>
           </div>
@@ -1581,10 +1605,13 @@ function UnifiedSearchResults({
         <ExploreSection icon={<MessageSquareMore className="h-4 w-4" />} title="Questions">
           <div className="space-y-2">
             {results.questions.map((question) => (
-              <button
+              <a
                 key={question.id}
-                type="button"
-                onClick={onOpenSmartTalk}
+                href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenSmartTalk();
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
               >
                 <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">
@@ -1593,7 +1620,7 @@ function UnifiedSearchResults({
                 <p className="mt-1 text-[11px] font-bold text-slate-400">
                   {question.answers.length} answers / {question.author}
                 </p>
-              </button>
+              </a>
             ))}
           </div>
         </ExploreSection>
@@ -1602,17 +1629,20 @@ function UnifiedSearchResults({
         <ExploreSection icon={<Hash className="h-4 w-4" />} title="Topics">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {results.topics.map((topic) => (
-              <button
+              <a
                 key={topic.id}
-                type="button"
-                onClick={() => onOpenTopic(topic.id)}
+                href={`/topic/${encodeURIComponent(topic.id)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenTopic(topic.id);
+                }}
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-sky-200 hover:bg-sky-50/60"
               >
                 <p className="text-sm font-black text-slate-950">{topic.label}</p>
                 <p className="mt-1 text-xs font-semibold text-slate-500">
                   {topic.postCount} posts
                 </p>
-              </button>
+              </a>
             ))}
           </div>
         </ExploreSection>
@@ -1641,10 +1671,13 @@ function DiscoveryPostList({
         const metrics = getTrustMetrics(entry);
 
         return (
-          <button
+          <a
             key={entry.id}
-            type="button"
-            onClick={() => onOpenEntry(entry.id)}
+            href={`/post/${entry.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              onOpenEntry(entry.id);
+            }}
             className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
           >
             <p className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
@@ -1663,7 +1696,7 @@ function DiscoveryPostList({
               <span>/</span>
               <span>{formatCompactDate(entry.createdAt)}</span>
             </div>
-          </button>
+          </a>
         );
       })}
     </div>
@@ -1680,10 +1713,13 @@ function ContributorList({
   return (
     <div className="space-y-2">
       {contributors.map((contributor) => (
-        <button
+        <a
           key={contributor.authorId}
-          type="button"
-          onClick={() => onOpenProfile(contributor.authorId)}
+          href={`/profile/${encodeURIComponent(contributor.authorId)}`}
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenProfile(contributor.authorId);
+          }}
           className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
         >
           <ProfileAvatar
@@ -1710,7 +1746,7 @@ function ContributorList({
               {contributor.level}
             </p>
           </div>
-        </button>
+        </a>
       ))}
     </div>
   );
@@ -1760,10 +1796,13 @@ function ResurfacingGrid({
           </div>
           <div className="space-y-2">
             {section.entries.map((entry) => (
-              <button
+              <a
                 key={entry.id}
-                type="button"
-                onClick={() => onOpenEntry(entry.id)}
+                href={`/post/${entry.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenEntry(entry.id);
+                }}
                 className="w-full border-t border-slate-100 pt-2 text-left first:border-t-0 first:pt-0"
               >
                 <p className="line-clamp-2 text-xs font-bold leading-5 text-slate-800">
@@ -1772,7 +1811,7 @@ function ResurfacingGrid({
                 <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
                   {formatCompactDate(entry.createdAt)}
                 </p>
-              </button>
+              </a>
             ))}
           </div>
         </section>

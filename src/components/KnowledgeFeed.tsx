@@ -3835,6 +3835,13 @@ export function KnowledgeFeed({
                 onLikeChange={handleLikeChange}
                 highlightedEntryId={focusedEntryId}
               />
+              {focusedEntry && (
+                <PostDiscoveryLinks
+                  focusedEntry={focusedEntry}
+                  entries={filteredEntries}
+                  onOpenEntry={onOpenEntry}
+                />
+              )}
               {hasMoreEntries && (
                 <div
                   ref={loadMoreSentinelRef}
@@ -4387,6 +4394,74 @@ function FeedNotice({ title, body }: { title: string; body: string }) {
   );
 }
 
+function PostDiscoveryLinks({
+  focusedEntry,
+  entries,
+  onOpenEntry,
+}: {
+  focusedEntry: KnowledgeEntry;
+  entries: KnowledgeEntry[];
+  onOpenEntry: (entryId: string) => void;
+}) {
+  const focusedTags = new Set(
+    focusedEntry.hashtags
+      .map((tag) => normalizeStoredHashtagValue(tag))
+      .filter((tag): tag is string => Boolean(tag)),
+  );
+  const relatedEntries = entries
+    .filter((entry) => entry.id !== focusedEntry.id)
+    .filter((entry) => {
+      if (entry.category && focusedEntry.category && entry.category === focusedEntry.category) {
+        return true;
+      }
+
+      return entry.hashtags.some((tag) => {
+        const normalizedTag = normalizeStoredHashtagValue(tag);
+        return Boolean(normalizedTag && focusedTags.has(normalizedTag));
+      });
+    })
+    .slice(0, 4);
+  const recentEntries = entries
+    .filter((entry) => entry.id !== focusedEntry.id)
+    .slice(0, 4);
+  const sections = [
+    { title: "Related Posts", entries: relatedEntries },
+    { title: "Recent Posts", entries: recentEntries },
+  ].filter((section) => section.entries.length > 0);
+
+  if (sections.length === 0) return null;
+
+  return (
+    <aside className="grid gap-3 sm:grid-cols-2" aria-label="Post discovery links">
+      {sections.map((section) => (
+        <section
+          key={section.title}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-4 shadow-sm"
+        >
+          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            {section.title}
+          </h2>
+          <div className="mt-3 space-y-2">
+            {section.entries.map((entry) => (
+              <a
+                key={entry.id}
+                href={`/post/${encodeURIComponent(entry.id)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenEntry(entry.id);
+                }}
+                className="block border-t border-slate-100 pt-2 text-sm font-bold leading-5 text-slate-800 transition-colors first:border-t-0 first:pt-0 hover:text-emerald-700"
+              >
+                {entry.title}
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </aside>
+  );
+}
+
 function CategoryKnowledgeBrief({
   category,
   topics,
@@ -4457,14 +4532,17 @@ function CategoryKnowledgeBrief({
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {topics.map((topicDefinition) => (
-                <button
+                <a
                   key={topicDefinition.id}
-                  type="button"
-                  onClick={() => onOpenTopic(topicDefinition.id)}
+                  href={`/topic/${topicDefinition.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenTopic(topicDefinition.id);
+                  }}
                   className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
                 >
                   {topicDefinition.label}
-                </button>
+                </a>
               ))}
             </div>
           </div>

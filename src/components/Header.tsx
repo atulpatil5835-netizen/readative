@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Info, LogOut, MoreVertical, Palette, ShieldCheck } from "lucide-react";
 import { Logo } from "./Logo";
-import { type AppTab } from "../utils/routes";
+import { buildPublicPath, type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { type InfoSection } from "./AppPanels";
 
@@ -71,20 +71,28 @@ export const Header = memo(function Header({
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onHomeAction}
+          <a
+            href="/"
+            onClick={(event) => {
+              event.preventDefault();
+              onHomeAction();
+            }}
             className="relative flex h-9 w-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.02] md:h-10 md:w-10"
             aria-label="Open homepage"
           >
             <Logo className="h-full w-full" loading="eager" />
-          </button>
+          </a>
           <div className="flex flex-col justify-center">
-            <button
-              onClick={onHomeAction}
+            <a
+              href="/"
+              onClick={(event) => {
+                event.preventDefault();
+                onHomeAction();
+              }}
               className="leading-none text-left text-[18px] font-black tracking-tight text-emerald-800 md:text-[20px]"
             >
               Readative
-            </button>
+            </a>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.24em] text-emerald-500">
               Knowledge Feed
             </p>
@@ -104,9 +112,18 @@ export const Header = memo(function Header({
                   : "Profile";
 
               return (
-                <button
+                <a
                   key={tab}
-                  onClick={tab === "knowledge" ? onHomeAction : () => setActiveTab(tab)}
+                  href={buildPublicPath(tab)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (tab === "knowledge") {
+                      onHomeAction();
+                      return;
+                    }
+
+                    setActiveTab(tab);
+                  }}
                   className={`relative text-sm font-medium transition-colors ${
                     activeTab === tab
                       ? "text-emerald-600"
@@ -114,7 +131,7 @@ export const Header = memo(function Header({
                   }`}
                 >
                   {label}
-                </button>
+                </a>
               );
             })}
           </nav>

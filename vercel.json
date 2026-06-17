@@ -26,15 +26,39 @@
           "value": "text/plain; charset=utf-8"
         }
       ]
+    },
+    {
+      "source": "/posts",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/smarttalks",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
     }
   ],
   "redirects": [
     { "source": "/tags/Inspiration", "destination": "/tag/inspiration", "permanent": true },
     { "source": "/tags/LifeTruths", "destination": "/tag/lifetruths", "permanent": true },
     { "source": "/tags/thoughtoftheday", "destination": "/tag/thoughtoftheday", "permanent": true },
-    { "source": "/tags/:path*", "destination": "/tag/:path*", "permanent": true }
+    { "source": "/tags/:path*", "destination": "/tag/:path*", "permanent": true },
+    { "source": "/knowledge/:id", "destination": "/post/:id", "permanent": true },
+    { "source": "/knowledge", "destination": "/", "permanent": true },
+    { "source": "/jobs", "destination": "/explore", "permanent": true }
   ],
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/posts", "destination": "/api/discovery" },
+    { "source": "/smarttalks", "destination": "/api/smarttalks" },
     { "source": "/__/auth/:path*", "destination": "https://readative-803b0.firebaseapp.com/__/auth/:path*" },
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
