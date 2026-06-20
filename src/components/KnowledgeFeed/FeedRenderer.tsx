@@ -1,0 +1,621 @@
+import { type RefObject } from "react";
+import {
+  ArrowUp,
+  BookOpenText,
+  RefreshCw,
+} from "lucide-react";
+import { KnowledgeEntry, UserProfile } from "../../types";
+import { KnowledgeCardList } from "../KnowledgeCardList";
+import { DiscoverySearch } from "../DiscoverySearch";
+import {
+  FeedPaginationSkeleton,
+  KnowledgeFeedSkeleton,
+} from "../Skeletons";
+import { SEO } from "../SEO";
+import { type SeoCategoryDefinition, type SeoTopicDefinition } from "../../utils/seoTaxonomy";
+import { navigateToRoute } from "../../utils/routes";
+import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
+import { type FeedTopicFilter, type FeedTopicId, type FeedMessage } from "./feedTypes";
+import { FEED_TOPIC_FILTERS } from "./feedFilters";
+import { buildKnowledgeSchemas } from "./feedHelpers";
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+export function FeedNotice({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
+      <p className="font-bold">{title}</p>
+      <p className="mt-1 leading-6">{body}</p>
+    </div>
+  );
+}
+
+function BriefText({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 leading-5 text-slate-600">{value}</p>
+    </div>
+  );
+}
+
+export function CategoryKnowledgeBrief({
+  category,
+  topics,
+  onOpenTopic,
+}: {
+  category: SeoCategoryDefinition;
+  topics: SeoTopicDefinition[];
+  onOpenTopic: (topicId: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">
+            Category
+          </p>
+          <h1 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+            {category.label}
+          </h1>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            {category.description}
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
+          Permanent pillar
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <BriefText label="What" value={category.what} />
+        <BriefText label="Why" value={category.why} />
+        <BriefText label="Who" value={category.who} />
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Benefits
+          </p>
+          <ul className="mt-1 space-y-1.5 text-slate-600">
+            {category.benefits.map((benefit) => (
+              <li key={benefit} className="leading-5">
+                {benefit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Examples
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {category.examples.map((example) => (
+              <span
+                key={example}
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600"
+              >
+                {example}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {topics.length > 0 && (
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Related Topics
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {topics.map((topicDefinition) => (
+                <a
+                  key={topicDefinition.id}
+                  href={`/topic/${topicDefinition.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenTopic(topicDefinition.id);
+                  }}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {topicDefinition.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function PostDiscoveryLinks({
+  focusedEntry,
+  entries,
+  onOpenEntry,
+}: {
+  focusedEntry: KnowledgeEntry;
+  entries: KnowledgeEntry[];
+  onOpenEntry: (entryId: string) => void;
+}) {
+  const focusedTags = new Set(
+    focusedEntry.hashtags
+      .map((tag) => tag.replace(/^#/, "").trim().toLowerCase())
+      .filter((tag): tag is string => Boolean(tag)),
+  );
+  const relatedEntries = entries
+    .filter((entry) => entry.id !== focusedEntry.id)
+    .filter((entry) => {
+      if (entry.category && focusedEntry.category && entry.category === focusedEntry.category) {
+        return true;
+      }
+
+      return entry.hashtags.some((tag) => {
+        const normalizedTag = tag.replace(/^#/, "").trim().toLowerCase();
+        return Boolean(normalizedTag && focusedTags.has(normalizedTag));
+      });
+    })
+    .slice(0, 4);
+  const recentEntries = entries
+    .filter((entry) => entry.id !== focusedEntry.id)
+    .slice(0, 4);
+  const sections = [
+    { title: "Related Posts", entries: relatedEntries },
+    { title: "Recent Posts", entries: recentEntries },
+  ].filter((section) => section.entries.length > 0);
+
+  if (sections.length === 0) return null;
+
+  return (
+    <aside className="grid gap-3 sm:grid-cols-2" aria-label="Post discovery links">
+      {sections.map((section) => (
+        <section
+          key={section.title}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-4 shadow-sm"
+        >
+          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            {section.title}
+          </h2>
+          <div className="mt-3 space-y-2">
+            {section.entries.map((entry) => (
+              <a
+                key={entry.id}
+                href={`/post/${encodeURIComponent(entry.id)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenEntry(entry.id);
+                }}
+                className="block border-t border-slate-100 pt-2 text-sm font-bold leading-5 text-slate-800 transition-colors first:border-t-0 first:pt-0 hover:text-emerald-700"
+              >
+                {entry.title}
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </aside>
+  );
+}
+
+// ─── FeedRenderer ─────────────────────────────────────────────────────────────
+
+export interface FeedRendererProps {
+  // Identity & auth
+  identity: KnowledgeIdentity | null;
+  currentAuthorId: string | null;
+
+  // Active routing state
+  isActive: boolean;
+  focusedEntryId: string | null;
+  focusedEntry: KnowledgeEntry | null;
+  focusedEntryPrimaryImage: { dataUrl: string; mimeType: string } | null;
+  selectedHashtag: string | null;
+  selectedFeedTopic: FeedTopicId;
+  activeFeedTopic: FeedTopicFilter;
+  activeCategory: SeoCategoryDefinition | null;
+  activeCategoryTopics: SeoTopicDefinition[];
+  normalizedSelectedHashtag: string | null;
+
+  // Feed entries
+  filteredEntries: KnowledgeEntry[];
+  visibleEntries: KnowledgeEntry[];
+  profiles: UserProfile[];
+
+  // UI states
+  feedSearchQuery: string;
+  isLoading: boolean;
+  shouldShowInitialFeedSkeleton: boolean;
+  shouldShowFeedErrorState: boolean;
+  shouldHoldEmptyFeedState: boolean;
+  hasActiveSearch: boolean;
+  hasActiveTopic: boolean;
+  hasMoreEntries: boolean;
+  isActiveFeedLoadingMore: boolean;
+  isPaginationBusy: boolean;
+  feedLoadError: string | null;
+  profilesLoadError: string | null;
+  showRefreshFeedback: boolean;
+  shouldShowBackToTopRefresh: boolean;
+
+  // Topic feed state (for error notices)
+  shouldUseIndependentFeed: boolean;
+  activeTopicFeedError: string | null;
+
+  // SEO
+  pageTitle: string;
+  pageDescription: string;
+  pageUrl: string;
+  shouldNoIndexKnowledgePage: boolean;
+
+  // Sentinel
+  loadMoreSentinelRef: RefObject<HTMLDivElement | null>;
+
+  // Callbacks
+  onSetFeedSearchQuery: (q: string) => void;
+  onSelectFeedTopic: (topicId: FeedTopicId) => void;
+  onClearSelectedHashtag: () => void;
+  onRetryFeedLoad: () => void;
+  onLoadMoreActiveEntries: () => void;
+  onVisibleEntry: (entry: KnowledgeEntry) => void;
+  onIdentityRequired: (action: { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }) => void;
+  onOpenProfile: (authorId: string) => void;
+  onOpenEntry: (entryId: string) => void;
+  onSelectHashtag: (tag: string) => void;
+  onLikeChange: (entryId: string, likes: string[], misleadingIds?: string[]) => void;
+  onBackToTopRefresh: () => void;
+}
+
+export function FeedRenderer({
+  isActive,
+  focusedEntryId,
+  focusedEntry,
+  focusedEntryPrimaryImage,
+  selectedHashtag,
+  activeFeedTopic,
+  activeCategory,
+  activeCategoryTopics,
+  normalizedSelectedHashtag,
+  filteredEntries,
+  visibleEntries,
+  profiles,
+  feedSearchQuery,
+  shouldShowInitialFeedSkeleton,
+  shouldShowFeedErrorState,
+  shouldHoldEmptyFeedState,
+  hasActiveSearch,
+  hasActiveTopic,
+  hasMoreEntries,
+  isActiveFeedLoadingMore,
+  isPaginationBusy,
+  feedLoadError,
+  profilesLoadError,
+  showRefreshFeedback,
+  shouldShowBackToTopRefresh,
+  shouldUseIndependentFeed,
+  activeTopicFeedError,
+  pageTitle,
+  pageDescription,
+  pageUrl,
+  shouldNoIndexKnowledgePage,
+  loadMoreSentinelRef,
+  onSetFeedSearchQuery,
+  onSelectFeedTopic,
+  onClearSelectedHashtag,
+  onRetryFeedLoad,
+  onLoadMoreActiveEntries,
+  onVisibleEntry,
+  onIdentityRequired,
+  onOpenProfile,
+  onOpenEntry,
+  onSelectHashtag,
+  onLikeChange,
+  onBackToTopRefresh,
+  identity,
+}: FeedRendererProps) {
+  return (
+    <div className="pb-20">
+      {isActive && (
+        <SEO
+          title={pageTitle}
+          description={pageDescription}
+          keywords={[
+            "homepage",
+            "knowledge posts",
+            "learning feed",
+            "readative",
+            ...(selectedHashtag ? [selectedHashtag] : []),
+            ...(activeCategory
+              ? [activeCategory.label, ...activeCategory.examples, ...activeCategory.tagSlugs]
+              : []),
+          ]}
+          type={focusedEntry ? "article" : "website"}
+          url={pageUrl}
+          ampUrl={
+            !focusedEntry && !selectedHashtag && activeFeedTopic.id === "all"
+              ? "/amp/"
+              : undefined
+          }
+          schema={buildKnowledgeSchemas({
+            entry: focusedEntry,
+            activeTopic: activeFeedTopic,
+            selectedHashtag: normalizedSelectedHashtag,
+            entries: filteredEntries,
+            pageUrl,
+          })}
+          robots={shouldNoIndexKnowledgePage ? "noindex" : "index"}
+          image={
+            focusedEntryPrimaryImage?.dataUrl &&
+            !focusedEntryPrimaryImage.dataUrl.startsWith("data:")
+              ? focusedEntryPrimaryImage.dataUrl
+              : undefined
+          }
+        />
+      )}
+
+      {shouldShowInitialFeedSkeleton ? (
+        <KnowledgeFeedSkeleton showControls={false} />
+      ) : (
+        <div className="space-y-6">
+          {feedLoadError &&
+            !shouldUseIndependentFeed &&
+            filteredEntries.length > 0 && (
+              <FeedNotice title="Feed loading issue" body={feedLoadError} />
+            )}
+
+          {shouldUseIndependentFeed &&
+            activeTopicFeedError &&
+            filteredEntries.length > 0 && (
+              <FeedNotice
+                title="Category loading issue"
+                body={activeTopicFeedError}
+              />
+            )}
+
+          {profilesLoadError && (
+            <FeedNotice
+              title="Profile directory issue"
+              body={profilesLoadError}
+            />
+          )}
+
+          <div className="space-y-3">
+            <DiscoverySearch
+              theme="emerald"
+              placeholder="Search"
+              value={feedSearchQuery}
+              onChange={onSetFeedSearchQuery}
+              onClear={() => onSetFeedSearchQuery("")}
+              ariaLabel="Search home feed"
+            />
+
+            {activeCategory && !focusedEntry && !selectedHashtag && (
+              <CategoryKnowledgeBrief
+                category={activeCategory}
+                topics={activeCategoryTopics}
+                onOpenTopic={(topicId) =>
+                  navigateToRoute("explore", { selectedTopic: topicId })
+                }
+              />
+            )}
+
+            <div
+              className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              aria-label="Post categories"
+            >
+              <div className="flex min-w-max items-center gap-2 pb-1">
+                {FEED_TOPIC_FILTERS.filter(
+                  (topic) => topic.id === "all" || topic.id === "trending",
+                ).map((topic) => {
+                  const TopicIcon = topic.icon;
+                  const isTopicActive = topic.id === activeFeedTopic.id;
+
+                  return (
+                    <button
+                      key={topic.id}
+                      type="button"
+                      onClick={() => onSelectFeedTopic(topic.id)}
+                      aria-pressed={isTopicActive}
+                      aria-label={
+                        topic.id === "all"
+                          ? "Show all posts"
+                          : `Show ${topic.label} posts`
+                      }
+                      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition-colors ${
+                        isTopicActive
+                          ? "border-emerald-500 bg-emerald-600 text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                      }`}
+                    >
+                      <TopicIcon className="h-3.5 w-3.5" />
+                      <span>{topic.label}</span>
+                    </button>
+                  );
+                })}
+                <label className="relative inline-flex h-9 shrink-0 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700">
+                  <span className="pointer-events-none mr-2">All Categories</span>
+                  <select
+                    value={
+                      activeFeedTopic.id === "all" ||
+                      activeFeedTopic.id === "trending"
+                        ? ""
+                        : activeFeedTopic.id
+                    }
+                    onChange={(event) =>
+                      onSelectFeedTopic(
+                        (event.target.value || "all") as FeedTopicId,
+                      )
+                    }
+                    className="max-w-[8.5rem] bg-transparent text-xs font-bold outline-none"
+                    aria-label="All categories"
+                  >
+                    <option value="">Select</option>
+                    {FEED_TOPIC_FILTERS.filter(
+                      (topic) => topic.id !== "all" && topic.id !== "trending",
+                    ).map((topic) => (
+                      <option key={topic.id} value={topic.id}>
+                        {topic.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {showRefreshFeedback && (
+            <p className="text-center text-xs font-medium text-emerald-700">
+              Feed refreshed
+            </p>
+          )}
+
+          {selectedHashtag && (
+            <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 px-5 py-4 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-700">
+                    Hashtag View
+                  </p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                    Showing posts for #{selectedHashtag}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {visibleEntries.length} related post
+                    {visibleEntries.length === 1 ? "" : "s"} found.
+                  </p>
+                </div>
+                <button
+                  onClick={onClearSelectedHashtag}
+                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  Clear filter
+                </button>
+              </div>
+            </div>
+          )}
+
+          {shouldShowFeedErrorState ? (
+            <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+              <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-4 text-xl font-black text-slate-900">
+                Something went wrong. Try again.
+              </h3>
+              <button
+                type="button"
+                onClick={onRetryFeedLoad}
+                className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+              >
+                Try again
+              </button>
+            </div>
+          ) : filteredEntries.length === 0 ? (
+            shouldHoldEmptyFeedState ? (
+              <KnowledgeFeedSkeleton count={3} showControls={false} />
+            ) : (
+              <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+                <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
+                <h3 className="mt-4 text-xl font-black text-slate-900">
+                  {hasActiveSearch
+                    ? `No posts matched "${feedSearchQuery.trim()}"`
+                    : hasActiveTopic && selectedHashtag
+                      ? `No ${activeFeedTopic.label} posts for #${selectedHashtag}`
+                      : hasActiveTopic
+                        ? `No ${activeFeedTopic.label} posts found`
+                        : selectedHashtag
+                          ? `No posts for #${selectedHashtag}`
+                          : "No posts yet"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  {hasActiveSearch
+                    ? "Try a broader keyword, another hashtag, or search by @username."
+                    : hasActiveTopic
+                      ? "Try another category or search by a more specific hashtag."
+                      : selectedHashtag
+                        ? "Try another hashtag or clear this filter to explore the full feed."
+                        : "Tap the `+` button at the top to upload the first knowledge post."}
+                </p>
+                {hasMoreEntries && (
+                  isActiveFeedLoadingMore ? (
+                    <div className="mt-5">
+                      <FeedPaginationSkeleton />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onLoadMoreActiveEntries}
+                      disabled={isPaginationBusy}
+                      className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                    >
+                      Load more posts
+                    </button>
+                  )
+                )}
+              </div>
+            )
+          ) : (
+            <div className="space-y-4">
+              <KnowledgeCardList
+                entries={filteredEntries}
+                currentIdentity={identity}
+                profiles={profiles}
+                onVisible={onVisibleEntry}
+                onIdentityRequired={onIdentityRequired}
+                onOpenProfile={onOpenProfile}
+                onOpenEntry={onOpenEntry}
+                onSelectHashtag={onSelectHashtag}
+                onLikeChange={onLikeChange}
+                highlightedEntryId={focusedEntryId}
+              />
+              {focusedEntry && (
+                <PostDiscoveryLinks
+                  focusedEntry={focusedEntry}
+                  entries={filteredEntries}
+                  onOpenEntry={onOpenEntry}
+                />
+              )}
+              {hasMoreEntries && (
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="py-4 text-center"
+                >
+                  {isActiveFeedLoadingMore ? (
+                    <FeedPaginationSkeleton />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onLoadMoreActiveEntries}
+                      disabled={isPaginationBusy}
+                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50"
+                    >
+                      Load more posts
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onBackToTopRefresh}
+        aria-label="Back to top, refresh, and shuffle posts"
+        aria-hidden={!shouldShowBackToTopRefresh}
+        tabIndex={shouldShowBackToTopRefresh ? 0 : -1}
+        title="Back to top, refresh, and shuffle posts"
+        className={`fixed bottom-24 right-4 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-emerald-200 bg-white text-emerald-700 shadow-[0_16px_40px_rgba(15,23,42,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 md:bottom-6 md:right-6 ${
+          shouldShowBackToTopRefresh
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        <span className="relative flex h-6 w-6 items-center justify-center">
+          <ArrowUp className="h-5 w-5" />
+          <RefreshCw className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-white p-0.5 text-emerald-600" />
+        </span>
+      </button>
+    </div>
+  );
+}

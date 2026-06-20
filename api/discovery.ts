@@ -4,8 +4,8 @@ import {
   SITE_URL,
   escapeXml,
   loadSeoData,
-} from "./_seoData";
-import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy";
+} from "./_seoData.js";
+import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
 
 function escapeHtml(value: string) {
   return escapeXml(value);
@@ -109,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     "SmartTalk Discussions",
     data.smartTalks.map((question) =>
       renderLink(
-        `/smarttalk#question-${encodeURIComponent(question.id)}`,
+        `/smarttalks/${encodeURIComponent(question.id)}`,
         question.title,
         `${question.answerCount} answers by @${question.authorName}`,
       ),

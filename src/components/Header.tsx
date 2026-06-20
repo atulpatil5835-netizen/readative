@@ -1,7 +1,17 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Info, LogOut, MoreVertical, Palette, ShieldCheck } from "lucide-react";
+import {
+  Bell,
+  Bookmark,
+  Info,
+  LogIn,
+  LogOut,
+  MoreVertical,
+  Palette,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { Logo } from "./Logo";
-import { buildPublicPath, type AppTab } from "../utils/routes";
+import { buildPublicPath, navigateToRoute, type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { type InfoSection } from "./AppPanels";
 
@@ -34,6 +44,9 @@ export const Header = memo(function Header({
 }: HeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasSignedInAccount = Boolean(identity?.email);
+  const accountLabel = identity?.displayName || "Guest reader";
+  const accountDetail = identity?.email || "Read freely. Sign in to save and contribute.";
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -165,15 +178,45 @@ export const Header = memo(function Header({
             {actionsOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
+                className="absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
               >
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <p className="truncate text-sm font-black text-slate-950">
+                    {accountLabel}
+                  </p>
+                  <p className="mt-1 truncate text-xs font-semibold text-slate-400">
+                    {accountDetail}
+                  </p>
+                </div>
                 <button
-                  onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
+                  onClick={() => handleMenuAction(() => setActiveTab("profile"))}
                   role="menuitem"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
-                  <ShieldCheck className="h-4 w-4" />
-                  Privacy
+                  <UserRound className="h-4 w-4" />
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMenuAction(() => navigateToRoute("profile", { section: "saved" }))}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <Bookmark className="h-4 w-4" />
+                  <span className="flex-1">Saved Posts</span>
+                </button>
+                <button
+                  onClick={() => handleMenuAction(onOpenNotifications)}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <Bell className="h-4 w-4" />
+                  <span className="flex-1">Notifications</span>
+                  {unreadNotificationCount > 0 && (
+                    <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">
+                      {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => handleMenuAction(() => onOpenInfo("appearance"))}
@@ -184,6 +227,14 @@ export const Header = memo(function Header({
                   Appearance
                 </button>
                 <button
+                  onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Privacy
+                </button>
+                <button
                   onClick={() => handleMenuAction(() => onOpenInfo("about"))}
                   role="menuitem"
                   className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
@@ -191,14 +242,25 @@ export const Header = memo(function Header({
                   <Info className="h-4 w-4" />
                   About Readative
                 </button>
-                <button
-                  onClick={() => handleMenuAction(onSignOut)}
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
+                {hasSignedInAccount ? (
+                  <button
+                    onClick={() => handleMenuAction(onSignOut)}
+                    role="menuitem"
+                    className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleMenuAction(onOpenSignIn)}
+                    role="menuitem"
+                    className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Sign in
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -894,10 +894,29 @@ export function Profile({
   }, [activeAuthorId]);
 
   useEffect(() => {
-    if (isOwnProfile || viewedAuthorId) {
-      setSection("shared");
-    }
-  }, [isOwnProfile, viewedAuthorId]);
+    const handleUrlChange = () => {
+      if (typeof window !== "undefined") {
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.split("?")[1] || "");
+        const tabParam = searchParams.get("tab") || hashParams.get("tab");
+        if (tabParam === "saved") {
+          setSection("saved");
+        } else {
+          setSection("shared");
+        }
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener("popstate", handleUrlChange);
+    window.addEventListener("hashchange", handleUrlChange);
+    window.addEventListener("readative:routechange", handleUrlChange);
+    return () => {
+      window.removeEventListener("popstate", handleUrlChange);
+      window.removeEventListener("hashchange", handleUrlChange);
+      window.removeEventListener("readative:routechange", handleUrlChange);
+    };
+  }, [activeAuthorId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1925,22 +1944,69 @@ export function Profile({
           robots="noindex"
         />
 
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-            <ReadativeRMark className="h-7 w-7 text-2xl tracking-tight" />
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="bg-slate-950 px-6 py-7 text-white">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-emerald-300">
+              <ReadativeRMark className="h-7 w-7 text-2xl tracking-tight" />
+            </div>
+            <h2 className="text-3xl font-black tracking-normal">
+              Build your Readative profile
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
+              Sign in with Google to create posts, save knowledge, join SmartTalk,
+              and build reputation from helpful contributions.
+            </p>
           </div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-950">
-            Sign in with Google
-          </h2>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-            Keep your profile, posts, helpful feedback, and comments synced.
-          </p>
-          <button
-            onClick={() => setShowIdentityPrompt(true)}
-            className="mt-5 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
-          >
-            Continue with Google
-          </button>
+          <div className="grid gap-3 px-5 py-5 sm:grid-cols-2">
+            {[
+              {
+                label: "Create posts",
+                detail: "Publish knowledge under a durable profile.",
+                icon: BookOpenText,
+              },
+              {
+                label: "Save knowledge",
+                detail: "Keep useful posts connected to your account.",
+                icon: Save,
+              },
+              {
+                label: "Join SmartTalk",
+                detail: "Answer questions and continue discussions.",
+                icon: MessageSquareReply,
+              },
+              {
+                label: "Build reputation",
+                detail: "Earn trust from helpful community signals.",
+                icon: Award,
+              },
+            ].map((benefit) => {
+              const BenefitIcon = benefit.icon;
+
+              return (
+                <div
+                  key={benefit.label}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                >
+                  <BenefitIcon className="h-5 w-5 text-emerald-700" />
+                  <p className="mt-3 text-sm font-black text-slate-950">
+                    {benefit.label}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {benefit.detail}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="border-t border-slate-100 px-5 py-5">
+            <button
+              onClick={() => setShowIdentityPrompt(true)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Continue with Google
+            </button>
+          </div>
         </div>
 
         {showIdentityPrompt && (
@@ -2039,9 +2105,12 @@ export function Profile({
                     {isOwnProfile ? "Your Profile" : "Community Profile"}
                   </span>
                   {profileTrustInsights && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700 shadow-sm">
+                    <span
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 shadow-sm"
+                      title={`${profileTrustInsights.contributorLevel}: ${profileTrustInsights.trustScore.toLocaleString()} trust score`}
+                      aria-label={`${profileTrustInsights.contributorLevel}: ${profileTrustInsights.trustScore.toLocaleString()} trust score`}
+                    >
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                      {profileTrustInsights.contributorLevel}
                     </span>
                   )}
                   {isOwnProfile && (
@@ -2600,6 +2669,7 @@ function ProfileTrustOverview({
   insights: ProfileTrustInsights;
   expertiseTags: string[];
 }) {
+  const contributorTitle = `${insights.contributorLevel}: ${insights.trustScore.toLocaleString()} trust score`;
   const compactStats = [
     ["Trust Score", insights.trustScore.toLocaleString()],
     ["Helpful", insights.helpfulReceived.toLocaleString()],
@@ -2611,9 +2681,12 @@ function ProfileTrustOverview({
   return (
     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm">
+        <span
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm"
+          title={contributorTitle}
+          aria-label={contributorTitle}
+        >
           <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-          {insights.contributorLevel}
         </span>
         {compactStats.map(([label, value]) => (
           <span

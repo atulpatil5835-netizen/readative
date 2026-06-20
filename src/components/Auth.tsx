@@ -1,11 +1,15 @@
 import { useState } from "react";
 import {
   AtSign,
+  Award,
+  Bookmark,
   CheckCircle,
   LogIn,
   MessageCircle,
   ShieldCheck,
+  Sparkles,
   ThumbsUp,
+  UserRound,
   X,
 } from "lucide-react";
 import { firebaseAuthDomain } from "../firebase/firebase";
@@ -234,7 +238,7 @@ interface GoogleSignInPromptProps {
 
 export function GoogleSignInPrompt({
   title = "Continue with Google",
-  description = "Use your Google account to keep your profile and activity synced.",
+  description = "Unlock a Readative profile for saved posts, discussions, reputation, and trusted contributors.",
   submitLabel = "Continue with Google",
   onConfirm,
   onClose,
@@ -243,6 +247,33 @@ export function GoogleSignInPrompt({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const signInDomain = firebaseAuthDomain.replace(/^www\./, "");
   const usesProjectAuthHelper = signInDomain.endsWith(".firebaseapp.com");
+  const benefits = [
+    {
+      label: "Save Posts",
+      detail: "Keep important knowledge ready on every device.",
+      icon: Bookmark,
+    },
+    {
+      label: "Highlight Knowledge",
+      detail: "Build toward richer visibility tools as they arrive.",
+      icon: Sparkles,
+    },
+    {
+      label: "Join Discussions",
+      detail: "Comment, reply, and keep your activity connected.",
+      icon: MessageCircle,
+    },
+    {
+      label: "Build Reputation",
+      detail: "Carry helpful feedback into a trusted profile.",
+      icon: Award,
+    },
+    {
+      label: "Follow Contributors",
+      detail: "Discover trusted voices as the network grows.",
+      icon: UserRound,
+    },
+  ];
 
   const handleSignIn = async () => {
     setIsSigningIn(true);
@@ -262,25 +293,53 @@ export function GoogleSignInPrompt({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-sm rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl">
-        <div>
+      <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b border-slate-100 bg-slate-950 px-5 py-5 text-white">
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="absolute right-4 top-4 rounded-full p-2 text-white/65 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close sign in"
           >
             <X className="h-4 w-4" />
           </button>
 
-          <div className="mb-4 inline-flex rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+          <div className="mb-4 inline-flex rounded-2xl bg-white/10 p-3 text-emerald-300">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h2 className="pr-8 text-2xl font-black tracking-tight text-slate-950">
+          <h2 className="pr-8 text-2xl font-black tracking-normal">
             {title}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
+          <p className="mt-2 text-sm leading-6 text-slate-300">
             {description}
           </p>
+        </div>
+
+        <div className="p-5">
+          <div className="grid gap-2">
+            {benefits.map((benefit) => {
+              const BenefitIcon = benefit.icon;
+
+              return (
+                <div
+                  key={benefit.label}
+                  className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3"
+                >
+                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm">
+                    <BenefitIcon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-black text-slate-950">
+                      {benefit.label}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                      {benefit.detail}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <ShieldCheck className="h-4 w-4 shrink-0" />
             <span className="min-w-0">
@@ -294,24 +353,24 @@ export function GoogleSignInPrompt({
               )}
             </span>
           </div>
-        </div>
 
-        <div className="mt-5 space-y-4">
-          {errorMessage && (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              {errorMessage}
-            </p>
-          )}
+          <div className="mt-5 space-y-4">
+            {errorMessage && (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {errorMessage}
+              </p>
+            )}
 
-          <button
-            type="button"
-            onClick={handleSignIn}
-            disabled={isSigningIn}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-          >
-            <LogIn className="h-4 w-4" />
-            {isSigningIn ? "Opening Google..." : submitLabel}
-          </button>
+            <button
+              type="button"
+              onClick={handleSignIn}
+              disabled={isSigningIn}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <LogIn className="h-4 w-4" />
+              {isSigningIn ? "Opening Google..." : submitLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>

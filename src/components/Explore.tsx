@@ -1738,13 +1738,17 @@ function ContributorList({
               @{contributor.username}
             </p>
           </div>
-          <div className="text-right">
+          <div className="flex flex-col items-end gap-1 text-right">
             <p className="text-xs font-black text-slate-900">
               {contributor.trustScore}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-600">
-              {contributor.level}
-            </p>
+            <span
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
+              title={`${contributor.level}: ${contributor.trustScore} trust score`}
+              aria-label={`${contributor.level}: ${contributor.trustScore} trust score`}
+            >
+              <Award className="h-3.5 w-3.5" />
+            </span>
           </div>
         </a>
       ))}

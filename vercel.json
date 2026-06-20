@@ -59,6 +59,7 @@
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/smarttalks", "destination": "/api/smarttalks" },
+    { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id" },
     { "source": "/__/auth/:path*", "destination": "https://readative-803b0.firebaseapp.com/__/auth/:path*" },
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },

@@ -5,7 +5,7 @@ import {
   SEO_TAGS,
   SEO_TOPICS,
   normalizeSeoSlug,
-} from "../src/utils/seoTaxonomy";
+} from "../src/utils/seoTaxonomy.js";
 
 export const SITE_URL = "https://www.readative.com";
 export const DISCOVERY_INDEX_PATH = "/posts";
@@ -69,7 +69,7 @@ export interface SitemapEntry {
   lastmod: string;
   changefreq: "daily" | "weekly" | "monthly";
   priority: string;
-  type: "page" | "category" | "topic" | "tag" | "post" | "profile";
+  type: "page" | "category" | "topic" | "tag" | "post" | "profile" | "smarttalk";
 }
 
 type FirestoreDocument = {
@@ -611,6 +611,19 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         generatedAt,
         "weekly",
         "0.7",
+      ),
+    );
+  }
+
+  for (const question of data.smartTalks) {
+    entries.push(
+      buildEntry(
+        `/smarttalks/${encodeURIComponent(question.id)}`,
+        "smarttalk",
+        question.updatedAt || question.createdAt,
+        generatedAt,
+        getChangeFrequency(question.updatedAt, question.createdAt),
+        "0.65",
       ),
     );
   }

@@ -21,16 +21,12 @@ interface KnowledgeImageCarouselProps {
   renderOverlayAction?: (image: KnowledgeImageAsset, index: number) => ReactNode;
 }
 
-function getSlideClassName(layout: KnowledgeImageLayout, mode: "feed" | "composer") {
+function getSlideClassName(layout: KnowledgeImageLayout, _mode: "feed" | "composer") {
   if (layout === "portrait") {
-    return mode === "composer"
-      ? "basis-[56%] sm:basis-[42%] aspect-[8/9]"
-      : "basis-[76%] sm:basis-[58%] aspect-[8/9]";
+    return "min-w-full basis-full aspect-[8/9]";
   }
 
-  return mode === "composer"
-    ? "basis-[90%] sm:basis-[72%] aspect-video"
-    : "basis-[calc(100%-0.75rem)] sm:basis-[calc(100%-1rem)] aspect-video";
+  return "min-w-full basis-full aspect-video";
 }
 
 function clampImageIndex(index: number, imageCount: number) {
@@ -116,17 +112,47 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
     galleryTouchStartRef.current = null;
   }, []);
 
+  const scrollToSlide = useCallback(
+    (index: number) => {
+      const scroller = scrollerRef.current;
+      const nextIndex = clampImageIndex(index, images.length);
+
+      setActiveIndex(nextIndex);
+
+      if (!scroller) return;
+
+      const slide = scroller.children[nextIndex];
+      if (slide instanceof HTMLElement) {
+        scroller.scrollTo({
+          left: slide.offsetLeft,
+          behavior: "smooth",
+        });
+      }
+    },
+    [images.length],
+  );
+
+  const showPreviousSlide = useCallback(() => {
+    if (images.length <= 1 || activeImageIndex === 0) return;
+    scrollToSlide(activeImageIndex - 1);
+  }, [activeImageIndex, images.length, scrollToSlide]);
+
+  const showNextSlide = useCallback(() => {
+    if (images.length <= 1 || activeImageIndex === images.length - 1) return;
+    scrollToSlide(activeImageIndex + 1);
+  }, [activeImageIndex, images.length, scrollToSlide]);
+
   const showNextGalleryImage = useCallback(() => {
     setGalleryIndex((current) => {
-      if (current === null || images.length <= 1) return current;
-      return (current + 1) % images.length;
+      if (current === null || images.length <= 1 || current === images.length - 1) return current;
+      return current + 1;
     });
   }, [images.length]);
 
   const showPreviousGalleryImage = useCallback(() => {
     setGalleryIndex((current) => {
-      if (current === null || images.length <= 1) return current;
-      return (current - 1 + images.length) % images.length;
+      if (current === null || images.length <= 1 || current === 0) return current;
+      return current - 1;
     });
   }, [images.length]);
 
@@ -235,11 +261,11 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
   if (images.length === 0) return null;
 
   return (
-    <div className="relative overflow-hidden bg-slate-100">
+    <div className="relative overflow-hidden bg-slate-50">
       <div
         ref={scrollerRef}
         onScroll={scheduleActiveIndexUpdate}
-        className="readative-scrollbar-hidden flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 py-4 sm:gap-4 sm:px-5"
+        className="readative-scrollbar-hidden flex snap-x snap-mandatory overflow-x-auto"
       >
         {images.map((image, index) => {
           const imageKey = `${image.optimizedAt}-${index}-${image.dataUrl.length}`;
@@ -264,7 +290,7 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                 }
               }}
               onKeyDown={(event) => handleSlideKeyDown(event, index, hasFailed)}
-              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden rounded-lg bg-slate-200 shadow-[0_12px_35px_rgba(15,23,42,0.12)] ${
+              className={`${getSlideClassName(layout, mode)} relative shrink-0 snap-center overflow-hidden bg-slate-100 ${
                 mode === "feed" && !hasFailed
                   ? "cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
                   : ""
@@ -349,9 +375,31 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
       </div>
 
       {images.length > 1 && (
-        <div className="pointer-events-none absolute bottom-4 right-5 rounded-full bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-          {activeImageIndex + 1}/{images.length}
-        </div>
+        <>
+          <button
+            type="button"
+            onClick={showPreviousSlide}
+            disabled={activeImageIndex === 0}
+            className="absolute left-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-lg shadow-slate-950/10 ring-1 ring-slate-200/80 transition-colors hover:bg-white hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="Previous image"
+            title="Previous image"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={showNextSlide}
+            disabled={activeImageIndex === images.length - 1}
+            className="absolute right-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-lg shadow-slate-950/10 ring-1 ring-slate-200/80 transition-colors hover:bg-white hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="Next image"
+            title="Next image"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <div className="pointer-events-none absolute bottom-4 right-5 rounded-full bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+            {activeImageIndex + 1}/{images.length}
+          </div>
+        </>
       )}
 
       {activeGalleryImage &&
@@ -384,7 +432,8 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                 <button
                   type="button"
                   onClick={showPreviousGalleryImage}
-                  className="absolute left-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:h-12 sm:w-12"
+                  disabled={activeGalleryIndex === 0}
+                  className="absolute left-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-30 disabled:pointer-events-none sm:h-12 sm:w-12"
                   aria-label="Previous image"
                   title="Previous"
                 >
@@ -393,7 +442,8 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
                 <button
                   type="button"
                   onClick={showNextGalleryImage}
-                  className="absolute right-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:h-12 sm:w-12"
+                  disabled={activeGalleryIndex === images.length - 1}
+                  className="absolute right-3 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-30 disabled:pointer-events-none sm:h-12 sm:w-12"
                   aria-label="Next image"
                   title="Next"
                 >

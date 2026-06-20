@@ -331,6 +331,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           : "Review";
   const entryImages = useMemo(() => getKnowledgeEntryImages(entry), [entry]);
   const imageLayout = useMemo(() => getKnowledgeEntryImageLayout(entry), [entry]);
+  const contentSections = useMemo(
+    () =>
+      entry.content
+        .split(/\r?\n(?:[ \t]*\r?\n)+/)
+        .map((section) => section.trim())
+        .filter(Boolean),
+    [entry.content],
+  );
   const topComment = useMemo(
     () =>
       localComments.reduce<KnowledgeComment | null>((latest, comment) => {
@@ -352,6 +360,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const resolvedAuthorId = authorProfile?.id || entry.authorId;
   const authorDisplayName = getProfileDisplayName(authorProfile, entry.author);
   const authorUsername = authorProfile?.username || entry.author;
+  const reputationTitle = authorReputation
+    ? `${authorReputation.level}: ${authorReputation.score} reputation points`
+    : "";
   const canManageEntry =
     Boolean(currentIdentity?.authorId) &&
     (currentIdentity?.authorId === entry.authorId ||
@@ -1058,9 +1069,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-semibold leading-5 text-slate-500">
               <span>@{authorUsername}</span>
               {authorReputation && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700">
-                  <Award className="h-2.5 w-2.5" />
-                  {authorReputation.level}
+                <span
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
+                  title={reputationTitle}
+                  aria-label={reputationTitle}
+                >
+                  <Award className="h-4 w-4" />
                 </span>
               )}
             </div>
@@ -1176,25 +1190,42 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             )}
         </div>
 
-        <a
-          href={`/post/${entry.id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            handleOpenEntryDetails();
-          }}
-          className="text-left transition-colors hover:text-emerald-700"
-        >
-          <h3 className="text-lg font-black leading-snug tracking-tight text-slate-950 sm:text-xl">
-            {entry.title}
-          </h3>
-        </a>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-          {renderRichText({
-            text: entry.content,
-            mentions,
-            onOpenProfile: handleOpenAuthorProfile,
-          })}
-        </p>
+        <div>
+          <a
+            href={`/post/${entry.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleOpenEntryDetails();
+            }}
+            className="text-left transition-colors hover:text-emerald-700"
+          >
+            <h3 className="text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl">
+              {entry.title}
+            </h3>
+          </a>
+
+          {contentSections.length > 0 && (
+            <div className="mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8">
+              {contentSections.map((section, index) => (
+                <div key={`${entry.id}-section-${index}`}>
+                  {index > 0 && (
+                    <div
+                      className="my-6 border-t border-slate-100"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <p className="whitespace-pre-wrap">
+                    {renderRichText({
+                      text: section,
+                      mentions,
+                      onOpenProfile: handleOpenAuthorProfile,
+                    })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {entry.hashtags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">

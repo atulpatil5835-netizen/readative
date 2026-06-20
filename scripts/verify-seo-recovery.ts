@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
-import { buildSitemapEntries, loadSeoData, SITE_URL } from "../api/_seoData";
+import { buildSitemapEntries, loadSeoData, SITE_URL } from "../api/_seoData.js";
 
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 dotenv.config({ path: path.join(process.cwd(), ".env") });

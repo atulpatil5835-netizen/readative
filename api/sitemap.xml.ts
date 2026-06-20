@@ -3,7 +3,7 @@ import {
   buildSitemapEntries,
   buildSitemapXml,
   loadSeoData,
-} from "./_seoData";
+} from "./_seoData.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "application/xml; charset=utf-8");

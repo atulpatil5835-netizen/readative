@@ -7,6 +7,7 @@ export interface RouteOptions {
   profileAuthorId?: string | null;
   selectedHashtag?: string | null;
   selectedTopic?: string | null;
+  section?: string | null;
 }
 
 export interface ParsedAppRoute {
@@ -375,11 +376,12 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "profile" && options.profileAuthorId) {
-    return `/profile/${encodeURIComponent(options.profileAuthorId)}`;
+    const base = `/profile/${encodeURIComponent(options.profileAuthorId)}`;
+    return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
   }
 
   if (tab === "profile") {
-    return "/profile";
+    return options.section ? `/profile?tab=${encodeURIComponent(options.section)}` : "/profile";
   }
 
   if (tab === "explore" && options.selectedTopic) {
@@ -430,11 +432,12 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "profile" && options.profileAuthorId) {
-    return `#profile/${encodeURIComponent(options.profileAuthorId)}`;
+    const base = `#profile/${encodeURIComponent(options.profileAuthorId)}`;
+    return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
   }
 
   if (tab === "profile") {
-    return "#profile";
+    return options.section ? `#profile?tab=${encodeURIComponent(options.section)}` : "#profile";
   }
 
   if (tab === "smarttalk") {
