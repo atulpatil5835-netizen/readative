@@ -82,8 +82,10 @@ import {
   normalizeTrustIdArray,
 } from "../utils/trustSystem";
 import { getSaveMetrics } from "../utils/bookmarks";
+import { useHighlights } from "../context/HighlightsContext";
+import { ProfileHighlights } from "./ProfileHighlights";
 
-type ProfileSection = "shared" | "activity" | "liked" | "saved";
+type ProfileSection = "shared" | "activity" | "liked" | "saved" | "highlights";
 type ProfileActivityType =
   | "post"
   | "answer"
@@ -863,6 +865,7 @@ export function Profile({
   const [smartTalkSummary, setSmartTalkSummary] =
     useState<ProfileSmartTalkSummary>(EMPTY_PROFILE_SMARTTALK_SUMMARY);
   const [section, setSection] = useState<ProfileSection>("shared");
+  const { highlights } = useHighlights();
   const [pendingAction, setPendingAction] =
     useState<KnowledgePendingAction | null>(null);
   const activeAuthorIdRef = useRef<string | null>(null);
@@ -901,6 +904,8 @@ export function Profile({
         const tabParam = searchParams.get("tab") || hashParams.get("tab");
         if (tabParam === "saved") {
           setSection("saved");
+        } else if (tabParam === "highlights" && isOwnProfile) {
+          setSection("highlights");
         } else {
           setSection("shared");
         }
@@ -916,7 +921,7 @@ export function Profile({
       window.removeEventListener("hashchange", handleUrlChange);
       window.removeEventListener("readative:routechange", handleUrlChange);
     };
-  }, [activeAuthorId]);
+  }, [activeAuthorId, isOwnProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2204,6 +2209,14 @@ export function Profile({
               label="Saved"
               count={savedItemCount}
             />
+            {isOwnProfile && (
+              <SectionButton
+                active={section === "highlights"}
+                onClick={() => setSection("highlights")}
+                label="Highlights"
+                count={highlights.length}
+              />
+            )}
           </div>
 
           {section === "shared" && (
@@ -2245,6 +2258,10 @@ export function Profile({
               onOpenProfile={onOpenProfile}
               onOpenEntry={onOpenEntry}
             />
+          )}
+
+          {section === "highlights" && isOwnProfile && (
+            <ProfileHighlights />
           )}
         </>
       )}
