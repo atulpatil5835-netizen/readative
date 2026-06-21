@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import * as htmlToImage from "html-to-image";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -101,6 +102,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const cardHighlights = useMemo(() => highlights.filter(hl => hl.postId === entry.id), [highlights, entry.id]);
   const hasHighlights = cardHighlights.length > 0;
   const isHighlightMode = !!highlightModePostIds[entry.id];
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportPages, setExportPages] = useState<any[]>([]);
 
   const handleToggleHighlightMode = () => {
     const nextState = !isHighlightMode;
@@ -722,6 +726,262 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     onIdentityRequired({ type: "comment", entryId: entry.id });
   };
 
+  const handleDownload = async () => {
+    // 1. Create temporary measurement container
+    const measureContainer = document.createElement("div");
+    measureContainer.style.position = "absolute";
+    measureContainer.style.left = "-9999px";
+    measureContainer.style.top = "-9999px";
+    measureContainer.style.width = "520px";
+    measureContainer.style.fontFamily = "Inter, sans-serif";
+    measureContainer.style.boxSizing = "border-box";
+    document.body.appendChild(measureContainer);
+
+    // 2. Measure Title
+    const h3 = document.createElement("h3");
+    h3.className = "text-2xl font-black leading-tight tracking-normal text-slate-950";
+    h3.style.width = "520px";
+    h3.style.margin = "0 0 20px 0";
+    h3.style.fontSize = "24px";
+    h3.textContent = entry.title;
+    measureContainer.appendChild(h3);
+    const titleHeight = h3.getBoundingClientRect().height;
+    measureContainer.removeChild(h3);
+
+    // 3. Measure content sections (paragraphs)
+    const measuredParagraphs = [];
+    for (const section of contentSections) {
+      const p = document.createElement("p");
+      p.className = "whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700";
+      p.style.width = "520px";
+      p.style.margin = "0 0 20px 0";
+      p.textContent = section;
+      measureContainer.appendChild(p);
+      const pHeight = p.getBoundingClientRect().height;
+      measureContainer.removeChild(p);
+      measuredParagraphs.push({ text: section, height: pHeight });
+    }
+
+    // 4. Measure Tags
+    let tagsHeight = 0;
+    if (entry.hashtags.length > 0) {
+      const tagsDiv = document.createElement("div");
+      tagsDiv.className = "mt-3 flex flex-wrap gap-2";
+      tagsDiv.style.width = "520px";
+      
+      if (entry.contentKind) {
+        const span = document.createElement("span");
+        span.className = "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500";
+        span.textContent = entry.contentKind;
+        tagsDiv.appendChild(span);
+      }
+      for (const tag of entry.hashtags) {
+        const a = document.createElement("span");
+        a.className = "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700";
+        a.textContent = `#${tag}`;
+        tagsDiv.appendChild(a);
+      }
+      measureContainer.appendChild(tagsDiv);
+      tagsHeight = tagsDiv.getBoundingClientRect().height;
+      measureContainer.removeChild(tagsDiv);
+    }
+
+    document.body.removeChild(measureContainer);
+
+    // Available content height:
+    // Card height 800 - vertical padding 80 - header ~80 - trust ~32 - footer ~32 - gaps ~36 = 540px
+    const MAX_CONTENT_HEIGHT = 540;
+
+    // helper to split paragraph into sentences safely
+    const splitParagraphIntoSentences = (text: string): string[] => {
+      const matches = text.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
+      return matches ? matches.map(s => s.trim()) : [text];
+    };
+
+    const pages: any[] = [];
+    let currentPage: { elements: any[]; height: number } = {
+      elements: [],
+      height: 0
+    };
+
+    const addElementToPage = (element: any) => {
+      currentPage.elements.push(element);
+      currentPage.height += element.height;
+    };
+
+    const startNewPage = () => {
+      if (currentPage.elements.length > 0) {
+        pages.push(currentPage);
+      }
+      currentPage = {
+        elements: [],
+        height: 0
+      };
+    };
+
+    // First page always gets the Title
+    addElementToPage({ type: "title", text: entry.title, height: titleHeight + 20 });
+
+    // Handle Trust badge (only on the first page, immediately after Title)
+    addElementToPage({ type: "trust_badge", height: 44 });
+
+    // Build flow elements: images first, then paragraphs
+    const flowElements = [];
+    for (const img of entryImages) {
+      flowElements.push({ type: "image", image: img, height: 300 });
+    }
+    for (const p of measuredParagraphs) {
+      flowElements.push({ type: "paragraph", text: p.text, height: p.height + 20 });
+    }
+
+    for (const elem of flowElements) {
+      if (elem.type === "image") {
+        if (currentPage.height + elem.height > MAX_CONTENT_HEIGHT) {
+          startNewPage();
+          addElementToPage(elem);
+        } else {
+          addElementToPage(elem);
+        }
+      } else if (elem.type === "paragraph") {
+        if (currentPage.height + elem.height > MAX_CONTENT_HEIGHT) {
+          if (elem.height <= MAX_CONTENT_HEIGHT) {
+            startNewPage();
+            addElementToPage(elem);
+          } else {
+            // Very long paragraph! Split by sentences
+            const sentences = splitParagraphIntoSentences(elem.text);
+            let currentSentenceChunk: string[] = [];
+            let currentChunkHeight = 0;
+
+            for (const sentence of sentences) {
+              const tempContainer = document.createElement("div");
+              tempContainer.style.position = "absolute";
+              tempContainer.style.left = "-9999px";
+              tempContainer.style.top = "-9999px";
+              tempContainer.style.width = "520px";
+              tempContainer.style.fontFamily = "Inter, sans-serif";
+              tempContainer.style.boxSizing = "border-box";
+              document.body.appendChild(tempContainer);
+
+              const pMeasure = document.createElement("p");
+              pMeasure.className = "whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700";
+              pMeasure.style.width = "520px";
+              pMeasure.style.margin = "0 0 20px 0";
+              pMeasure.textContent = sentence;
+              tempContainer.appendChild(pMeasure);
+              const sentenceHeight = pMeasure.getBoundingClientRect().height;
+              document.body.removeChild(tempContainer);
+
+              if (currentPage.height + sentenceHeight + 12 > MAX_CONTENT_HEIGHT) {
+                if (currentSentenceChunk.length > 0) {
+                  addElementToPage({
+                    type: "paragraph",
+                    text: currentSentenceChunk.join(" "),
+                    height: currentChunkHeight + 20
+                  });
+                  currentSentenceChunk = [];
+                  currentChunkHeight = 0;
+                }
+                startNewPage();
+              }
+              currentSentenceChunk.push(sentence);
+              currentChunkHeight += sentenceHeight;
+            }
+
+            if (currentSentenceChunk.length > 0) {
+              addElementToPage({
+                type: "paragraph",
+                text: currentSentenceChunk.join(" "),
+                height: currentChunkHeight + 20
+              });
+            }
+          }
+        } else {
+          addElementToPage(elem);
+        }
+      }
+    }
+
+    // Add tags at the end
+    if (tagsHeight > 0) {
+      const tagsElem = { type: "tags", height: tagsHeight + 12 };
+      if (currentPage.height + tagsElem.height > MAX_CONTENT_HEIGHT) {
+        startNewPage();
+        addElementToPage(tagsElem);
+      } else {
+        addElementToPage(tagsElem);
+      }
+    }
+
+    if (currentPage.elements.length > 0) {
+      pages.push(currentPage);
+    }
+
+    setInteractionMessage("Generating card(s)... Please wait.");
+    setExportPages(pages);
+    setIsExporting(true);
+  };
+
+  useEffect(() => {
+    if (!isExporting || exportPages.length === 0) return;
+
+    const generateAndDownload = async () => {
+      // Short timeout to ensure React finishes DOM paint for the offscreen wrapper
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const container = document.getElementById(`export-wrapper-${entry.id}`);
+      if (!container) {
+        setIsExporting(false);
+        setInteractionMessage("Export failed: wrapper container not found.");
+        return;
+      }
+
+      const cards = container.getElementsByClassName("export-card");
+      const sanitizedTitle = entry.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      
+      const prefix = sanitizedTitle || "post";
+
+      try {
+        const { toPng } = await import("html-to-image");
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i] as HTMLElement;
+          // generate PNG
+          const dataUrl = await toPng(card, {
+            quality: 0.98,
+            backgroundColor: "#ffffff",
+            pixelRatio: 2, // 2x scaling for crisp quality
+            style: {
+              transform: "scale(1)",
+              transformOrigin: "top left"
+            }
+          });
+
+          // download
+          const link = document.createElement("a");
+          const name = cards.length === 1
+            ? `readative-${prefix}.png`
+            : `readative-${prefix}-part-${i + 1}.png`;
+          link.download = name;
+          link.href = dataUrl;
+          link.click();
+        }
+        setInteractionMessage("Download started!");
+        setTimeout(() => setInteractionMessage(null), 3000);
+      } catch (err) {
+        console.error("Failed to export PNG:", err);
+        setInteractionMessage("Export failed. Please try again.");
+      } finally {
+        setIsExporting(false);
+        setExportPages([]);
+      }
+    };
+
+    void generateAndDownload();
+  }, [isExporting, exportPages, entry.id, entry.title]);
+
   const handleShare = async () => {
     const shareUrl = buildAbsoluteRouteUrl("knowledge", {
       focusedEntryId: entry.id,
@@ -889,6 +1149,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         onOpenAuthorProfile={handleOpenAuthorProfile}
         onSaveToggle={handleSaveToggle}
         onShare={handleShare}
+        onDownload={handleDownload}
         setShowEditModal={setShowEditModal}
         onDeleteEntry={handleDeleteEntry}
         hasHighlights={hasHighlights}
@@ -987,6 +1248,220 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           onClose={() => setShowEditModal(false)}
           onSave={handleSaveEntryEdit}
         />
+      )}
+
+      {/* Offscreen card rendering for PNG downloads */}
+      {isExporting && (
+        <div
+          id={`export-wrapper-${entry.id}`}
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: "-9999px",
+            pointerEvents: "none"
+          }}
+        >
+          {exportPages.map((page: any, pageIndex: number) => (
+            <div
+              key={pageIndex}
+              className="export-card"
+              style={{
+                width: "600px",
+                height: "800px",
+                padding: "40px",
+                backgroundColor: "#ffffff",
+                color: "#0f172a",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                fontFamily: "Inter, sans-serif",
+                boxSizing: "border-box"
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+                {/* Avatar */}
+                <div style={{ width: "48px", height: "48px", borderRadius: "16px", overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
+                  {authorProfile?.profileImage?.dataUrl || authorProfile?.photoUrl ? (
+                    <img
+                      src={authorProfile?.profileImage?.dataUrl || authorProfile?.photoUrl}
+                      alt=""
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      loading="eager"
+                    />
+                  ) : (
+                    <div style={{
+                      width: "100%",
+                      height: "100%",
+                      backgroundColor: "#f1f5f9",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 900,
+                      fontSize: "14px",
+                      color: "#1e293b"
+                    }}>
+                      {(authorDisplayName || entry.author || "R").slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                {/* User Info */}
+                <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "15px", fontWeight: 900, color: "#0f172a" }}>
+                      {authorDisplayName}
+                    </span>
+                    {authorReputation && (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "9999px",
+                          backgroundColor: "#ecfdf5",
+                          border: "1px solid #a7f3d0",
+                          color: "#047857"
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="8" r="7" />
+                          <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", marginTop: "2px" }}>
+                    @{authorUsername}
+                  </span>
+                </div>
+              </div>
+
+              {/* Main Content Area */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                {page.elements.map((elem: any, elemIndex: number) => {
+                  if (elem.type === "title") {
+                    return (
+                      <h3
+                        key={elemIndex}
+                        className="text-2xl font-black leading-tight tracking-normal text-slate-950"
+                        style={{ margin: "0 0 20px 0", fontSize: "24px" }}
+                      >
+                        {elem.text}
+                      </h3>
+                    );
+                  }
+                  if (elem.type === "trust_badge") {
+                    return (
+                      <div key={elemIndex} style={{ marginBottom: "20px", display: "flex", gap: "8px" }}>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] ${trustToneClass}`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            borderRadius: "9999px",
+                            border: "1px solid currentColor",
+                            padding: "2px 6px",
+                            fontSize: "9px",
+                            fontWeight: "bold",
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase"
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          </svg>
+                          {trustLabel}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (elem.type === "image") {
+                    return (
+                      <div key={elemIndex} style={{ width: "100%", height: "280px", marginBottom: "20px", overflow: "hidden", borderRadius: "8px" }}>
+                        <img
+                          src={elem.image.dataUrl}
+                          alt=""
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          loading="eager"
+                        />
+                      </div>
+                    );
+                  }
+                  if (elem.type === "paragraph") {
+                    const isFirstElement = elemIndex === 0;
+                    return (
+                      <div key={elemIndex}>
+                        {!isFirstElement && (
+                          <div style={{ borderTop: "1px solid #f1f5f9", margin: "20px 0" }} />
+                        )}
+                        <p
+                          className="whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700"
+                          style={{ margin: "0 0 20px 0" }}
+                        >
+                          {elem.text}
+                        </p>
+                      </div>
+                    );
+                  }
+                  if (elem.type === "tags") {
+                    return (
+                      <div key={elemIndex} style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                        {entry.contentKind && (
+                          <span
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500"
+                            style={{
+                              borderRadius: "9999px",
+                              border: "1px solid #cbd5e1",
+                              backgroundColor: "#ffffff",
+                              padding: "4px 12px",
+                              fontSize: "12px",
+                              fontWeight: 900,
+                              textTransform: "capitalize",
+                              color: "#64748b"
+                            }}
+                          >
+                            {entry.contentKind}
+                          </span>
+                        )}
+                        {entry.hashtags.map((tag: string) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                            style={{
+                              borderRadius: "9999px",
+                              border: "1px solid #a7f3d0",
+                              backgroundColor: "#ecfdf5",
+                              padding: "4px 12px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "#047857"
+                            }}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+
+              {/* Footer */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: "12px", marginTop: "12px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>
+                  {exportPages.length > 1 ? `Part ${pageIndex + 1} of ${exportPages.length}` : ""}
+                </span>
+                <span style={{ fontSize: "12px", fontWeight: 900, color: "#10b981", letterSpacing: "0.1em" }}>
+                  readative.com
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </article>
   );

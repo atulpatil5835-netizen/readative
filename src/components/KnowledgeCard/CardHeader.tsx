@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Award, Bookmark, MoreVertical, Pencil, Share2, Trash2 } from "lucide-react";
+import { Award, Bookmark, Download, MoreVertical, Pencil, Share2, Trash2 } from "lucide-react";
 import { ProfileAvatar } from "../ProfileAvatar";
 import { ProfileSocialLinks } from "../ProfileSocialLinks";
 import { cn } from "../../utils/classNames";
@@ -22,6 +22,7 @@ export function CardHeader({
   onOpenAuthorProfile,
   onSaveToggle,
   onShare,
+  onDownload,
   setShowEditModal,
   onDeleteEntry,
   hasHighlights,
@@ -160,6 +161,15 @@ export function CardHeader({
               >
                 <Share2 className="h-4 w-4" />
                 Share post
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handlePostMenuAction(onDownload)}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left font-bold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+              >
+                <Download className="h-4 w-4" />
+                Download Post
               </button>
               {canManageEntry && (
                 <>
