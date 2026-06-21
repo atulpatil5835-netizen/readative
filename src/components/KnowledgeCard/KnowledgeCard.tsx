@@ -739,22 +739,70 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     // 2. Measure Title
     const h3 = document.createElement("h3");
-    h3.className = "text-2xl font-black leading-tight tracking-normal text-slate-950";
     h3.style.width = "520px";
-    h3.style.margin = "0 0 20px 0";
-    h3.style.fontSize = "24px";
+    h3.style.margin = "0 0 16px 0";
+    h3.style.fontSize = "28px";
+    h3.style.fontWeight = "900";
+    h3.style.lineHeight = "1.2";
+    h3.style.fontFamily = "Inter, sans-serif";
+    h3.style.boxSizing = "border-box";
     h3.textContent = entry.title;
     measureContainer.appendChild(h3);
     const titleHeight = h3.getBoundingClientRect().height;
     measureContainer.removeChild(h3);
 
-    // 3. Measure content sections (paragraphs)
+    // 3. Measure Trust Badges
+    const trustDiv = document.createElement("div");
+    trustDiv.style.width = "520px";
+    trustDiv.style.display = "flex";
+    trustDiv.style.flexWrap = "wrap";
+    trustDiv.style.gap = "8px";
+    trustDiv.style.marginBottom = "12px";
+    trustDiv.style.boxSizing = "border-box";
+    
+    // Add primary trust badge
+    const span = document.createElement("span");
+    span.style.padding = "2px 6px";
+    span.style.fontSize = "9px";
+    span.style.fontWeight = "bold";
+    span.textContent = trustLabel;
+    trustDiv.appendChild(span);
+
+    // Add other badges if applicable
+    if (trustMetrics.helpfulCount >= 5) {
+      const b = document.createElement("span");
+      b.textContent = "Most Helpful";
+      trustDiv.appendChild(b);
+    }
+    if (localSaveCount >= 3) {
+      const b = document.createElement("span");
+      b.textContent = "Most Saved";
+      trustDiv.appendChild(b);
+    }
+    if (entry.contentKind === "tutorial" && trustMetrics.helpfulCount >= 3) {
+      const b = document.createElement("span");
+      b.textContent = "Top Tutorial";
+      trustDiv.appendChild(b);
+    }
+    if (entryVisibility === "private") {
+      const b = document.createElement("span");
+      b.textContent = "Private";
+      trustDiv.appendChild(b);
+    }
+    measureContainer.appendChild(trustDiv);
+    const trustHeight = trustDiv.getBoundingClientRect().height;
+    measureContainer.removeChild(trustDiv);
+
+    // 4. Measure Content Sections (paragraphs)
     const measuredParagraphs = [];
     for (const section of contentSections) {
       const p = document.createElement("p");
-      p.className = "whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700";
       p.style.width = "520px";
-      p.style.margin = "0 0 20px 0";
+      p.style.margin = "0";
+      p.style.fontSize = "16px";
+      p.style.lineHeight = "28px";
+      p.style.fontFamily = "Inter, sans-serif";
+      p.style.boxSizing = "border-box";
       p.textContent = section;
       measureContainer.appendChild(p);
       const pHeight = p.getBoundingClientRect().height;
@@ -762,22 +810,24 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       measuredParagraphs.push({ text: section, height: pHeight });
     }
 
-    // 4. Measure Tags
+    // 5. Measure Tags
     let tagsHeight = 0;
     if (entry.hashtags.length > 0) {
       const tagsDiv = document.createElement("div");
-      tagsDiv.className = "mt-3 flex flex-wrap gap-2";
       tagsDiv.style.width = "520px";
+      tagsDiv.style.display = "flex";
+      tagsDiv.style.flexWrap = "wrap";
+      tagsDiv.style.gap = "8px";
+      tagsDiv.style.marginTop = "16px";
+      tagsDiv.style.boxSizing = "border-box";
       
       if (entry.contentKind) {
         const span = document.createElement("span");
-        span.className = "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500";
         span.textContent = entry.contentKind;
         tagsDiv.appendChild(span);
       }
       for (const tag of entry.hashtags) {
         const a = document.createElement("span");
-        a.className = "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700";
         a.textContent = `#${tag}`;
         tagsDiv.appendChild(a);
       }
@@ -788,66 +838,130 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     document.body.removeChild(measureContainer);
 
-    // Available content height:
-    // Card height 800 - vertical padding 80 - header ~80 - trust ~32 - footer ~32 - gaps ~36 = 540px
-    const MAX_CONTENT_HEIGHT = 540;
+    // Header, Footer, Padding values (in pixels)
+    const HEADER_HEIGHT = 86; // includes avatar and 16px bottom margin
+    const FOOTER_HEIGHT = 40; // includes top border, padding, text, margins
+    const VERTICAL_PADDING = 80; // 40px top + 40px bottom padding
 
-    // helper to split paragraph into sentences safely
+    // Calculate total content height
+    let totalContentHeight = 0;
+    
+    // Media (Images)
+    const imagesHeight = entryImages.length * 296; // 280px + 16px margin-bottom
+    totalContentHeight += imagesHeight;
+
+    // Trust badge
+    totalContentHeight += trustHeight + 12; // trust badge height + margin-bottom
+
+    // Title
+    totalContentHeight += titleHeight + 16; // title height + margin-bottom
+
+    // Paragraphs
+    let paragraphsHeight = 0;
+    for (let i = 0; i < measuredParagraphs.length; i++) {
+      const p = measuredParagraphs[i];
+      if (i > 0) {
+        paragraphsHeight += 33; // divider top border + 16px top + 16px bottom margin
+      }
+      paragraphsHeight += p.height;
+    }
+    totalContentHeight += paragraphsHeight;
+
+    // Tags
+    if (tagsHeight > 0) {
+      totalContentHeight += tagsHeight + 16; // tags height + 16px top margin
+    }
+
+    // Splitting settings
+    const MAX_SINGLE_PAGE_CONTENT_HEIGHT = 1000;
+    const TARGET_CONTENT_HEIGHT = 700;
+
     const splitParagraphIntoSentences = (text: string): string[] => {
       const matches = text.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
       return matches ? matches.map(s => s.trim()) : [text];
     };
 
     const pages: any[] = [];
-    let currentPage: { elements: any[]; height: number } = {
-      elements: [],
-      height: 0
-    };
 
-    const addElementToPage = (element: any) => {
-      currentPage.elements.push(element);
-      currentPage.height += element.height;
-    };
-
-    const startNewPage = () => {
-      if (currentPage.elements.length > 0) {
-        pages.push(currentPage);
+    if (totalContentHeight <= MAX_SINGLE_PAGE_CONTENT_HEIGHT) {
+      // Short/Medium/Large post -> One single adaptive-height PNG
+      const pageElements: any[] = [];
+      
+      // Images first
+      for (const img of entryImages) {
+        pageElements.push({ type: "image", image: img });
       }
-      currentPage = {
-        elements: [],
-        height: 0
-      };
-    };
+      // Trust badges
+      pageElements.push({ type: "trust_badge" });
+      // Title
+      pageElements.push({ type: "title", text: entry.title });
+      // Paragraphs
+      for (let i = 0; i < measuredParagraphs.length; i++) {
+        pageElements.push({
+          type: "paragraph",
+          text: measuredParagraphs[i].text,
+          hasDivider: i > 0
+        });
+      }
+      // Tags
+      if (tagsHeight > 0) {
+        pageElements.push({ type: "tags" });
+      }
 
-    // First page always gets the Title
-    addElementToPage({ type: "title", text: entry.title, height: titleHeight + 20 });
+      const calculatedPageHeight = Math.max(400, Math.ceil(HEADER_HEIGHT + totalContentHeight + FOOTER_HEIGHT + VERTICAL_PADDING));
 
-    // Handle Trust badge (only on the first page, immediately after Title)
-    addElementToPage({ type: "trust_badge", height: 44 });
+      pages.push({
+        elements: pageElements,
+        pageHeight: calculatedPageHeight
+      });
+    } else {
+      // Very large post -> Multiple uniform-height PNGs
+      const elements: any[] = [];
 
-    // Build flow elements: images first, then paragraphs
-    const flowElements = [];
-    for (const img of entryImages) {
-      flowElements.push({ type: "image", image: img, height: 300 });
-    }
-    for (const p of measuredParagraphs) {
-      flowElements.push({ type: "paragraph", text: p.text, height: p.height + 20 });
-    }
+      // Add images
+      for (const img of entryImages) {
+        elements.push({ type: "image", image: img, height: 296 });
+      }
+      // Add Trust Badge
+      elements.push({ type: "trust_badge", height: trustHeight + 12 });
+      // Add Title
+      elements.push({ type: "title", text: entry.title, height: titleHeight + 16 });
+      // Add Paragraphs
+      for (let i = 0; i < measuredParagraphs.length; i++) {
+        const p = measuredParagraphs[i];
+        elements.push({
+          type: "paragraph",
+          text: p.text,
+          height: p.height,
+          hasDivider: i > 0,
+          dividerHeight: i > 0 ? 33 : 0
+        });
+      }
+      // Add Tags
+      if (tagsHeight > 0) {
+        elements.push({ type: "tags", height: tagsHeight + 16 });
+      }
 
-    for (const elem of flowElements) {
-      if (elem.type === "image") {
-        if (currentPage.height + elem.height > MAX_CONTENT_HEIGHT) {
-          startNewPage();
-          addElementToPage(elem);
-        } else {
-          addElementToPage(elem);
+      let currentPageElements: any[] = [];
+      let currentPageHeight = 0;
+
+      const startNewPage = () => {
+        if (currentPageElements.length > 0) {
+          pages.push({ elements: currentPageElements, contentHeight: currentPageHeight });
         }
-      } else if (elem.type === "paragraph") {
-        if (currentPage.height + elem.height > MAX_CONTENT_HEIGHT) {
-          if (elem.height <= MAX_CONTENT_HEIGHT) {
+        currentPageElements = [];
+        currentPageHeight = 0;
+      };
+
+      for (const elem of elements) {
+        const elemHeight = elem.height + (elem.dividerHeight || 0);
+
+        if (currentPageHeight + elemHeight > TARGET_CONTENT_HEIGHT) {
+          if (currentPageElements.length > 0) {
             startNewPage();
-            addElementToPage(elem);
-          } else {
+          }
+
+          if (elem.type === "paragraph" && elemHeight > TARGET_CONTENT_HEIGHT) {
             // Very long paragraph! Split by sentences
             const sentences = splitParagraphIntoSentences(elem.text);
             let currentSentenceChunk: string[] = [];
@@ -864,21 +978,28 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               document.body.appendChild(tempContainer);
 
               const pMeasure = document.createElement("p");
-              pMeasure.className = "whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700";
               pMeasure.style.width = "520px";
-              pMeasure.style.margin = "0 0 20px 0";
+              pMeasure.style.margin = "0";
+              pMeasure.style.fontSize = "16px";
+              pMeasure.style.lineHeight = "28px";
+              pMeasure.style.fontFamily = "Inter, sans-serif";
+              pMeasure.style.boxSizing = "border-box";
               pMeasure.textContent = sentence;
               tempContainer.appendChild(pMeasure);
               const sentenceHeight = pMeasure.getBoundingClientRect().height;
               document.body.removeChild(tempContainer);
 
-              if (currentPage.height + sentenceHeight + 12 > MAX_CONTENT_HEIGHT) {
+              const sentenceTotalHeight = sentenceHeight + (currentSentenceChunk.length === 0 && elem.hasDivider ? 33 : 0);
+
+              if (currentPageHeight + sentenceTotalHeight > TARGET_CONTENT_HEIGHT) {
                 if (currentSentenceChunk.length > 0) {
-                  addElementToPage({
+                  currentPageElements.push({
                     type: "paragraph",
                     text: currentSentenceChunk.join(" "),
-                    height: currentChunkHeight + 20
+                    height: currentChunkHeight,
+                    hasDivider: elem.hasDivider && currentPageElements.length === 0
                   });
+                  currentPageHeight += currentChunkHeight;
                   currentSentenceChunk = [];
                   currentChunkHeight = 0;
                 }
@@ -889,32 +1010,36 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             }
 
             if (currentSentenceChunk.length > 0) {
-              addElementToPage({
+              currentPageElements.push({
                 type: "paragraph",
                 text: currentSentenceChunk.join(" "),
-                height: currentChunkHeight + 20
+                height: currentChunkHeight,
+                hasDivider: elem.hasDivider && currentPageElements.length === 0
               });
+              currentPageHeight += currentChunkHeight;
             }
+          } else {
+            currentPageElements.push(elem);
+            currentPageHeight += elemHeight;
           }
         } else {
-          addElementToPage(elem);
+          currentPageElements.push(elem);
+          currentPageHeight += elemHeight;
         }
       }
-    }
 
-    // Add tags at the end
-    if (tagsHeight > 0) {
-      const tagsElem = { type: "tags", height: tagsHeight + 12 };
-      if (currentPage.height + tagsElem.height > MAX_CONTENT_HEIGHT) {
-        startNewPage();
-        addElementToPage(tagsElem);
-      } else {
-        addElementToPage(tagsElem);
+      if (currentPageElements.length > 0) {
+        pages.push({ elements: currentPageElements, contentHeight: currentPageHeight });
       }
-    }
 
-    if (currentPage.elements.length > 0) {
-      pages.push(currentPage);
+      // Calculate uniform height based on the tallest page content
+      const maxPageContentHeight = Math.max(...pages.map(p => p.contentHeight));
+      const uniformPageHeight = Math.max(400, Math.ceil(HEADER_HEIGHT + maxPageContentHeight + FOOTER_HEIGHT + VERTICAL_PADDING));
+
+      // Apply the uniform height to all pages
+      for (const p of pages) {
+        p.pageHeight = uniformPageHeight;
+      }
     }
 
     setInteractionMessage("Generating card(s)... Please wait.");
@@ -1267,19 +1392,22 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               className="export-card"
               style={{
                 width: "600px",
-                height: "800px",
+                height: page.pageHeight ? `${page.pageHeight}px` : "800px",
                 padding: "40px",
                 backgroundColor: "#ffffff",
                 color: "#0f172a",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "space-between",
+                justifyContent: "flex-start",
                 fontFamily: "Inter, sans-serif",
-                boxSizing: "border-box"
+                boxSizing: "border-box",
+                borderRadius: "12px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 16px 42px rgba(15,23,42,0.08)"
               }}
             >
               {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
                 {/* Avatar */}
                 <div style={{ width: "48px", height: "48px", borderRadius: "16px", overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
                   {authorProfile?.profileImage?.dataUrl || authorProfile?.photoUrl ? (
@@ -1313,6 +1441,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                     </span>
                     {authorReputation && (
                       <span
+                        title={reputationTitle}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -1345,8 +1474,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                     return (
                       <h3
                         key={elemIndex}
-                        className="text-2xl font-black leading-tight tracking-normal text-slate-950"
-                        style={{ margin: "0 0 20px 0", fontSize: "24px" }}
+                        style={{
+                          margin: "0 0 16px 0",
+                          fontSize: "28px",
+                          fontWeight: 900,
+                          lineHeight: "1.2",
+                          color: "#0f172a",
+                          fontFamily: "Inter, sans-serif"
+                        }}
                       >
                         {elem.text}
                       </h3>
@@ -1354,7 +1489,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                   }
                   if (elem.type === "trust_badge") {
                     return (
-                      <div key={elemIndex} style={{ marginBottom: "20px", display: "flex", gap: "8px" }}>
+                      <div key={elemIndex} style={{ marginBottom: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
                         <span
                           className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] ${trustToneClass}`}
                           style={{
@@ -1372,15 +1507,104 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            <path d="M9 11l2 2 4-4" />
                           </svg>
                           {trustLabel}
                         </span>
+                        {trustMetrics.helpfulCount >= 5 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-700"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              borderRadius: "9999px",
+                              border: "1px solid #a7f3d0",
+                              backgroundColor: "#ecfdf5",
+                              padding: "2px 6px",
+                              fontSize: "9px",
+                              fontWeight: "bold",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              color: "#047857"
+                            }}
+                          >
+                            Most Helpful
+                          </span>
+                        )}
+                        {localSaveCount >= 3 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-sky-700"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              borderRadius: "9999px",
+                              border: "1px solid #bae6fd",
+                              backgroundColor: "#f0f9ff",
+                              padding: "2px 6px",
+                              fontSize: "9px",
+                              fontWeight: "bold",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              color: "#0369a1"
+                            }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                            </svg>
+                            Most Saved
+                          </span>
+                        )}
+                        {entry.contentKind === "tutorial" && trustMetrics.helpfulCount >= 3 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-indigo-700"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              borderRadius: "9999px",
+                              border: "1px solid #c7d2fe",
+                              backgroundColor: "#eef2ff",
+                              padding: "2px 6px",
+                              fontSize: "9px",
+                              fontWeight: "bold",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              color: "#4338ca"
+                            }}
+                          >
+                            Top Tutorial
+                          </span>
+                        )}
+                        {entryVisibility === "private" && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-600"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              borderRadius: "9999px",
+                              backgroundColor: "#f1f5f9",
+                              padding: "2px 6px",
+                              fontSize: "9px",
+                              fontWeight: "bold",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              color: "#475569"
+                            }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            Private
+                          </span>
+                        )}
                       </div>
                     );
                   }
                   if (elem.type === "image") {
                     return (
-                      <div key={elemIndex} style={{ width: "100%", height: "280px", marginBottom: "20px", overflow: "hidden", borderRadius: "8px" }}>
+                      <div key={elemIndex} style={{ width: "100%", height: "280px", marginBottom: "16px", overflow: "hidden", borderRadius: "8px" }}>
                         <img
                           src={elem.image.dataUrl}
                           alt=""
@@ -1391,15 +1615,20 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                     );
                   }
                   if (elem.type === "paragraph") {
-                    const isFirstElement = elemIndex === 0;
                     return (
                       <div key={elemIndex}>
-                        {!isFirstElement && (
-                          <div style={{ borderTop: "1px solid #f1f5f9", margin: "20px 0" }} />
+                        {elem.hasDivider && (
+                          <div style={{ borderTop: "1px solid #f1f5f9", margin: "16px 0" }} />
                         )}
                         <p
-                          className="whitespace-pre-wrap select-text text-[15px] leading-7 text-slate-700"
-                          style={{ margin: "0 0 20px 0" }}
+                          style={{
+                            margin: "0",
+                            fontSize: "16px",
+                            lineHeight: "28px",
+                            color: "#334155",
+                            fontFamily: "Inter, sans-serif",
+                            whiteSpace: "pre-wrap"
+                          }}
                         >
                           {elem.text}
                         </p>
@@ -1408,10 +1637,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                   }
                   if (elem.type === "tags") {
                     return (
-                      <div key={elemIndex} style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      <div key={elemIndex} style={{ marginTop: "16px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
                         {entry.contentKind && (
                           <span
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500"
                             style={{
                               borderRadius: "9999px",
                               border: "1px solid #cbd5e1",
@@ -1429,7 +1657,6 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                         {entry.hashtags.map((tag: string) => (
                           <span
                             key={tag}
-                            className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
                             style={{
                               borderRadius: "9999px",
                               border: "1px solid #a7f3d0",
