@@ -28,7 +28,11 @@ export interface SeoPost {
 export interface SeoProfile {
   id: string;
   name: string;
+  username: string;
+  description: string;
   updatedAt: number | null;
+  postCount: number;
+  smartTalkCount: number;
 }
 
 export interface SeoTag {
@@ -42,6 +46,7 @@ export interface SeoSmartTalk {
   id: string;
   title: string;
   description: string;
+  authorId: string;
   authorName: string;
   category: string | null;
   answerCount: number;
@@ -319,7 +324,13 @@ function normalizeProfile(
   return {
     id,
     name,
+    username: normalizeString(data.username) || normalizeSeoSlug(name) || id,
+    description:
+      normalizeString(data.bio) ||
+      "A Readative contributor publishing and curating practical knowledge.",
     updatedAt: normalizeTimestamp(data.updatedAt, normalizeTimestamp(data.createdAt)),
+    postCount: 0,
+    smartTalkCount: 0,
   };
 }
 
@@ -346,6 +357,7 @@ function normalizeSmartTalk(
     id,
     title: createExcerpt(content, 90),
     description: createExcerpt(content),
+    authorId: normalizeString(data.authorId),
     authorName: normalizeString(data.author) || "Readative contributor",
     category: normalizeSeoSlug(normalizeString(data.category)),
     answerCount: answers.length,
@@ -371,6 +383,57 @@ function normalizeSmartTalk(
     createdAt,
     updatedAt,
   };
+}
+
+function contentLastmod(content: { createdAt: number; updatedAt: number | null }) {
+  return content.updatedAt || content.createdAt;
+}
+
+function enrichProfiles(
+  profiles: SeoProfile[],
+  posts: SeoPost[],
+  smartTalks: SeoSmartTalk[],
+) {
+  const profileStats = new Map<
+    string,
+    { postCount: number; smartTalkCount: number; lastmod: number | null }
+  >();
+
+  const getStats = (profileId: string) => {
+    const current = profileStats.get(profileId) || {
+      postCount: 0,
+      smartTalkCount: 0,
+      lastmod: null,
+    };
+    profileStats.set(profileId, current);
+    return current;
+  };
+
+  for (const post of posts) {
+    if (!post.authorId) continue;
+    const stats = getStats(post.authorId);
+    stats.postCount += 1;
+    stats.lastmod = Math.max(stats.lastmod || 0, contentLastmod(post));
+  }
+
+  for (const question of smartTalks) {
+    if (!question.authorId) continue;
+    const stats = getStats(question.authorId);
+    stats.smartTalkCount += 1;
+    stats.lastmod = Math.max(stats.lastmod || 0, contentLastmod(question));
+  }
+
+  return profiles.map((profile) => {
+    const stats = profileStats.get(profile.id);
+    if (!stats) return profile;
+
+    return {
+      ...profile,
+      postCount: stats.postCount,
+      smartTalkCount: stats.smartTalkCount,
+      updatedAt: Math.max(profile.updatedAt || 0, stats.lastmod || 0) || profile.updatedAt,
+    };
+  });
 }
 
 function buildTags(posts: SeoPost[]) {
@@ -417,7 +480,7 @@ async function loadFromAdmin(): Promise<SeoData | null> {
     .map((document) => normalizePost(document.id, document.data()))
     .filter((post): post is SeoPost => Boolean(post))
     .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-  const profiles = profileSnapshot.docs
+  const rawProfiles = profileSnapshot.docs
     .map((document) => normalizeProfile(document.id, document.data()))
     .filter((profile): profile is SeoProfile => Boolean(profile))
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -425,6 +488,7 @@ async function loadFromAdmin(): Promise<SeoData | null> {
     .map((document) => normalizeSmartTalk(document.id, document.data()))
     .filter((question): question is SeoSmartTalk => Boolean(question))
     .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+  const profiles = enrichProfiles(rawProfiles, posts, smartTalks);
 
   return {
     source: "admin",
@@ -447,7 +511,7 @@ async function loadFromRest(): Promise<SeoData> {
     .map((document) => normalizePost(document.id, document.data))
     .filter((post): post is SeoPost => Boolean(post))
     .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-  const profiles = profileDocuments
+  const rawProfiles = profileDocuments
     .map((document) => normalizeProfile(document.id, document.data))
     .filter((profile): profile is SeoProfile => Boolean(profile))
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -455,6 +519,7 @@ async function loadFromRest(): Promise<SeoData> {
     .map((document) => normalizeSmartTalk(document.id, document.data))
     .filter((question): question is SeoSmartTalk => Boolean(question))
     .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+  const profiles = enrichProfiles(rawProfiles, posts, smartTalks);
 
   return {
     source: "rest",
@@ -523,6 +588,27 @@ function maxPostLastmod(
     );
 }
 
+function maxCategoryLastmod(
+  data: SeoData,
+  categoryId: string,
+  categoryTagSlugs: readonly string[],
+) {
+  const postLastmod = maxPostLastmod(
+    data.posts,
+    (post) =>
+      post.category === categoryId ||
+      post.hashtags.some((tag) => categoryTagSlugs.includes(tag)),
+  );
+  const smartTalkLastmod = data.smartTalks
+    .filter((question) => question.category === categoryId)
+    .reduce<number | null>(
+      (lastmod, question) => Math.max(lastmod || 0, contentLastmod(question)),
+      null,
+    );
+
+  return Math.max(postLastmod || 0, smartTalkLastmod || 0) || null;
+}
+
 function buildEntry(
   path: string,
   type: SitemapEntry["type"],
@@ -557,10 +643,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
       buildEntry(
         category.path,
         "category",
-        maxPostLastmod(
-          data.posts,
-          (post) => post.category === category.id || post.hashtags.some((tag) => categoryTagSlugs.includes(tag)),
-        ),
+        maxCategoryLastmod(data, category.id, categoryTagSlugs),
         generatedAt,
         "weekly",
         "0.9",

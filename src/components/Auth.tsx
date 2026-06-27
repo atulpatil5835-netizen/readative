@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AtSign,
   Award,
@@ -35,6 +35,17 @@ export function IdentityPrompt({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSaving) {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSaving, onClose]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!username.trim()) return;
@@ -56,12 +67,19 @@ export function IdentityPrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/45 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="identity-prompt-title"
+        className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-2xl"
+      >
         <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-6 text-white">
           <button
+            type="button"
             onClick={onClose}
             className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+            aria-label="Close username prompt"
           >
             <X className="h-4 w-4" />
           </button>
@@ -69,7 +87,7 @@ export function IdentityPrompt({
           <div className="mb-4 inline-flex rounded-full bg-white/15 p-3">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h2 className="text-2xl font-black tracking-tight">{title}</h2>
+          <h2 id="identity-prompt-title" className="text-2xl font-black tracking-tight">{title}</h2>
           <p className="mt-2 text-sm text-emerald-50">{description}</p>
         </div>
 
@@ -93,13 +111,14 @@ export function IdentityPrompt({
               }}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
               placeholder="your_name"
+              aria-label="Username"
               autoFocus
               required
             />
           </div>
 
           {errorMessage && (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {errorMessage}
             </p>
           )}
@@ -151,6 +170,17 @@ export function UsernamePrompt({
     submitLabel || (action === "like" ? "Helpful" : "Continue");
   const PromptIcon = action === "like" ? ThumbsUp : MessageCircle;
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSaving) {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSaving, onClose]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!username.trim()) return;
@@ -172,11 +202,18 @@ export function UsernamePrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/45 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="username-prompt-title"
+        className="relative w-full max-w-xs rounded-[28px] border border-white/60 bg-white p-6 shadow-2xl"
+      >
         <button
+          type="button"
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-1 text-slate-400 transition-colors hover:text-slate-600"
+          aria-label="Close username prompt"
         >
           <X className="h-4 w-4" />
         </button>
@@ -186,7 +223,7 @@ export function UsernamePrompt({
             <div className="mb-3 inline-flex rounded-full bg-emerald-50 p-3 text-emerald-600">
               <PromptIcon className="h-5 w-5" />
             </div>
-            <h2 className="text-lg font-bold text-slate-900">{resolvedTitle}</h2>
+            <h2 id="username-prompt-title" className="text-lg font-bold text-slate-900">{resolvedTitle}</h2>
             <p className="mt-1 text-sm text-slate-500">{resolvedDescription}</p>
           </div>
 
@@ -203,13 +240,14 @@ export function UsernamePrompt({
               }}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-200"
               placeholder={placeholder}
+              aria-label="Username"
               autoFocus
               required
             />
           </div>
 
           {errorMessage && (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {errorMessage}
             </p>
           )}
@@ -275,6 +313,17 @@ export function GoogleSignInPrompt({
     },
   ];
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSigningIn) {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSigningIn, onClose]);
+
   const handleSignIn = async () => {
     setIsSigningIn(true);
     setErrorMessage(null);
@@ -292,13 +341,20 @@ export function GoogleSignInPrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-        <div className="border-b border-slate-100 bg-slate-950 px-5 py-5 text-white">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950/35 p-2 backdrop-blur-sm sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="google-sign-in-title"
+        className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-[28px]"
+      >
+        <div className="shrink-0 border-b border-slate-100 bg-slate-950 px-5 py-4 text-white sm:py-5">
           <button
+            type="button"
             onClick={onClose}
             className="absolute right-4 top-4 rounded-full p-2 text-white/65 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close sign in"
+            autoFocus
           >
             <X className="h-4 w-4" />
           </button>
@@ -306,7 +362,7 @@ export function GoogleSignInPrompt({
           <div className="mb-4 inline-flex rounded-2xl bg-white/10 p-3 text-emerald-300">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h2 className="pr-8 text-2xl font-black tracking-normal">
+          <h2 id="google-sign-in-title" className="pr-8 text-2xl font-black tracking-normal">
             {title}
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-300">
@@ -314,7 +370,7 @@ export function GoogleSignInPrompt({
           </p>
         </div>
 
-        <div className="p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
           <div className="grid gap-2">
             {benefits.map((benefit) => {
               const BenefitIcon = benefit.icon;
@@ -353,24 +409,24 @@ export function GoogleSignInPrompt({
               )}
             </span>
           </div>
+        </div>
 
-          <div className="mt-5 space-y-4">
-            {errorMessage && (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                {errorMessage}
-              </p>
-            )}
+        <div className="shrink-0 space-y-3 border-t border-slate-100 bg-white px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 sm:pb-5">
+          {errorMessage && (
+            <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {errorMessage}
+            </p>
+          )}
 
-            <button
-              type="button"
-              onClick={handleSignIn}
-              disabled={isSigningIn}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <LogIn className="h-4 w-4" />
-              {isSigningIn ? "Opening Google..." : submitLabel}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleSignIn}
+            disabled={isSigningIn}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <LogIn className="h-4 w-4" />
+            {isSigningIn ? "Opening Google..." : submitLabel}
+          </button>
         </div>
       </div>
     </div>

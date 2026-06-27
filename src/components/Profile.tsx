@@ -16,6 +16,7 @@ import {
   ImagePlus,
   Instagram,
   Linkedin,
+  LogIn,
   MessageCircle,
   MessageSquareReply,
   Pencil,
@@ -1942,7 +1943,7 @@ export function Profile({
 
   if (!currentIdentity && !viewedAuthorId) {
     return (
-      <div className="space-y-6 pb-20">
+      <div className="space-y-6 pb-40 md:pb-20">
         <SEO
           title="Profile | Readative"
           description="Sign in with Google to unlock your Readative profile, posts, and helpful feedback."
@@ -2003,8 +2004,9 @@ export function Profile({
               );
             })}
           </div>
-          <div className="border-t border-slate-100 px-5 py-5">
+          <div className="hidden border-t border-slate-100 px-5 py-5 md:block">
             <button
+              type="button"
               onClick={() => setShowIdentityPrompt(true)}
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
             >
@@ -2012,6 +2014,18 @@ export function Profile({
               Continue with Google
             </button>
           </div>
+        </div>
+
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 px-3 md:hidden">
+          <button
+            type="button"
+            onClick={() => setShowIdentityPrompt(true)}
+            className="pointer-events-auto mx-auto flex min-h-12 w-full max-w-3xl items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-[0_12px_32px_rgba(15,23,42,0.28)] transition-colors hover:bg-emerald-700"
+            aria-label="Sign in with Google"
+          >
+            <LogIn className="h-4 w-4" />
+            Sign In with Google
+          </button>
         </div>
 
         {showIdentityPrompt && (
@@ -2960,7 +2974,10 @@ function ProfileSavedSection({
               <button
                 key={question.id}
                 type="button"
-                onClick={() => navigateToRoute("smarttalk")}
+                onClick={() => navigateToRoute("smarttalk", {
+                  selectedTopic: question.category,
+                  focusedEntryId: question.id,
+                })}
                 className="w-full rounded-xl bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-indigo-50"
               >
                 <p className="line-clamp-2 text-sm font-black leading-5 text-slate-950">

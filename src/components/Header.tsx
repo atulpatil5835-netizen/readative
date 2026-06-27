@@ -2,11 +2,11 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   Bookmark,
+  FileText,
   Info,
   LogIn,
   LogOut,
   MoreVertical,
-  Palette,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -44,12 +44,19 @@ export const Header = memo(function Header({
 }: HeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hasSignedInAccount = Boolean(identity?.email);
   const accountLabel = identity?.displayName || "Guest reader";
   const accountDetail = identity?.email || "Read freely. Sign in to save and contribute.";
 
   useEffect(() => {
     if (!actionsOpen) return;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      actionsMenuRef.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]')
+        ?.focus();
+    });
 
     const handlePointerDown = (event: PointerEvent) => {
       if (
@@ -63,6 +70,7 @@ export const Header = memo(function Header({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setActionsOpen(false);
+        actionsButtonRef.current?.focus();
       }
     };
 
@@ -70,6 +78,7 @@ export const Header = memo(function Header({
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -142,6 +151,7 @@ export const Header = memo(function Header({
                       ? "text-emerald-600"
                       : "text-gray-500 hover:text-emerald-600"
                   }`}
+                  aria-current={activeTab === tab ? "page" : undefined}
                 >
                   {label}
                 </a>
@@ -150,8 +160,9 @@ export const Header = memo(function Header({
           </nav>
 
           <button
+            type="button"
             onClick={onOpenNotifications}
-            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 md:h-10 md:w-10"
             aria-label="Open notifications"
             title="Realtime notifications"
           >
@@ -165,20 +176,24 @@ export const Header = memo(function Header({
 
           <div ref={actionsMenuRef} className="relative">
             <button
+              ref={actionsButtonRef}
+              type="button"
               onClick={() => setActionsOpen((current) => !current)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700"
-              aria-label="Open actions menu"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 md:h-10 md:w-10"
+              aria-label={actionsOpen ? "Close account menu" : "Open account menu"}
               aria-expanded={actionsOpen}
               aria-haspopup="menu"
-              title="Actions"
+              aria-controls="readative-account-menu"
+              title="Account"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
 
             {actionsOpen && (
               <div
+                id="readative-account-menu"
                 role="menu"
-                className="absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
+                className="absolute right-0 top-12 z-50 max-h-[calc(100dvh-5rem)] w-64 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
               >
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="truncate text-sm font-black text-slate-950">
@@ -188,10 +203,22 @@ export const Header = memo(function Header({
                     {accountDetail}
                   </p>
                 </div>
+                {!hasSignedInAccount && (
+                  <button
+                    type="button"
+                    onClick={() => handleMenuAction(onOpenSignIn)}
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center gap-3 border-b border-emerald-100 bg-emerald-50 px-4 py-3 text-left font-bold text-emerald-800 transition-colors hover:bg-emerald-100"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Sign in
+                  </button>
+                )}
                 <button
+                  type="button"
                   onClick={() => handleMenuAction(() => setActiveTab("profile"))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                  className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <UserRound className="h-4 w-4" />
                   Profile
@@ -200,65 +227,47 @@ export const Header = memo(function Header({
                   type="button"
                   onClick={() => handleMenuAction(() => navigateToRoute("profile", { section: "saved" }))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                  className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <Bookmark className="h-4 w-4" />
                   <span className="flex-1">Saved Posts</span>
                 </button>
                 <button
-                  onClick={() => handleMenuAction(onOpenNotifications)}
+                  type="button"
+                  onClick={() => handleMenuAction(() => onOpenInfo("about"))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                  className="flex min-h-11 w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
-                  <Bell className="h-4 w-4" />
-                  <span className="flex-1">Notifications</span>
-                  {unreadNotificationCount > 0 && (
-                    <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">
-                      {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
-                    </span>
-                  )}
+                  <Info className="h-4 w-4" />
+                  About Readative
                 </button>
                 <button
-                  onClick={() => handleMenuAction(() => onOpenInfo("appearance"))}
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
-                >
-                  <Palette className="h-4 w-4" />
-                  Appearance
-                </button>
-                <button
+                  type="button"
                   onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                  className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Privacy
                 </button>
                 <button
-                  onClick={() => handleMenuAction(() => onOpenInfo("about"))}
+                  type="button"
+                  onClick={() => handleMenuAction(() => onOpenInfo("terms"))}
                   role="menuitem"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                  className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
-                  <Info className="h-4 w-4" />
-                  About Readative
+                  <FileText className="h-4 w-4" />
+                  Terms
                 </button>
-                {hasSignedInAccount ? (
+                {hasSignedInAccount && (
                   <button
+                    type="button"
                     onClick={() => handleMenuAction(onSignOut)}
                     role="menuitem"
-                    className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                    className="flex min-h-11 w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-rose-600 transition-colors hover:bg-rose-50"
                   >
                     <LogOut className="h-4 w-4" />
                     Sign out
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleMenuAction(onOpenSignIn)}
-                    role="menuitem"
-                    className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    Sign in
                   </button>
                 )}
               </div>

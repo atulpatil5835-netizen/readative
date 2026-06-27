@@ -36,6 +36,7 @@ import { db } from "../firebase/firebase";
 import {
   type KnowledgeComment,
   type KnowledgeEntry,
+  type Question,
   type SmartAnswer,
   type UserProfile,
 } from "../types";
@@ -59,6 +60,7 @@ import {
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import {
   buildAbsoluteRouteUrl,
+  buildPublicPath,
   navigateToRoute,
 } from "../utils/routes";
 import {
@@ -78,6 +80,7 @@ import {
   type SeoCategoryDefinition,
   type SeoTopicDefinition,
 } from "../utils/seoTaxonomy";
+import { tokenizeSearch } from "../utils/searchHelpers";
 
 const EXPLORE_POST_LIMIT = 80;
 const EXPLORE_SMARTTALK_LIMIT = 50;
@@ -87,15 +90,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const EXPLORE_TOPICS = SEO_TOPICS;
 
 type ExploreTopic = SeoTopicDefinition;
-
-interface ExploreQuestion {
-  id: string;
-  author: string;
-  authorId: string;
-  content: string;
-  answers: SmartAnswer[];
-  createdAt: number;
-}
+type ExploreQuestion = Question;
 
 interface TopicStats {
   id: string;
@@ -130,7 +125,7 @@ interface ExploreProps {
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   onOpenTopic: (topicId: string | null) => void;
-  onOpenSmartTalk: () => void;
+  onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
 }
 
 function normalizeTimestamp(value: unknown, fallback = Date.now()) {
@@ -593,10 +588,6 @@ function formatCompactDate(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
-function tokenizeSearch(input: string) {
-  return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
-}
-
 function matchesTerms(text: string, terms: string[]) {
   const normalizedText = text.toLowerCase();
 
@@ -827,7 +818,7 @@ export function Explore({
   );
   const now = useMemo(() => Date.now(), [entries, questions]);
   const searchTerms = useMemo(
-    () => tokenizeSearch(deferredSearchQuery),
+    () => tokenizeSearch(deferredSearchQuery, 8),
     [deferredSearchQuery],
   );
   const profileById = useMemo(
@@ -1008,18 +999,13 @@ export function Explore({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const startOfToday = today.getTime();
-    const activeToday = questions.filter(
-      (question) =>
-        getDiscussionActivity(question, now).latestActivity >= startOfToday,
-    ).length;
-
     return {
       newInsights: entries.filter((entry) => entry.createdAt >= startOfToday).length,
-      activeDiscussions: activeToday,
+      activeDiscussions: activeDiscussions.length,
       trendingTopics: trendingTopics.length,
       topTopic: trendingTopics[0]?.label || "Technology",
     };
-  }, [entries, now, questions, trendingTopics]);
+  }, [activeDiscussions.length, entries, trendingTopics]);
 
   const resurfacingSections = useMemo(() => {
     const seenIds = new Set<string>();
@@ -1191,7 +1177,7 @@ export function Explore({
           relatedTopics={relatedTopics}
           onOpenTopic={onOpenTopic}
           onOpenCategory={(categoryId) =>
-            navigateToRoute("knowledge", { selectedTopic: categoryId })
+            navigateToRoute("smarttalk", { selectedTopic: categoryId })
           }
         />
       )}
@@ -1280,10 +1266,13 @@ export function Explore({
                 {activeDiscussions.map((question) => (
                   <a
                     key={question.id}
-                    href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                    href={buildPublicPath("smarttalk", {
+                      selectedTopic: question.category,
+                      focusedEntryId: question.id,
+                    })}
                     onClick={(event) => {
                       event.preventDefault();
-                      onOpenSmartTalk();
+                      onOpenSmartTalk(question.id, question.category);
                     }}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
                   >
@@ -1353,10 +1342,13 @@ export function Explore({
                       {collection.questions.map((question) => (
                         <a
                           key={question.id}
-                          href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                          href={buildPublicPath("smarttalk", {
+                            selectedTopic: question.category,
+                            focusedEntryId: question.id,
+                          })}
                           onClick={(event) => {
                             event.preventDefault();
-                            onOpenSmartTalk();
+                            onOpenSmartTalk(question.id, question.category);
                           }}
                           className="flex w-full items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-left transition-colors hover:bg-indigo-100"
                         >
@@ -1575,7 +1567,7 @@ function UnifiedSearchResults({
   onOpenEntry: (entryId: string) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenTopic: (topicId: string | null) => void;
-  onOpenSmartTalk: () => void;
+  onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
 }) {
   if (results.count === 0) {
     return (
@@ -1607,10 +1599,13 @@ function UnifiedSearchResults({
             {results.questions.map((question) => (
               <a
                 key={question.id}
-                href={`/smarttalk#question-${encodeURIComponent(question.id)}`}
+                href={buildPublicPath("smarttalk", {
+                  selectedTopic: question.category,
+                  focusedEntryId: question.id,
+                })}
                 onClick={(event) => {
                   event.preventDefault();
-                  onOpenSmartTalk();
+                  onOpenSmartTalk(question.id, question.category);
                 }}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
               >

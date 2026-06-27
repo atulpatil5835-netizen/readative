@@ -1,5 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { SITE_URL, escapeXml, loadSeoData } from "./_seoData.js";
+import {
+  SITE_URL,
+  type SeoSmartTalk,
+  escapeXml,
+  loadSeoData,
+} from "./_seoData.js";
+import { SEO_CATEGORIES } from "../src/utils/seoTaxonomy.js";
 
 function escapeHtml(value: string) {
   return escapeXml(value);
@@ -11,6 +17,164 @@ function getQueryValue(value: string | string[] | undefined) {
 
 function smartTalkPath(id: string) {
   return `/smarttalks/${encodeURIComponent(id)}`;
+}
+
+function absoluteUrl(path: string) {
+  return `${SITE_URL}${path}`;
+}
+
+function escapeJsonForHtml(value: unknown) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
+function renderJsonLd(schema: object | object[]) {
+  return `<script type="application/ld+json">${escapeJsonForHtml(schema)}</script>`;
+}
+
+function getCategoryLabel(categoryId: string | null) {
+  if (!categoryId) return "";
+  return SEO_CATEGORIES.find((category) => category.id === categoryId)?.label || categoryId;
+}
+
+function renderQuestionMeta(question: SeoSmartTalk) {
+  const metaLinks = [
+    question.authorId
+      ? `<a href="/profile/${escapeHtml(encodeURIComponent(question.authorId))}">@${escapeHtml(question.authorName)}</a>`
+      : `@${escapeHtml(question.authorName)}`,
+    question.category
+      ? `<a href="/category/${escapeHtml(encodeURIComponent(question.category))}">${escapeHtml(getCategoryLabel(question.category))}</a>`
+      : "",
+    `${question.answerCount} answers`,
+  ].filter(Boolean);
+
+  return metaLinks.join(" / ");
+}
+
+function buildSmartTalkIndexSchemas(questions: SeoSmartTalk[]) {
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Readative",
+      url: SITE_URL,
+      logo: absoluteUrl("/logo.png"),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Readative",
+      url: SITE_URL,
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: SITE_URL,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "SmartTalk Discussions",
+          item: absoluteUrl("/smarttalks"),
+        },
+      ],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "SmartTalk Discussions",
+      url: absoluteUrl("/smarttalks"),
+      description:
+        "Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions.",
+      mainEntity: {
+        "@type": "ItemList",
+        name: "SmartTalk discussion list",
+        itemListElement: questions.slice(0, 50).map((question, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: question.title,
+          url: absoluteUrl(smartTalkPath(question.id)),
+        })),
+      },
+    },
+  ];
+}
+
+function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
+  const questionUrl = absoluteUrl(smartTalkPath(question.id));
+
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: SITE_URL,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "SmartTalk Discussions",
+          item: absoluteUrl("/smarttalks"),
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: question.title,
+          item: questionUrl,
+        },
+      ],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "DiscussionForumPosting",
+      headline: question.title,
+      text: question.description,
+      url: questionUrl,
+      author: {
+        "@type": "Person",
+        name: question.authorName,
+        url: question.authorId
+          ? absoluteUrl(`/profile/${encodeURIComponent(question.authorId)}`)
+          : undefined,
+      },
+      datePublished: new Date(question.createdAt).toISOString(),
+      dateModified: question.updatedAt
+        ? new Date(question.updatedAt).toISOString()
+        : undefined,
+      keywords: [getCategoryLabel(question.category), "SmartTalk", "Readative"]
+        .filter(Boolean)
+        .join(", "),
+      interactionStatistic: {
+        "@type": "InteractionCounter",
+        interactionType: "https://schema.org/ReplyAction",
+        userInteractionCount: question.answerCount,
+      },
+      comment: question.answers.map((answer) => ({
+        "@type": "Comment",
+        text: answer.text,
+        author: {
+          "@type": "Person",
+          name: answer.authorName,
+        },
+      })),
+      isPartOf: {
+        "@type": "CollectionPage",
+        name: "SmartTalk Discussions",
+        url: absoluteUrl("/smarttalks"),
+      },
+    },
+  ];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -63,15 +227,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (focusedQuestion) {
     const canonicalPath = smartTalkPath(focusedQuestion.id);
+    const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
+    const pageDescription = focusedQuestion.description;
     const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(focusedQuestion.title)} | SmartTalk | Readative</title>
-  <meta name="description" content="${escapeHtml(focusedQuestion.description)}" />
+  <title>${escapeHtml(pageTitle)}</title>
+  <meta name="description" content="${escapeHtml(pageDescription)}" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="${SITE_URL}${canonicalPath}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="${escapeHtml(pageTitle)}" />
+  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
+  <meta property="og:url" content="${SITE_URL}${canonicalPath}" />
+  <meta property="og:image" content="${SITE_URL}/logo.png" />
+  <meta property="og:site_name" content="Readative" />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
+  <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
+  <meta name="twitter:image" content="${SITE_URL}/logo.png" />
+  ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion))}
   <style>
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
     main { max-width: 860px; margin: 0 auto; padding: 32px 18px 56px; }
@@ -88,7 +266,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <article id="question-${escapeHtml(focusedQuestion.id)}">
     <h1>${escapeHtml(focusedQuestion.title)}</h1>
     <p>${escapeHtml(focusedQuestion.description)}</p>
-    <p class="meta">Asked by @${escapeHtml(focusedQuestion.authorName)} / ${focusedQuestion.answerCount} answers${focusedQuestion.category ? ` / ${escapeHtml(focusedQuestion.category)}` : ""}</p>
+    <p class="meta">${renderQuestionMeta(focusedQuestion)}</p>
     ${
       focusedQuestion.answers.length > 0
         ? `<ul>${focusedQuestion.answers
@@ -127,6 +305,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta name="description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="${SITE_URL}/smarttalks" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="SmartTalk Discussions | Readative" />
+  <meta property="og:description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
+  <meta property="og:url" content="${SITE_URL}/smarttalks" />
+  <meta property="og:image" content="${SITE_URL}/logo.png" />
+  <meta property="og:site_name" content="Readative" />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SmartTalk Discussions | Readative" />
+  <meta name="twitter:description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
+  <meta name="twitter:image" content="${SITE_URL}/logo.png" />
+  ${renderJsonLd(buildSmartTalkIndexSchemas(questions))}
   <style>
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
     main { max-width: 920px; margin: 0 auto; padding: 32px 18px 56px; }
@@ -147,7 +337,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (question) => `<article id="question-${escapeHtml(question.id)}">
     <h2><a href="${escapeHtml(smartTalkPath(question.id))}">${escapeHtml(question.title)}</a></h2>
     <p>${escapeHtml(question.description)}</p>
-    <p class="meta">Asked by @${escapeHtml(question.authorName)} / ${question.answerCount} answers${question.category ? ` / ${escapeHtml(question.category)}` : ""}</p>
+    <p class="meta">${renderQuestionMeta(question)}</p>
     ${
       question.answers.length > 0
         ? `<ul>${question.answers

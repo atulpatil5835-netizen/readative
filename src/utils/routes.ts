@@ -202,6 +202,7 @@ function parseTopicRoute(
 
 function parseCategoryRoute(
   routePart: string,
+  search: string,
   source: "hash" | "path",
   attemptedLocation: string,
 ) {
@@ -218,10 +219,15 @@ function parseCategoryRoute(
     return createRoute("notFound", source, attemptedLocation);
   }
 
-  return createRoute("knowledge", source, attemptedLocation, {
+  const params = new URLSearchParams(search);
+  const focusedEntryId = params.get("id") || params.get("question");
+
+  return createRoute("smarttalk", source, attemptedLocation, {
     selectedTopic,
+    focusedEntryId,
   });
 }
+
 
 function parseTagRoute(
   routePart: string,
@@ -276,7 +282,11 @@ function parseHashRoute(hash: string) {
   const [routePart, search = ""] = cleanedHash.split("?");
 
   if (routePart === "smarttalk") {
-    return createRoute("smarttalk", "hash", attemptedLocation);
+    const params = new URLSearchParams(search);
+    const focusedEntryId = params.get("id") || params.get("question");
+    return createRoute("smarttalk", "hash", attemptedLocation, {
+      focusedEntryId,
+    });
   }
 
   if (routePart === "explore" || routePart === "jobs") {
@@ -284,7 +294,7 @@ function parseHashRoute(hash: string) {
   }
 
   return (
-    parseCategoryRoute(routePart, "hash", attemptedLocation) ||
+    parseCategoryRoute(routePart, search, "hash", attemptedLocation) ||
     parseTagRoute(routePart, "hash", attemptedLocation) ||
     parsePostRoute(routePart, "hash", attemptedLocation) ||
     parseTopicRoute(routePart, "hash", attemptedLocation) ||
@@ -308,7 +318,11 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   if (normalizedPathname === "/smarttalk") {
-    return createRoute("smarttalk", "path", attemptedLocation);
+    const params = new URLSearchParams(search);
+    const focusedEntryId = params.get("id") || params.get("question");
+    return createRoute("smarttalk", "path", attemptedLocation, {
+      focusedEntryId,
+    });
   }
 
   if (normalizedPathname === "/explore" || normalizedPathname === "/jobs") {
@@ -324,7 +338,7 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   return (
-    parseCategoryRoute(normalizedPathname, "path", attemptedLocation) ||
+    parseCategoryRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseTagRoute(normalizedPathname, "path", attemptedLocation) ||
     parsePostRoute(normalizedPathname, "path", attemptedLocation) ||
     parseTopicRoute(normalizedPathname, "path", attemptedLocation) ||
@@ -356,11 +370,6 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
 
     if (selectedHashtag && !selectedTopic) {
       return `/tag/${encodeURIComponent(selectedHashtag)}`;
-    }
-
-    const category = selectedTopic ? normalizeCategorySlug(selectedTopic) : null;
-    if (category && !selectedHashtag) {
-      return `/category/${encodeURIComponent(category)}`;
     }
 
     if (selectedHashtag) {
@@ -395,7 +404,17 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "smarttalk") {
-    return "/smarttalk";
+    const params = new URLSearchParams();
+    if (options.focusedEntryId) {
+      params.set("id", options.focusedEntryId);
+    }
+    const category = options.selectedTopic ? normalizeCategorySlug(options.selectedTopic) : null;
+    if (category) {
+      const search = params.toString();
+      return `/category/${encodeURIComponent(category)}${search ? `?${search}` : ""}`;
+    }
+    const search = params.toString();
+    return search ? `/smarttalk?${search}` : "/smarttalk";
   }
 
   return "/";
@@ -441,7 +460,17 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "smarttalk") {
-    return "#smarttalk";
+    const params = new URLSearchParams();
+    if (options.focusedEntryId) {
+      params.set("id", options.focusedEntryId);
+    }
+    const category = options.selectedTopic ? normalizeCategorySlug(options.selectedTopic) : null;
+    if (category) {
+      const search = params.toString();
+      return `#category/${encodeURIComponent(category)}${search ? `?${search}` : ""}`;
+    }
+    const search = params.toString();
+    return search ? `#smarttalk?${search}` : "#smarttalk";
   }
 
   if (tab === "explore" && options.selectedTopic) {

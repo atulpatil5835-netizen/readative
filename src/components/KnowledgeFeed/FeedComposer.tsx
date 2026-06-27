@@ -2,6 +2,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
   type RefObject,
+  useEffect,
   useMemo,
 } from "react";
 import {
@@ -127,12 +128,30 @@ export function ComposerModal({
     const nextTags = mergeHashtags(acceptedTags, [tag]);
     setHashtagInput(nextTags.map((value) => `#${value}`).join(" "));
   };
+  const isBusy = isPosting || isModerating || isPreparingImage;
+
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isBusy, onClose]);
 
   return (
     <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
-      <div className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)] md:max-h-[calc(100vh-6rem)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="knowledge-composer-title"
+        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)] md:max-h-[calc(100vh-6rem)]"
+      >
         <div className="shrink-0 border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
           <button
+            type="button"
             onClick={onClose}
             className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Close composer"
@@ -143,7 +162,7 @@ export function ComposerModal({
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">
             New Post
           </p>
-          <h2 className="mt-1 pr-10 text-2xl font-black tracking-tight text-slate-950">
+          <h2 id="knowledge-composer-title" className="mt-1 pr-10 text-2xl font-black tracking-tight text-slate-950">
             Create knowledge
           </h2>
         </div>
@@ -158,6 +177,7 @@ export function ComposerModal({
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => onOpenProfile(identity.authorId)}
                   className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700"
                 >
@@ -253,6 +273,7 @@ export function ComposerModal({
                   <div className="absolute left-4 right-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
                     {filteredMentionProfiles.map((profile) => (
                       <button
+                        type="button"
                         key={profile.id}
                         onClick={() => handleMentionInsert(profile)}
                         className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
@@ -365,6 +386,7 @@ export function ComposerModal({
                     mode="composer"
                     renderOverlayAction={(_, index) => (
                       <button
+                        type="button"
                         onClick={() => onRemoveSelectedImage(index)}
                         className="rounded-full bg-slate-950/55 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-md transition-colors hover:bg-rose-500"
                       >
@@ -419,6 +441,7 @@ export function ComposerModal({
         <div className="shrink-0 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
           <div className="flex justify-end">
             <button
+              type="button"
               onClick={handlePublish}
               disabled={
                 isPosting ||

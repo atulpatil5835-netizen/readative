@@ -45,37 +45,54 @@ export function InfoPanel({
     setActiveSection(initialSection);
   }, [initialSection]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[1px]"
       onClick={onClose}
+      role="presentation"
     >
       <aside
         onClick={(event) => event.stopPropagation()}
-        className="absolute right-4 top-20 flex max-h-[min(78vh,720px)] w-[min(92vw,390px)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="readative-info-title"
+        className="absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)] md:bottom-auto md:left-auto md:right-4 md:top-20 md:max-h-[min(78vh,720px)] md:w-[min(92vw,390px)] md:rounded-[28px]"
       >
-        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
+        <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-4 py-4 text-white sm:px-6 sm:py-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-200">
                 Readative Info
               </p>
-              <h2 className="mt-2 text-2xl font-black tracking-tight">
+              <h2 id="readative-info-title" className="mt-2 text-xl font-black tracking-tight sm:text-2xl">
                 About, policies, and contact
               </h2>
-              <p className="mt-2 text-sm text-emerald-50">
+              <p className="mt-1 text-xs leading-5 text-emerald-50 sm:mt-2 sm:text-sm">
                 Open the section you need from the buttons below.
               </p>
             </div>
             <button
+              type="button"
               onClick={onClose}
-              className="rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+              aria-label="Close information panel"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5">
             <InfoSectionButton
               active={activeSection === "about"}
               label="About Us"
@@ -109,7 +126,7 @@ export function InfoPanel({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
           {activeSection === "about" && (
             <div className="space-y-6">
               <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 px-5 py-5">
@@ -370,7 +387,8 @@ interface NotificationsPanelProps {
   onClose: () => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
-  onOpenSmartTalk: () => void;
+  onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
+  onOpenSignIn: () => void;
 }
 
 export function NotificationsPanel({
@@ -382,8 +400,20 @@ export function NotificationsPanel({
   onOpenProfile,
   onOpenEntry,
   onOpenSmartTalk,
+  onOpenSignIn,
 }: NotificationsPanelProps) {
   const [panelError, setPanelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const openNotification = async (notification: UserNotification) => {
     setPanelError(null);
@@ -402,7 +432,7 @@ export function NotificationsPanel({
       }
 
       if (notification.type === "best-answer") {
-        onOpenSmartTalk();
+        onOpenSmartTalk(notification.entryId);
         return;
       }
 
@@ -461,6 +491,7 @@ export function NotificationsPanel({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={() => onOpenProfile(actorProfileId)}
               className="text-xs font-black text-slate-900 transition-colors hover:text-emerald-700"
             >
@@ -491,15 +522,19 @@ export function NotificationsPanel({
     <div
       className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[1px]"
       onClick={onClose}
+      role="presentation"
     >
       <aside
         onClick={(event) => event.stopPropagation()}
-        className="absolute right-3 top-16 w-[min(94vw,380px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notifications-panel-title"
+        className="absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)] md:bottom-auto md:left-auto md:right-3 md:top-16 md:max-h-[min(78vh,720px)] md:w-[min(94vw,380px)]"
       >
-        <div className="border-b border-slate-100 px-4 py-3">
+        <div className="shrink-0 border-b border-slate-100 px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-black tracking-tight text-slate-950">
+              <h2 id="notifications-panel-title" className="text-base font-black tracking-tight text-slate-950">
                 Notifications
               </h2>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">
@@ -511,8 +546,10 @@ export function NotificationsPanel({
               </p>
             </div>
             <button
+              type="button"
               onClick={onClose}
-              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Close notifications"
             >
               <X className="h-4 w-4" />
             </button>
@@ -520,6 +557,7 @@ export function NotificationsPanel({
 
           {identity && notifications.length > 0 && (
             <button
+              type="button"
               onClick={() => void markAllRead()}
               disabled={unreadNotificationCount === 0}
               className="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-40"
@@ -529,7 +567,7 @@ export function NotificationsPanel({
           )}
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {(notificationsError || panelError) && (
             <div className="border-b border-amber-100 bg-amber-50 px-6 py-4 text-sm text-amber-700">
               {panelError || notificationsError}
@@ -537,9 +575,18 @@ export function NotificationsPanel({
           )}
 
           {!identity ? (
-            <div className="px-6 py-8 text-sm text-slate-500">
-              Post, mark helpful, or comment once with your username and your realtime
-              notifications will appear here.
+            <div className="space-y-4 px-6 py-8 text-sm text-slate-500">
+              <p>
+                Sign in with Google to receive realtime alerts for comments,
+                helpful feedback, mentions, and SmartTalk updates.
+              </p>
+              <button
+                type="button"
+                onClick={onOpenSignIn}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+              >
+                Continue with Google
+              </button>
             </div>
           ) : notifications.length === 0 ? (
             <div className="px-6 py-8 text-sm text-slate-500">
@@ -621,8 +668,10 @@ function InfoSectionButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`rounded-2xl px-3 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
+      aria-pressed={active}
+      className={`min-h-11 rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.08em] transition-colors sm:rounded-2xl sm:px-3 sm:py-3 sm:text-xs sm:tracking-[0.14em] ${
         active
           ? "bg-white text-emerald-800"
           : "bg-white/10 text-white/85 hover:bg-white/20"

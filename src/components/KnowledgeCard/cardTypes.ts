@@ -2,6 +2,8 @@ import { ComponentType } from "react";
 import {
   KnowledgeComment,
   KnowledgeEntry,
+  KnowledgeImageAsset,
+  KnowledgeImageLayout,
   UserProfile,
   KnowledgeVisibility,
 } from "../../types";
@@ -49,8 +51,8 @@ export interface CardHeaderProps {
 }
 
 export interface CardMediaProps {
-  entryImages: { url: string; previewUrl?: string; width?: number; height?: number }[];
-  imageLayout: string;
+  entryImages: KnowledgeImageAsset[];
+  imageLayout: KnowledgeImageLayout;
   title: string;
 }
 
@@ -108,7 +110,7 @@ export interface CardCommentsProps {
   activeCommentMention: CommentMentionState | null;
   filteredCommentMentionProfiles: UserProfile[];
   localComments: KnowledgeComment[];
-  profileMap: Map<string, UserProfile>;
+  profileMap: ReadonlyMap<string, UserProfile>;
   onCommentSubmit: () => void;
   onCommentMentionInsert: (profile: UserProfile) => void;
   onOpenAuthorProfile: (authorId: string) => void;

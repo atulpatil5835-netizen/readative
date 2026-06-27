@@ -77,9 +77,9 @@ export function highlightReactTree(
     );
   }
 
-  if (React.isValidElement(nodes)) {
-    const element = nodes as React.ReactElement;
-    if (element.props && element.props.children) {
+  if (React.isValidElement<{ children?: ReactNode }>(nodes)) {
+    const element = nodes;
+    if (element.props.children) {
       const highlightedChildren = highlightReactTree(
         element.props.children,
         highlights,

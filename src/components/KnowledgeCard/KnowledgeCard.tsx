@@ -9,6 +9,7 @@ import * as htmlToImage from "html-to-image";
 import {
   KnowledgeComment,
   KnowledgeEntry,
+  KnowledgeImageAsset,
   UserProfile,
   KnowledgeVisibility,
 } from "../../types";
@@ -84,6 +85,30 @@ interface KnowledgeCardProps {
   highlighted?: boolean;
 }
 
+interface MeasuredExportParagraph {
+  text: string;
+  height: number;
+}
+
+type ExportPageElement =
+  | { type: "image"; image: KnowledgeImageAsset; height?: number }
+  | { type: "trust_badge"; height?: number }
+  | { type: "title"; text: string; height?: number }
+  | {
+      type: "paragraph";
+      text: string;
+      height?: number;
+      hasDivider: boolean;
+      dividerHeight?: number;
+    }
+  | { type: "tags"; height?: number };
+
+interface ExportPage {
+  elements: ExportPageElement[];
+  contentHeight?: number;
+  pageHeight?: number;
+}
+
 export const KnowledgeCard = memo(function KnowledgeCard({
   entry,
   currentIdentity,
@@ -104,7 +129,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const isHighlightMode = !!highlightModePostIds[entry.id];
 
   const [isExporting, setIsExporting] = useState(false);
-  const [exportPages, setExportPages] = useState<any[]>([]);
+  const [exportPages, setExportPages] = useState<ExportPage[]>([]);
 
   const handleToggleHighlightMode = () => {
     const nextState = !isHighlightMode;
@@ -794,7 +819,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     measureContainer.removeChild(trustDiv);
 
     // 4. Measure Content Sections (paragraphs)
-    const measuredParagraphs = [];
+    const measuredParagraphs: MeasuredExportParagraph[] = [];
     for (const section of contentSections) {
       const p = document.createElement("p");
       p.style.width = "520px";
@@ -881,11 +906,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       return matches ? matches.map(s => s.trim()) : [text];
     };
 
-    const pages: any[] = [];
+    const pages: ExportPage[] = [];
 
     if (totalContentHeight <= MAX_SINGLE_PAGE_CONTENT_HEIGHT) {
       // Short/Medium/Large post -> One single adaptive-height PNG
-      const pageElements: any[] = [];
+      const pageElements: ExportPageElement[] = [];
       
       // Images first
       for (const img of entryImages) {
@@ -916,7 +941,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       });
     } else {
       // Very large post -> Multiple uniform-height PNGs
-      const elements: any[] = [];
+      const elements: ExportPageElement[] = [];
 
       // Add images
       for (const img of entryImages) {
@@ -942,7 +967,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         elements.push({ type: "tags", height: tagsHeight + 16 });
       }
 
-      let currentPageElements: any[] = [];
+      let currentPageElements: ExportPageElement[] = [];
       let currentPageHeight = 0;
 
       const startNewPage = () => {
@@ -954,7 +979,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       };
 
       for (const elem of elements) {
-        const elemHeight = elem.height + (elem.dividerHeight || 0);
+        const elemHeight =
+          (elem.height || 0) +
+          (elem.type === "paragraph" ? elem.dividerHeight || 0 : 0);
 
         if (currentPageHeight + elemHeight > TARGET_CONTENT_HEIGHT) {
           if (currentPageElements.length > 0) {
@@ -1033,7 +1060,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       }
 
       // Calculate uniform height based on the tallest page content
-      const maxPageContentHeight = Math.max(...pages.map(p => p.contentHeight));
+      const maxPageContentHeight = Math.max(...pages.map(p => p.contentHeight || 0));
       const uniformPageHeight = Math.max(400, Math.ceil(HEADER_HEIGHT + maxPageContentHeight + FOOTER_HEIGHT + VERTICAL_PADDING));
 
       // Apply the uniform height to all pages
@@ -1386,7 +1413,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
             pointerEvents: "none"
           }}
         >
-          {exportPages.map((page: any, pageIndex: number) => (
+          {exportPages.map((page, pageIndex) => (
             <div
               key={pageIndex}
               className="export-card"
@@ -1469,7 +1496,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
               {/* Main Content Area */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                {page.elements.map((elem: any, elemIndex: number) => {
+                {page.elements.map((elem, elemIndex) => {
                   if (elem.type === "title") {
                     return (
                       <h3
@@ -1654,7 +1681,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
                             {entry.contentKind}
                           </span>
                         )}
-                        {entry.hashtags.map((tag: string) => (
+                        {entry.hashtags.map((tag) => (
                           <span
                             key={tag}
                             style={{

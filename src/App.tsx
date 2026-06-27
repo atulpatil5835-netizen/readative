@@ -95,6 +95,12 @@ export default function App() {
   const [exploreTopic, setExploreTopic] = useState<string | null>(
     initialRoute.tab === "explore" ? initialRoute.selectedTopic : null,
   );
+  const [smartTalkCategory, setSmartTalkCategory] = useState<string | null>(
+    initialRoute.tab === "smarttalk" ? initialRoute.selectedTopic : null
+  );
+  const [focusedQuestionId, setFocusedQuestionId] = useState<string | null>(
+    initialRoute.tab === "smarttalk" ? initialRoute.focusedEntryId : null
+  );
   const [routeErrorPath, setRouteErrorPath] = useState<string | null>(
     initialRoute.tab === "notFound" ? initialRoute.attemptedLocation : null
   );
@@ -120,6 +126,8 @@ export default function App() {
     setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
     setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
     setExploreTopic(route.tab === "explore" ? route.selectedTopic : null);
+    setSmartTalkCategory(route.tab === "smarttalk" ? route.selectedTopic : null);
+    setFocusedQuestionId(route.tab === "smarttalk" ? route.focusedEntryId : null);
     setRouteErrorPath(route.tab === "notFound" ? route.attemptedLocation : null);
   }, []);
 
@@ -469,6 +477,8 @@ export default function App() {
               <SmartTalk
                 currentIdentity={identity}
                 onIdentityChange={setIdentity}
+                selectedCategory={smartTalkCategory}
+                focusedQuestionId={focusedQuestionId}
               />
             </Suspense>
           )}
@@ -491,7 +501,12 @@ export default function App() {
                 onOpenProfile={handleOpenProfile}
                 onOpenEntry={handleOpenEntry}
                 onOpenTopic={handleOpenTopic}
-                onOpenSmartTalk={() => handleTabChange("smarttalk")}
+                onOpenSmartTalk={(questionId, selectedCategory) =>
+                  navigateToRoute("smarttalk", {
+                    focusedEntryId: questionId ?? null,
+                    selectedTopic: selectedCategory ?? null,
+                  })
+                }
               />
             </Suspense>
           )}
@@ -523,9 +538,16 @@ export default function App() {
                 setShowNotificationsPanel(false);
                 handleOpenEntry(entryId);
               }}
-              onOpenSmartTalk={() => {
+              onOpenSmartTalk={(questionId, selectedCategory) => {
                 setShowNotificationsPanel(false);
-                handleTabChange("smarttalk");
+                navigateToRoute("smarttalk", {
+                  focusedEntryId: questionId ?? null,
+                  selectedTopic: selectedCategory ?? null,
+                });
+              }}
+              onOpenSignIn={() => {
+                setShowNotificationsPanel(false);
+                handleOpenSignInPrompt();
               }}
             />
           </Suspense>
@@ -595,7 +617,9 @@ export default function App() {
           aria-label="Primary mobile navigation"
         >
           <button
+            type="button"
             onClick={handleHomeAction}
+            aria-current={activeTab === "knowledge" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "knowledge"
                 ? "bg-emerald-50 text-emerald-700"
@@ -607,7 +631,9 @@ export default function App() {
             <span>Home</span>
           </button>
           <button
+            type="button"
             onClick={() => handleTabChange("smarttalk")}
+            aria-current={activeTab === "smarttalk" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "smarttalk"
                 ? "bg-indigo-50 text-indigo-700"
@@ -619,6 +645,7 @@ export default function App() {
             <span>SmartTalk</span>
           </button>
           <button
+            type="button"
             onClick={handleOpenComposer}
             className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg bg-slate-950 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.2)] transition-colors hover:bg-emerald-700"
             aria-label="Create"
@@ -627,7 +654,9 @@ export default function App() {
             <span>Create</span>
           </button>
           <button
+            type="button"
             onClick={() => handleTabChange("explore")}
+            aria-current={activeTab === "explore" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "explore"
                 ? "bg-sky-50 text-sky-700"
@@ -639,7 +668,9 @@ export default function App() {
             <span>Explore</span>
           </button>
           <button
+            type="button"
             onClick={() => handleTabChange("profile")}
+            aria-current={activeTab === "profile" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "profile"
                 ? "bg-emerald-50 text-emerald-700"

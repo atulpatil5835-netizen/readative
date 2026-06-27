@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import {
+  ArrowLeft,
   Bookmark,
   ChevronDown,
   ChevronUp,
@@ -30,6 +31,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  where,
   orderBy,
   limit,
   serverTimestamp,
@@ -74,36 +76,11 @@ import {
   SEO_CATEGORIES,
   getCategoryBySlug,
 } from "../utils/seoTaxonomy";
+import { buildPublicPath, navigateToRoute } from "../utils/routes";
+import type { Answer, Question } from "../types";
+import { tokenizeSearch } from "../utils/searchHelpers";
 
 const SMART_TALK_PAGE_SIZE = 50;
-
-interface Answer {
-  id: string;
-  author: string;
-  authorId?: string;
-  content: string;
-  likes: string[];
-  dislikes: string[];
-  helpfulIds?: string[];
-  helpfulCount?: number | null;
-  misleadingIds?: string[];
-  misleadingCount?: number | null;
-  bestAnswer?: boolean;
-  createdAt: number;
-}
-
-interface Question {
-  id: string;
-  author: string;
-  authorId: string;
-  content: string;
-  answers: Answer[];
-  createdAt: number;
-  category?: string | null;
-  difficulty?: SmartTalkDifficulty | null;
-  savedBy?: string[];
-  saveCount?: number | null;
-}
 
 type VoteType = "helpful" | "misleading";
 
@@ -122,10 +99,8 @@ type SmartTalkPromptState =
 interface SmartTalkProps {
   currentIdentity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
-}
-
-function tokenizeSearch(input: string) {
-  return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
+  selectedCategory?: string | null;
+  focusedQuestionId?: string | null;
 }
 
 function matchesSmartTalkSearch(question: Question, terms: string[]) {
@@ -387,6 +362,8 @@ function mergeSmartTalkQuestions(
 export function SmartTalk({
   currentIdentity,
   onIdentityChange,
+  selectedCategory = null,
+  focusedQuestionId = null,
 }: SmartTalkProps) {
   const [firstPageQuestions, setFirstPageQuestions] = useState<Question[]>([]);
   const [loadedPageQuestions, setLoadedPageQuestions] = useState<Question[]>([]);
@@ -429,10 +406,11 @@ export function SmartTalk({
   const firstPageQuestionsRef = useRef<Question[]>([]);
   const loadedPageQuestionsRef = useRef<Question[]>([]);
   const totalQuestionCountRef = useRef<number | null>(null);
-  const questions = useMemo(
-    () => mergeSmartTalkQuestions(firstPageQuestions, loadedPageQuestions),
-    [firstPageQuestions, loadedPageQuestions],
-  );
+  const useIndexFallbackRef = useRef(false);
+  const questions = useMemo(() => {
+    const merged = mergeSmartTalkQuestions(firstPageQuestions, loadedPageQuestions);
+    return merged.sort((left, right) => right.createdAt - left.createdAt);
+  }, [firstPageQuestions, loadedPageQuestions]);
   const suggestedQuestionCategory = useMemo(
     () => suggestKnowledgeCategory(newQuestion, newQuestion),
     [newQuestion],
@@ -440,14 +418,17 @@ export function SmartTalk({
 
   const loadTotalQuestionCount = useCallback(async () => {
     try {
-      const countSnapshot = await getCountFromServer(collection(db, "smarttalk"));
+      const q = selectedCategory
+        ? query(collection(db, "smarttalk"), where("category", "==", selectedCategory))
+        : collection(db, "smarttalk");
+      const countSnapshot = await getCountFromServer(q);
       const nextCount = countSnapshot.data().count;
       totalQuestionCountRef.current = nextCount;
       setTotalQuestionCount(nextCount);
     } catch (error) {
       console.error("Firestore SmartTalk count error:", error);
     }
-  }, []);
+  }, [selectedCategory]);
 
   useEffect(() => {
     firstPageQuestionsRef.current = firstPageQuestions;
@@ -467,44 +448,91 @@ export function SmartTalk({
   useEffect(() => {
     void loadTotalQuestionCount();
 
-    const smartTalkQuery = query(
-      collection(db, "smarttalk"),
-      orderBy("createdAt", "desc"),
-      limit(SMART_TALK_PAGE_SIZE),
-    );
+    // Reset pagination state when selectedCategory changes to reload fresh list
+    setLoadedPageQuestions([]);
+    loadedPageQuestionsRef.current = [];
+    setLastQuestionSnapshot(null);
+    setIsLoading(true);
 
-    const unsubscribe = onSnapshot(
-      smartTalkQuery,
-      (snapshot) => {
-        const data = snapshot.docs.map((item) =>
-          normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>),
-        );
-        const firstPageCursor = snapshot.docs[snapshot.docs.length - 1] || null;
-        const loadedIds = new Set([
-          ...data.map((question) => question.id),
-          ...loadedPageQuestionsRef.current.map((question) => question.id),
-        ]);
-        const totalCount = totalQuestionCountRef.current;
+    let unsubscribe: (() => void) | null = null;
+    let isCancelled = false;
 
-        firstPageQuestionsRef.current = data;
-        setFirstPageQuestions(data);
-        if (loadedPageQuestionsRef.current.length === 0) {
-          setLastQuestionSnapshot(firstPageCursor);
+    const startListener = (useOrdered: boolean) => {
+      let q;
+      if (selectedCategory) {
+        if (useOrdered) {
+          q = query(
+            collection(db, "smarttalk"),
+            where("category", "==", selectedCategory),
+            orderBy("createdAt", "desc"),
+            limit(SMART_TALK_PAGE_SIZE),
+          );
+        } else {
+          q = query(
+            collection(db, "smarttalk"),
+            where("category", "==", selectedCategory),
+            limit(SMART_TALK_PAGE_SIZE),
+          );
         }
-        setHasMoreQuestions(
-          snapshot.docs.length === SMART_TALK_PAGE_SIZE &&
-            (totalCount === null || loadedIds.size < totalCount),
+      } else {
+        q = query(
+          collection(db, "smarttalk"),
+          orderBy("createdAt", "desc"),
+          limit(SMART_TALK_PAGE_SIZE),
         );
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Firestore SmartTalk error:", error);
-        setIsLoading(false);
-      },
-    );
+      }
 
-    return () => unsubscribe();
-  }, [loadTotalQuestionCount]);
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          if (isCancelled) return;
+          const data = snapshot.docs.map((item) =>
+            normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>),
+          );
+          if (!useOrdered && selectedCategory) {
+            data.sort((left, right) => right.createdAt - left.createdAt);
+          }
+          const firstPageCursor = snapshot.docs[snapshot.docs.length - 1] || null;
+          const loadedIds = new Set([
+            ...data.map((question) => question.id),
+            ...loadedPageQuestionsRef.current.map((question) => question.id),
+          ]);
+          const totalCount = totalQuestionCountRef.current;
+
+          firstPageQuestionsRef.current = data;
+          setFirstPageQuestions(data);
+          if (loadedPageQuestionsRef.current.length === 0) {
+            setLastQuestionSnapshot(firstPageCursor);
+          }
+          setHasMoreQuestions(
+            snapshot.docs.length === SMART_TALK_PAGE_SIZE &&
+              (totalCount === null || loadedIds.size < totalCount),
+          );
+          setIsLoading(false);
+        },
+        (error) => {
+          if (isCancelled) return;
+          const message = error instanceof Error ? error.message.toLowerCase() : String(error);
+          const needsIndex = message.includes("index") || message.includes("requires an index");
+          if (needsIndex && useOrdered && selectedCategory) {
+            console.info("SmartTalk category ordered query needs an index; using fallback.");
+            useIndexFallbackRef.current = true;
+            startListener(false);
+          } else {
+            console.error("Firestore SmartTalk error:", error);
+            setIsLoading(false);
+          }
+        }
+      );
+    };
+
+    startListener(!useIndexFallbackRef.current);
+
+    return () => {
+      isCancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [loadTotalQuestionCount, selectedCategory]);
 
   const loadMoreQuestions = async () => {
     if (!lastQuestionSnapshot || isLoadingMoreQuestions) return;
@@ -513,14 +541,53 @@ export function SmartTalk({
     setPaginationMessage(null);
 
     try {
-      const nextSnapshot = await getDocs(
-        query(
+      let q;
+      if (selectedCategory) {
+        if (useIndexFallbackRef.current) {
+          q = query(
+            collection(db, "smarttalk"),
+            where("category", "==", selectedCategory),
+            startAfter(lastQuestionSnapshot),
+            limit(SMART_TALK_PAGE_SIZE),
+          );
+        } else {
+          q = query(
+            collection(db, "smarttalk"),
+            where("category", "==", selectedCategory),
+            orderBy("createdAt", "desc"),
+            startAfter(lastQuestionSnapshot),
+            limit(SMART_TALK_PAGE_SIZE),
+          );
+        }
+      } else {
+        q = query(
           collection(db, "smarttalk"),
           orderBy("createdAt", "desc"),
           startAfter(lastQuestionSnapshot),
           limit(SMART_TALK_PAGE_SIZE),
-        ),
-      );
+        );
+      }
+
+      let nextSnapshot;
+      try {
+        nextSnapshot = await getDocs(q);
+      } catch (error) {
+        const message = error instanceof Error ? error.message.toLowerCase() : String(error);
+        const needsIndex = message.includes("index") || message.includes("requires an index");
+        if (needsIndex && selectedCategory && !useIndexFallbackRef.current) {
+          useIndexFallbackRef.current = true;
+          q = query(
+            collection(db, "smarttalk"),
+            where("category", "==", selectedCategory),
+            startAfter(lastQuestionSnapshot),
+            limit(SMART_TALK_PAGE_SIZE),
+          );
+          nextSnapshot = await getDocs(q);
+        } else {
+          throw error;
+        }
+      }
+
       const nextQuestions = nextSnapshot.docs.map((item) =>
         normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>),
       );
@@ -549,6 +616,77 @@ export function SmartTalk({
       setIsLoadingMoreQuestions(false);
     }
   };
+
+  const [fetchedQuestion, setFetchedQuestion] = useState<Question | null>(null);
+  const [isQuestionLoading, setIsQuestionLoading] = useState(false);
+
+  useEffect(() => {
+    if (!focusedQuestionId) {
+      setFetchedQuestion(null);
+      return;
+    }
+
+    const localQ = questions.find((q) => q.id === focusedQuestionId);
+    if (localQ) {
+      setFetchedQuestion(localQ);
+      return;
+    }
+
+    setIsQuestionLoading(true);
+    const docRef = doc(db, "smarttalk", focusedQuestionId);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setFetchedQuestion(
+            normalizeSmartTalkQuestion(docSnap.id, docSnap.data() as Partial<Question>),
+          );
+        } else {
+          setFetchedQuestion(null);
+        }
+        setIsQuestionLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching single question:", error);
+        setIsQuestionLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [focusedQuestionId, questions]);
+
+  const focusedQuestion = fetchedQuestion || questions.find((q) => q.id === focusedQuestionId) || null;
+
+  const getLastActivity = (q: Question) => {
+    if (!q.answers || q.answers.length === 0) {
+      return q.createdAt;
+    }
+    const answerTimes = q.answers.map(a => a.createdAt);
+    return Math.max(q.createdAt, ...answerTimes);
+  };
+
+  const focusedQuestionRow = useMemo(() => {
+    if (!focusedQuestion) return null;
+    const sortedAnswers = [...(focusedQuestion.answers || [])].sort(
+      (left, right) =>
+        getAnswerHelpfulScore(right) - getAnswerHelpfulScore(left) ||
+        left.createdAt - right.createdAt,
+    );
+    const topAnswerId = sortedAnswers[0]?.id || null;
+    const worstAnswerId =
+      sortedAnswers.length > 1
+        ? sortedAnswers[sortedAnswers.length - 1].id
+        : null;
+
+    return {
+      question: focusedQuestion,
+      sortedAnswers,
+      topAnswerId,
+      worstAnswerId,
+      featuredAnswer: sortedAnswers[0] || null,
+      hiddenAnswers: sortedAnswers.slice(1),
+    };
+  }, [focusedQuestion]);
 
   const submitQuestion = async (authorIdentity: KnowledgeIdentity) => {
     const questionText = newQuestion.trim();
@@ -872,6 +1010,27 @@ export function SmartTalk({
     () => tokenizeSearch(deferredSearchQuery),
     [deferredSearchQuery],
   );
+
+  useEffect(() => {
+    if (!focusedQuestionId) return;
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }, [focusedQuestionId]);
+
+  useEffect(() => {
+    if (!isAskModalOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isAsking && !isModeratingQuestion) {
+        setIsAskModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAskModalOpen, isAsking, isModeratingQuestion]);
   const visibleQuestions = useMemo(
     () =>
       searchTerms.length === 0
@@ -1015,6 +1174,7 @@ export function SmartTalk({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
             onClick={() => void handleVote(question, answer.id, "helpful")}
             className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
               userLiked
@@ -1030,6 +1190,7 @@ export function SmartTalk({
           </button>
 
           <button
+            type="button"
             onClick={() => void handleVote(question, answer.id, "misleading")}
             className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
               userDisliked
@@ -1064,102 +1225,28 @@ export function SmartTalk({
         ]}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
-        <div className="flex items-center gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-              <ReadativeRMark className="h-5 w-5 text-xl tracking-tight" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-xl font-black tracking-tight text-slate-950">
-                SmartTalk
-              </h2>
-              <p className="truncate text-xs font-semibold text-slate-500">
-                {totalQuestionCount ?? questions.length} Questions
-                {currentIdentity ? ` / @${currentIdentity.displayName}` : ""}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <SmartTalkKnowledgeBrief />
-
-      <DiscoverySearch
-        theme="indigo"
-        placeholder="Search"
-        value={searchQuery}
-        onChange={setSearchQuery}
-        onClear={() => setSearchQuery("")}
-        ariaLabel="Search SmartTalk"
-      />
-
-      {!isLoading &&
-        (trendingDiscussions.length >= 2 ||
-          questionsNeedingAnswers.length >= 2 ||
-          topAnswers.length >= 2) && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {trendingDiscussions.length >= 2 && (
-              <SmartTalkDiscoveryBlock
-                icon={<Flame className="h-4 w-4" />}
-                title="Trending Discussions"
-                items={trendingDiscussions.map((question) => ({
-                  id: question.id,
-                  text: question.content,
-                  meta: `${question.answers.length} answers`,
-                }))}
-              />
-            )}
-            {questionsNeedingAnswers.length >= 2 && (
-              <SmartTalkDiscoveryBlock
-                icon={<HelpCircle className="h-4 w-4" />}
-                title="Needs Answers"
-                items={questionsNeedingAnswers.map((question) => ({
-                  id: question.id,
-                  text: question.content,
-                  meta: "No answers yet",
-                }))}
-              />
-            )}
-            {topAnswers.length >= 2 && (
-              <SmartTalkDiscoveryBlock
-                icon={<Trophy className="h-4 w-4" />}
-                title="Top Answers"
-                items={topAnswers.map(({ answer, score }) => ({
-                  id: answer.id,
-                  text: answer.content,
-                  meta: `+${score} helpful`,
-                }))}
-              />
-            )}
-          </div>
-        )}
-
-      {isLoading ? (
-        <div className="space-y-4" aria-busy="true" aria-live="polite">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <SmartTalkQuestionSkeleton key={index} />
-          ))}
-        </div>
-      ) : questions.length === 0 ? (
-        <div className="text-center py-16 text-gray-400 text-sm">
-          No questions yet. Be the first to ask!
-        </div>
-      ) : visibleQuestions.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-indigo-200 bg-white px-6 py-16 text-center shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">
-            No Search Matches
-          </p>
-          <h3 className="mt-3 text-xl font-black text-slate-900">
-            No SmartTalk posts matched "{searchQuery.trim()}"
-          </h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Try a broader phrase or search by the author with @username.
-          </p>
-        </div>
-      ) : (
+      {focusedQuestionId ? (
         <div className="space-y-4">
-          {visibleQuestionRows.map((questionRow) => {
+          <button
+            type="button"
+            onClick={() => navigateToRoute("smarttalk", { selectedTopic: selectedCategory })}
+            className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 hover:text-indigo-600 transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to questions
+          </button>
+
+          {isQuestionLoading && !focusedQuestion ? (
+            <div className="space-y-4" aria-busy="true" aria-live="polite">
+              <SmartTalkQuestionSkeleton />
+            </div>
+          ) : !focusedQuestion ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-gray-500">
+              Question not found or has been deleted.
+            </div>
+          ) : (() => {
+            const row = focusedQuestionRow;
+            if (!row) return null;
             const {
               question,
               sortedAnswers,
@@ -1167,7 +1254,7 @@ export function SmartTalk({
               worstAnswerId,
               featuredAnswer,
               hiddenAnswers,
-            } = questionRow;
+            } = row;
             const answersExpanded = Boolean(expandedAnswers[question.id]);
             const hiddenAnswerCount = hiddenAnswers.length;
             const questionSaveMetrics = getSaveMetrics(question);
@@ -1177,7 +1264,6 @@ export function SmartTalk({
 
             return (
               <div
-                key={question.id}
                 id={`question-${question.id}`}
                 data-publisher-content="smarttalk-question"
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_14px_38px_rgba(15,23,42,0.07)]"
@@ -1260,6 +1346,7 @@ export function SmartTalk({
                               {hiddenAnswerCount === 1 ? "" : "s"}
                             </p>
                             <button
+                              type="button"
                               onClick={() =>
                                 setExpandedAnswers((current) => ({
                                   ...current,
@@ -1323,6 +1410,7 @@ export function SmartTalk({
                   />
                   <div className="flex justify-end">
                     <button
+                      type="button"
                       onClick={() => handleAnswer(question.id)}
                       disabled={
                         !answerInputs[question.id]?.trim() ||
@@ -1350,41 +1438,211 @@ export function SmartTalk({
                 </div>
               </div>
             );
-          })}
+          })()}
         </div>
-      )}
+      ) : (
+        <>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                  <ReadativeRMark className="h-5 w-5 text-xl tracking-tight" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-black tracking-tight text-slate-950">
+                    SmartTalk
+                  </h2>
+                  <p className="truncate text-xs font-semibold text-slate-500">
+                    {totalQuestionCount ?? questions.length} Questions
+                    {currentIdentity ? ` / @${currentIdentity.displayName}` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAsk}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition-colors hover:bg-indigo-700"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Ask question
+              </button>
+            </div>
+          </div>
 
-      {!isLoading && hasMoreQuestions && (
-        <div className="flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void loadMoreQuestions()}
-            disabled={isLoadingMoreQuestions}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-5 py-2.5 text-sm font-black text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-60"
-          >
-            {isLoadingMoreQuestions ? (
-              <ReadativeLoader size="xs" tone="indigo" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
+          <SmartTalkKnowledgeBrief />
+
+          <DiscoverySearch
+            theme="indigo"
+            placeholder="Search"
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onClear={() => setSearchQuery("")}
+            ariaLabel="Search SmartTalk"
+          />
+
+          {!isLoading &&
+            (trendingDiscussions.length >= 2 ||
+              questionsNeedingAnswers.length >= 2 ||
+              topAnswers.length >= 2) && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {trendingDiscussions.length >= 2 && (
+                  <SmartTalkDiscoveryBlock
+                    icon={<Flame className="h-4 w-4" />}
+                    title="Trending Discussions"
+                    items={trendingDiscussions.map((question) => ({
+                      id: question.id,
+                      text: question.content,
+                      meta: `${question.answers.length} answers`,
+                    }))}
+                  />
+                )}
+                {questionsNeedingAnswers.length >= 2 && (
+                  <SmartTalkDiscoveryBlock
+                    icon={<HelpCircle className="h-4 w-4" />}
+                    title="Needs Answers"
+                    items={questionsNeedingAnswers.map((question) => ({
+                      id: question.id,
+                      text: question.content,
+                      meta: "No answers yet",
+                    }))}
+                  />
+                )}
+                {topAnswers.length >= 2 && (
+                  <SmartTalkDiscoveryBlock
+                    icon={<Trophy className="h-4 w-4" />}
+                    title="Top Answers"
+                    items={topAnswers.map(({ answer, score }) => ({
+                      id: answer.id,
+                      text: answer.content,
+                      meta: `+${score} helpful`,
+                    }))}
+                  />
+                )}
+              </div>
             )}
-            {isLoadingMoreQuestions ? "Loading..." : "Load More"}
-          </button>
-          {paginationMessage && (
-            <p className="text-xs font-semibold text-amber-600">
-              {paginationMessage}
-            </p>
-          )}
-        </div>
-      )}
 
-      <button
-        type="button"
-        onClick={() => setIsAskModalOpen(true)}
-        className="fixed bottom-24 right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white shadow-[0_14px_34px_rgba(15,23,42,0.25)] transition-colors hover:bg-indigo-700 md:bottom-6 md:right-6"
-      >
-        <Send className="h-4 w-4" />
-        Ask
-      </button>
+          {selectedCategory && (
+            <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+              <div className="min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Category Filter</span>
+                <h3 className="text-sm font-bold text-slate-900 leading-none mt-0.5 capitalize">
+                  {getSmartTalkCategoryLabel(selectedCategory)}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigateToRoute("smarttalk")}
+                className="text-xs font-bold text-indigo-600 hover:underline uppercase tracking-[0.1em]"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="space-y-4" aria-busy="true" aria-live="polite">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <SmartTalkQuestionSkeleton key={index} />
+              ))}
+            </div>
+          ) : questions.length === 0 ? (
+            <div className="text-center py-16 text-gray-400 text-sm">
+              No questions yet. Be the first to ask!
+            </div>
+          ) : visibleQuestions.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-indigo-200 bg-white px-6 py-16 text-center shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">
+                No Search Matches
+              </p>
+              <h3 className="mt-3 text-xl font-black text-slate-900">
+                No SmartTalk questions matched "{searchQuery.trim()}"
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                Try a broader phrase or search by the author with @username.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {visibleQuestions.map((question) => {
+                const lastActivityTime = getLastActivity(question);
+                const formattedLastActivity = new Date(lastActivityTime).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+
+                return (
+                  <a
+                    key={question.id}
+                    href={buildPublicPath("smarttalk", {
+                      selectedTopic: selectedCategory,
+                      focusedEntryId: question.id,
+                    })}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToRoute("smarttalk", {
+                        selectedTopic: selectedCategory,
+                        focusedEntryId: question.id,
+                      });
+                    }}
+                    className="group block rounded-xl border border-slate-200 bg-white p-4 shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_12px_24px_rgba(99,102,241,0.08)]"
+                  >
+                    <h3 className="text-base font-bold leading-snug text-slate-950 group-hover:text-indigo-700 transition-colors">
+                      {question.content}
+                    </h3>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>Asked by <span className="font-semibold text-slate-700">{question.author}</span></span>
+                        <span>•</span>
+                        <span className="font-medium text-slate-500">{question.answers.length} {question.answers.length === 1 ? "answer" : "answers"}</span>
+                        <span>•</span>
+                        <span>Active {formattedLastActivity}</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {question.category && (
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-indigo-700">
+                            {getSmartTalkCategoryLabel(question.category)}
+                          </span>
+                        )}
+                        {question.difficulty && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">
+                            {question.difficulty}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          )}
+
+          {!isLoading && hasMoreQuestions && (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void loadMoreQuestions()}
+                disabled={isLoadingMoreQuestions}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-5 py-2.5 text-sm font-black text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-60"
+              >
+                {isLoadingMoreQuestions ? (
+                  <ReadativeLoader size="xs" tone="indigo" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                {isLoadingMoreQuestions ? "Loading..." : "Load More"}
+              </button>
+              {paginationMessage && (
+                <p className="text-xs font-semibold text-amber-600">
+                  {paginationMessage}
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {isAskModalOpen && (
         <div
@@ -1395,6 +1653,9 @@ export function SmartTalk({
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="smarttalk-ask-title"
             className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
             onClick={(event) => event.stopPropagation()}
           >
@@ -1403,7 +1664,7 @@ export function SmartTalk({
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">
                   SmartTalk
                 </p>
-                <h3 className="text-lg font-black tracking-tight text-slate-950">
+                <h3 id="smarttalk-ask-title" className="text-lg font-black tracking-tight text-slate-950">
                   Ask a question
                 </h3>
               </div>
@@ -1585,6 +1846,10 @@ function SmartTalkKnowledgeBrief() {
           <a
             key={category.id}
             href={category.path}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateToRoute("smarttalk", { selectedTopic: category.id });
+            }}
             className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"
           >
             {category.label}

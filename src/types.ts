@@ -120,7 +120,7 @@ export interface ExamQuestion {
   correctIndex: number;
 }
 
-export interface SmartAnswer {
+export interface Answer {
   id: string;
   author: string;
   authorId?: string;
@@ -135,15 +135,19 @@ export interface SmartAnswer {
   createdAt: number;
 }
 
-export interface SmartQuestion {
+export interface SmartAnswer extends Answer {}
+
+export interface Question {
   id: string;
   author: string;
   authorId?: string;
   content: string;
   createdAt: number;
-  answers: SmartAnswer[];
+  answers: Answer[];
   category?: string | null;
   difficulty?: string | null;
   savedBy?: string[];
   saveCount?: number | null;
 }
+
+export interface SmartQuestion extends Question {}

@@ -2,10 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   DISCOVERY_INDEX_PATH,
   SITE_URL,
+  type SeoPost,
+  type SeoProfile,
+  type SeoSmartTalk,
+  type SeoTag,
   escapeXml,
   loadSeoData,
 } from "./_seoData.js";
-import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
+import { SEO_CATEGORIES, SEO_TAGS, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
 
 function escapeHtml(value: string) {
   return escapeXml(value);
@@ -17,6 +21,114 @@ function renderLink(path: string, label: string, description?: string) {
   }</li>`;
 }
 
+function escapeJsonForHtml(value: unknown) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
+function renderJsonLd(schema: object | object[]) {
+  return `<script type="application/ld+json">${escapeJsonForHtml(schema)}</script>`;
+}
+
+function absoluteUrl(path: string) {
+  return `${SITE_URL}${path}`;
+}
+
+function buildDiscoverySchemas({
+  posts,
+  profiles,
+  smartTalks,
+  tags,
+}: {
+  posts: SeoPost[];
+  profiles: SeoProfile[];
+  smartTalks: SeoSmartTalk[];
+  tags: SeoTag[];
+}) {
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Readative",
+      url: SITE_URL,
+      logo: absoluteUrl("/logo.png"),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Readative",
+      url: SITE_URL,
+      publisher: {
+        "@type": "Organization",
+        name: "Readative",
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: SITE_URL,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Discovery Index",
+          item: absoluteUrl(DISCOVERY_INDEX_PATH),
+        },
+      ],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "Readative Discovery Index",
+      url: absoluteUrl(DISCOVERY_INDEX_PATH),
+      description:
+        "Crawlable Readative index of published posts, categories, tags, profiles, and SmartTalk discussions.",
+      mainEntity: {
+        "@type": "ItemList",
+        name: "Readative crawlable content",
+        itemListElement: [
+          ...posts.slice(0, 30).map((post, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            name: post.title,
+            url: absoluteUrl(`/post/${encodeURIComponent(post.id)}`),
+          })),
+          ...smartTalks.slice(0, 20).map((question, index) => ({
+            "@type": "ListItem",
+            position: posts.slice(0, 30).length + index + 1,
+            name: question.title,
+            url: absoluteUrl(`/smarttalks/${encodeURIComponent(question.id)}`),
+          })),
+          ...profiles.slice(0, 20).map((profile, index) => ({
+            "@type": "ListItem",
+            position: posts.slice(0, 30).length + smartTalks.slice(0, 20).length + index + 1,
+            name: profile.name,
+            url: absoluteUrl(`/profile/${encodeURIComponent(profile.id)}`),
+          })),
+          ...tags.slice(0, 20).map((tag, index) => ({
+            "@type": "ListItem",
+            position:
+              posts.slice(0, 30).length +
+              smartTalks.slice(0, 20).length +
+              profiles.slice(0, 20).length +
+              index +
+              1,
+            name: `#${tag.id}`,
+            url: absoluteUrl(`/tag/${encodeURIComponent(tag.id)}`),
+          })),
+        ],
+      },
+    },
+  ];
+}
+
 function renderSection(title: string, links: string[]) {
   if (links.length === 0) return "";
 
@@ -26,6 +138,57 @@ function renderSection(title: string, links: string[]) {
     ${links.join("\n    ")}
   </ul>
 </section>`;
+}
+
+function renderPostLink(post: SeoPost) {
+  const metaLinks = [
+    post.category
+      ? `<a href="/category/${escapeHtml(encodeURIComponent(post.category))}">${escapeHtml(post.category)}</a>`
+      : "",
+    post.authorId
+      ? `<a href="/profile/${escapeHtml(encodeURIComponent(post.authorId))}">by @${escapeHtml(post.authorName)}</a>`
+      : `by @${escapeHtml(post.authorName)}`,
+    ...post.hashtags.slice(0, 4).map(
+      (tag) => `<a href="/tag/${escapeHtml(encodeURIComponent(tag))}">#${escapeHtml(tag)}</a>`,
+    ),
+  ].filter(Boolean);
+
+  return `<li><a href="/post/${escapeHtml(encodeURIComponent(post.id))}">${escapeHtml(post.title)}</a> <span>${escapeHtml(post.description)}</span>${
+    metaLinks.length > 0 ? ` <small>${metaLinks.join(" / ")}</small>` : ""
+  }</li>`;
+}
+
+function renderSmartTalkLink(question: SeoSmartTalk) {
+  const metaLinks = [
+    question.category
+      ? `<a href="/category/${escapeHtml(encodeURIComponent(question.category))}">${escapeHtml(question.category)}</a>`
+      : "",
+    question.authorId
+      ? `<a href="/profile/${escapeHtml(encodeURIComponent(question.authorId))}">by @${escapeHtml(question.authorName)}</a>`
+      : `by @${escapeHtml(question.authorName)}`,
+    `${question.answerCount} answers`,
+  ].filter(Boolean);
+
+  return `<li><a href="/smarttalks/${escapeHtml(encodeURIComponent(question.id))}">${escapeHtml(question.title)}</a> <span>${escapeHtml(question.description)}</span> <small>${metaLinks.join(" / ")}</small></li>`;
+}
+
+function renderProfileLink(profile: SeoProfile) {
+  return renderLink(
+    `/profile/${encodeURIComponent(profile.id)}`,
+    profile.name,
+    `@${profile.username} / ${profile.postCount} posts / ${profile.smartTalkCount} SmartTalk discussions`,
+  );
+}
+
+function renderTagLink(tag: SeoTag) {
+  const tagDefinition = SEO_TAGS.find((definition) => definition.id === tag.id);
+  const categories = tagDefinition
+    ? tagDefinition.categoryIds
+        .map((categoryId) => `<a href="/category/${escapeHtml(categoryId)}">${escapeHtml(categoryId)}</a>`)
+        .join(" / ")
+    : "";
+
+  return `<li><a href="/tag/${escapeHtml(encodeURIComponent(tag.id))}">#${escapeHtml(tag.id)}</a> <span>${tag.postCount} posts${categories ? ` / ${categories}` : ""}</span></li>`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -45,16 +208,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const allPosts = [...data.posts].sort((left, right) =>
     left.title.localeCompare(right.title),
   );
+  const pageTitle = "Readative Posts and Discovery Index";
+  const pageDescription =
+    "Crawlable Readative index of published posts, categories, tags, profiles, SmartTalk questions, and important discovery pages.";
+  const discoverySchemas = buildDiscoverySchemas({
+    posts: data.posts,
+    profiles: data.profiles,
+    smartTalks: data.smartTalks,
+    tags: data.tags,
+  });
 
   const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Readative Posts and Discovery Index</title>
-  <meta name="description" content="Crawlable Readative index of published posts, categories, tags, profiles, and important discovery pages." />
+  <title>${escapeHtml(pageTitle)}</title>
+  <meta name="description" content="${escapeHtml(pageDescription)}" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="${SITE_URL}${DISCOVERY_INDEX_PATH}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${escapeHtml(pageTitle)}" />
+  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
+  <meta property="og:url" content="${SITE_URL}${DISCOVERY_INDEX_PATH}" />
+  <meta property="og:image" content="${SITE_URL}/logo.png" />
+  <meta property="og:site_name" content="Readative" />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
+  <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
+  <meta name="twitter:image" content="${SITE_URL}/logo.png" />
+  ${renderJsonLd(discoverySchemas)}
   <style>
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
     main { max-width: 980px; margin: 0 auto; padding: 32px 18px 56px; }
@@ -66,6 +250,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ul { display: grid; gap: 10px; margin: 0; padding-left: 18px; }
     a { color: #047857; font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 3px; }
     span { color: #64748b; }
+    small { display: block; margin-top: 3px; color: #64748b; }
   </style>
 </head>
 <body>
@@ -84,7 +269,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ${renderSection(
     "Categories",
     SEO_CATEGORIES.map((category) =>
-      renderLink(category.path, category.label, category.description),
+      renderLink(
+        category.path,
+        category.label,
+        `${category.description} Related: ${category.topicSlugs.slice(0, 4).join(", ")}`,
+      ),
     ),
   )}
   ${renderSection(
@@ -95,37 +284,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   )}
   ${renderSection(
     "Tags",
-    data.tags.map((tag) =>
-      renderLink(`/tag/${encodeURIComponent(tag.id)}`, `#${tag.id}`, `${tag.postCount} posts`),
-    ),
+    data.tags.map(renderTagLink),
   )}
   ${renderSection(
     "Recent Posts",
-    recentPosts.map((post) =>
-      renderLink(`/post/${encodeURIComponent(post.id)}`, post.title, post.description),
-    ),
+    recentPosts.map(renderPostLink),
   )}
   ${renderSection(
     "SmartTalk Discussions",
-    data.smartTalks.map((question) =>
-      renderLink(
-        `/smarttalks/${encodeURIComponent(question.id)}`,
-        question.title,
-        `${question.answerCount} answers by @${question.authorName}`,
-      ),
-    ),
+    data.smartTalks.map(renderSmartTalkLink),
   )}
   ${renderSection(
     "All Published Posts",
-    allPosts.map((post) =>
-      renderLink(`/post/${encodeURIComponent(post.id)}`, post.title, `by @${post.authorName}`),
-    ),
+    allPosts.map(renderPostLink),
   )}
   ${renderSection(
     "Profiles",
-    data.profiles.map((profile) =>
-      renderLink(`/profile/${encodeURIComponent(profile.id)}`, profile.name),
-    ),
+    data.profiles.map(renderProfileLink),
   )}
 </main>
 </body>
