@@ -1673,7 +1673,7 @@ function DiscoveryPostList({
               e.preventDefault();
               onOpenEntry(entry.id);
             }}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
+            className="block w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
           >
             <p className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
               {entry.title}
