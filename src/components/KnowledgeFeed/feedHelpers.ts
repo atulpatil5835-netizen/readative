@@ -16,12 +16,9 @@ import { db } from "../../firebase/firebase";
 import {
   type KnowledgeComment,
   type KnowledgeEntry,
-  type UserProfile,
 } from "../../types";
 import {
   buildAbsoluteRouteUrl,
-  navigateToNotFound,
-  navigateToRoute,
   parseRouteFromLocation,
 } from "../../utils/routes";
 import {
@@ -35,25 +32,14 @@ import {
   getKnowledgeEntryImages,
 } from "../../utils/knowledgeImages";
 import {
-  canViewKnowledgeEntry,
   normalizeKnowledgeVisibility,
 } from "../../utils/knowledgePrivacy";
-import {
-  createExcerpt,
-  estimateReadMinutes,
-  extractInlineHashtags,
-  mergeHashtags,
-  parseManualHashtags,
-} from "../../utils/knowledgeEntryHelpers";
+import { createExcerpt } from "../../utils/knowledgeEntryHelpers";
 import {
   mergeTrustIds,
   normalizeTrustCount,
   normalizeTrustIdArray,
 } from "../../utils/trustSystem";
-import {
-  formatReadingMinutes,
-  suggestKnowledgeCategory,
-} from "../../utils/contentIntelligence";
 import { getSaveMetrics } from "../../utils/bookmarks";
 import {
   buildArticleSchema,
@@ -64,13 +50,7 @@ import {
   buildWebSiteSchema,
 } from "../../utils/seoSchemas";
 import {
-  getRelatedTopicsForCategory,
-  getTopicMatchValues,
-  type SeoCategoryDefinition,
-} from "../../utils/seoTaxonomy";
-import {
   type CachedKnowledgeFeed,
-  type TopicFeedState,
   type IndependentKnowledgeFeedPage,
   type BrowserIdleCallbacks,
   type PendingFeedStorageWrite,
@@ -78,9 +58,9 @@ import {
   type FeedTopicId,
 } from "./feedTypes";
 import {
-  FEED_TOPIC_FILTERS,
   normalizeFeedTopicId,
 } from "./feedFilters";
+export { tokenizeSearch } from "../../utils/searchHelpers";
 
 export const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
 export const FEED_INITIAL_PAGE_SIZE = 10;
@@ -106,10 +86,6 @@ export const FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT = 30;
 
 const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
 const pendingFeedStorageWrites = new Map<string, PendingFeedStorageWrite>();
-
-export function tokenizeSearch(input: string) {
-  return input.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
-}
 
 export function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
   if (terms.length === 0) return true;

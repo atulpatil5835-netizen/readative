@@ -1,7 +1,7 @@
-import { ComponentType } from "react";
-import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
-import { KnowledgeEntry, KnowledgeComment, UserProfile, KnowledgeVisibility } from "../../types";
-import { SeoCategoryDefinition } from "../../utils/seoTaxonomy";
+import { type ComponentType } from "react";
+import { type QueryDocumentSnapshot, type DocumentData } from "firebase/firestore";
+import { type KnowledgeEntry } from "../../types";
+import { type SeoCategoryDefinition } from "../../utils/seoTaxonomy";
 
 export type PendingAction =
   | { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }

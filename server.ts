@@ -160,6 +160,4 @@ app.post("/api/profile/:id", (req, res) => {
   return res.json(next);
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-});
+app.listen(PORT);

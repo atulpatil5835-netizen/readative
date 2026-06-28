@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
 } from "react";
-import * as htmlToImage from "html-to-image";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -1280,13 +1279,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       id={`knowledge-${entry.id}`}
       data-publisher-content="knowledge-post"
       className={cn(
-        "overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.08)] transition-shadow duration-200 hover:shadow-[0_20px_54px_rgba(15,23,42,0.11)]",
+        "readative-card-surface readative-card-surface-hover overflow-hidden",
         highlighted &&
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
       )}
     >
       <CardHeader
-        entry={entry}
         resolvedAuthorId={resolvedAuthorId}
         authorProfile={authorProfile}
         authorDisplayName={authorDisplayName}

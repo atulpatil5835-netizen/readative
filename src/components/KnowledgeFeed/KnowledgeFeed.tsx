@@ -11,7 +11,6 @@ import {
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -19,7 +18,6 @@ import {
   query,
   setDoc,
   startAfter,
-  where,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
@@ -60,10 +58,6 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../../utils/knowledgeEntryHelpers";
-import {
-  formatReadingMinutes,
-  suggestKnowledgeCategory,
-} from "../../utils/contentIntelligence";
 import { getRelatedTopicsForCategory } from "../../utils/seoTaxonomy";
 
 import {
@@ -77,7 +71,7 @@ import {
   type FeedTopicId,
   type BrowserIdleCallbacks,
 } from "./feedTypes";
-import { FEED_TOPIC_FILTERS, normalizeFeedTopicId } from "./feedFilters";
+import { FEED_TOPIC_FILTERS } from "./feedFilters";
 import {
   FEED_INITIAL_PAGE_SIZE,
   FEED_NEXT_PAGE_SIZE,
@@ -108,17 +102,18 @@ import {
   resolveFocusedKnowledgeEntrySnapshot,
   readKnowledgeFeedScrollPosition,
   writeKnowledgeFeedScrollPosition,
-  isEntryLikedByAuthor,
   matchesKnowledgeTopic,
   matchesKnowledgeSearch,
   tokenizeSearch,
 } from "./feedHelpers";
 import { ComposerModal } from "./FeedComposer";
 import { FeedRenderer } from "./FeedRenderer";
+import { type KnowledgeJourneyQuestion } from "./KnowledgeJourney";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
+const JOURNEY_SMARTTALK_LIMIT = 50;
 
 const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
   entries: [],
@@ -129,6 +124,47 @@ const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
   cursor: null,
   error: null,
 };
+
+function normalizeJourneyTimestamp(value: unknown, fallback = Date.now()) {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { toMillis?: unknown }).toMillis === "function"
+  ) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : fallback;
+}
+
+function normalizeJourneySmartTalkQuestion(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+): KnowledgeJourneyQuestion {
+  const data = snapshot.data();
+  const rawAnswers = Array.isArray(data.answers) ? data.answers : [];
+
+  return {
+    id: snapshot.id,
+    author:
+      typeof data.author === "string" && data.author ? data.author : "Unknown",
+    authorId: typeof data.authorId === "string" ? data.authorId : "",
+    content: typeof data.content === "string" ? data.content : "",
+    category: typeof data.category === "string" ? data.category : null,
+    createdAt: normalizeJourneyTimestamp(data.createdAt),
+    answerCount: rawAnswers.length,
+    answerText: rawAnswers
+      .map((answer) =>
+        answer &&
+        typeof answer === "object" &&
+        typeof (answer as { content?: unknown }).content === "string"
+          ? (answer as { content: string }).content
+          : "",
+      )
+      .filter(Boolean),
+  };
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +214,9 @@ export function KnowledgeFeed({
     () => initialFeedCache?.entries || [],
   );
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [journeyQuestions, setJourneyQuestions] = useState<
+    KnowledgeJourneyQuestion[]
+  >([]);
   const [isLoading, setIsLoading] = useState(
     () => !initialFeedCache?.entries.length,
   );
@@ -244,6 +283,8 @@ export function KnowledgeFeed({
   const isLoadingMoreEntriesRef = useRef(false);
   const independentLoadingKeysRef = useRef(new Set<string>());
   const hasLoadedProfilesDirectoryRef = useRef(false);
+  const hasLoadedJourneySmartTalkRef = useRef(false);
+  const isLoadingJourneySmartTalkRef = useRef(false);
   const lastAutoLoadEntryCountRef = useRef(0);
   const isMountedRef = useRef(false);
   const restoredScrollKeyRef = useRef<string | null>(null);
@@ -346,6 +387,51 @@ export function KnowledgeFeed({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
+
+  useEffect(() => {
+    if (
+      !isActive ||
+      hasLoadedJourneySmartTalkRef.current ||
+      isLoadingJourneySmartTalkRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    isLoadingJourneySmartTalkRef.current = true;
+
+    const loadJourneySmartTalkPreview = async () => {
+      try {
+        const snapshot = await getDocs(
+          query(
+            collection(db, "smarttalk"),
+            orderBy("createdAt", "desc"),
+            limit(JOURNEY_SMARTTALK_LIMIT),
+          ),
+        );
+
+        if (cancelled) return;
+
+        setJourneyQuestions(
+          snapshot.docs.map((item) => normalizeJourneySmartTalkQuestion(item)),
+        );
+        hasLoadedJourneySmartTalkRef.current = true;
+      } catch (error) {
+        console.warn("SmartTalk journey preview failed:", error);
+        if (!cancelled) {
+          setJourneyQuestions([]);
+        }
+      } finally {
+        isLoadingJourneySmartTalkRef.current = false;
+      }
+    };
+
+    void loadJourneySmartTalkPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive]);
 
   useEffect(() => {
     visibleLikedEntryIdsRef.current = visibleLikedEntryIds;
@@ -2071,6 +2157,7 @@ export function KnowledgeFeed({
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
         profiles={profiles}
+        journeyQuestions={journeyQuestions}
         feedSearchQuery={feedSearchQuery}
         isLoading={isLoading}
         shouldShowInitialFeedSkeleton={shouldShowInitialFeedSkeleton}

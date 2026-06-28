@@ -68,7 +68,7 @@ export function highlightReactTree(
   if (Array.isArray(nodes)) {
     return (
       <Fragment>
-        {nodes.map((node, i) =>
+        {nodes.map((node) =>
           React.isValidElement(node) || typeof node === "string"
             ? highlightReactTree(node, highlights, charTracker)
             : node

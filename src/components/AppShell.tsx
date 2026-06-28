@@ -24,7 +24,7 @@ export function SectionSkeleton({ label }: { label: string }) {
 
   return (
     <div
-      className="rounded-[32px] border border-slate-200 bg-white px-6 py-10 shadow-sm"
+      className="readative-panel-surface px-6 py-10"
       aria-label={label}
       aria-busy="true"
     >
@@ -102,7 +102,7 @@ export function AppFooter({
                 key={link.section}
                 type="button"
                 onClick={() => onOpenInfo(link.section)}
-                className="text-xs font-semibold text-slate-500 transition-colors hover:text-emerald-700"
+                className="readative-footer-link text-xs font-semibold text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
               >
                 {link.label}
               </button>
@@ -134,7 +134,7 @@ export function NotFoundRoute({
         description="The requested Readative page could not be found."
         robots="noindex"
       />
-      <div className="rounded-[32px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
+      <div className="readative-panel-surface border-dashed border-slate-300 px-6 py-14 text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
           <TriangleAlert className="h-8 w-8" />
         </div>
@@ -179,7 +179,7 @@ export function NotFoundRoute({
 
 export function FirebaseSetupRoute({ missingKeys }: { missingKeys: string[] }) {
   return (
-    <div className="rounded-[32px] border border-amber-200 bg-white px-6 py-14 text-center shadow-sm">
+    <div className="readative-panel-surface border-amber-200 px-6 py-14 text-center">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
         <TriangleAlert className="h-8 w-8" />
       </div>

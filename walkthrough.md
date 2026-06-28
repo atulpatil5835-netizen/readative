@@ -1,75 +1,99 @@
-# Release P1 Walkthrough - Production Polish Audit
+# Readative Release X Walkthrough
 
 Date: 2026-06-27
 
 ## Objective
 
-Release P1 audits Readative as a live production application from a real user's perspective. The goal is to identify unfinished, inconsistent, confusing, bulky, or unprofessional areas without changing product behavior during the audit.
+Release X hardens Readative engineering quality without changing product behavior.
 
-After the audit was completed, P1.1 launch-blocker polish was implemented as a narrow follow-up.
+This was a compression and maintainability pass only. It did not change Firestore schema, routing, SEO, SmartTalk logic, feed ranking, Downloader behavior, Highlight behavior, authentication, or visible UI.
+
+## Audit Summary
+
+The full engineering audit is captured in `engineering_audit.md`.
+
+The main findings were:
+
+- Several feature components remain very large and should be decomposed only in a future behavior-tested release.
+- Exact duplicate helper behavior existed in feed search tokenization.
+- `App.tsx` duplicated lazy import setup for `AppPanels`.
+- Several strict TypeScript unused-code findings were present.
+- Profile still contained an unreachable `liked` section query/listener/pagination path even though current UI and route parsing never select that section.
+- R1 Knowledge Journey had already replaced the old focused-only discovery surface, leaving `PostDiscoveryLinks` dead.
+
+The audit was completed before any source edits.
+
+## Implementation
+
+Release X made small, behavior-preserving changes:
+
+- Removed unused imports, props, locals, and derived values.
+- Removed dead Auth prompt components that were not imported.
+- Removed dead focused-post discovery export after R1.
+- Removed unreachable Profile liked-section state and listener code.
+- Reused the existing shared `tokenizeSearch` helper in feed helpers.
+- Consolidated duplicate AppPanels lazy import boilerplate.
+- Removed a nonessential backend startup log.
+
+No user-facing copy, layout, routes, data model, SEO output, Downloader flow, Highlight flow, SmartTalk logic, or feed ranking behavior was changed.
 
 ## Files Modified
 
-- `production_audit.md`
+- `engineering_audit.md`
 - `implementation_plan.md`
 - `task.md`
 - `walkthrough.md`
+- `server.ts`
 - `src/App.tsx`
-- `src/components/AppPanels.tsx`
-- `src/components/Explore.tsx`
-- `src/components/KnowledgeFeed/FeedComposer.tsx`
+- `src/components/Auth.tsx`
+- `src/components/Header.tsx`
+- `src/components/KnowledgeCard/CardHeader.tsx`
+- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `src/components/KnowledgeCard/cardTypes.ts`
+- `src/components/KnowledgeCard/highlightHelpers.tsx`
+- `src/components/KnowledgeFeed/FeedRenderer.tsx`
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+- `src/components/KnowledgeFeed/feedHelpers.ts`
+- `src/components/KnowledgeFeed/feedTypes.ts`
+- `src/components/Profile.tsx`
 - `src/components/SmartTalk.tsx`
 
-## What Was Audited
+The repository also contains earlier P1.2/R1 worktree changes outside this Release X list. Those were preserved.
 
-- Guest Home/Landing, Explore, Profile, Sign In, Saved Posts entry point, and SmartTalk.
-- Logged-in Feed, reading, highlight, download, save, notifications, and profile surfaces from source review where authentication could not be safely completed.
-- Header, mobile navigation, account menu, dialogs, back navigation, and deep links.
-- SmartTalk category flow, question list, focused question route, answer flow, search, and empty states.
-- Guest and user profile surfaces, reputation surfaces, highlights, and saved posts/discussions.
-- About, Contact, Privacy, Terms, Community Guidelines, Disclaimer, and Notifications panels.
-- Google sign-in prompt UX, loading copy, error surfaces, and success-transition assumptions from source.
+## Duplicate Code Removed
 
-## Key Findings
+- Feed search tokenization now reuses `src/utils/searchHelpers.ts`.
+- AppPanels lazy loading now uses one shared module promise instead of duplicate imports.
 
-- SmartTalk has an existing ask-question modal but no visible entry point from the list view, making question creation effectively unreachable.
-- SmartTalk question rows are clickable containers rather than semantic links or buttons.
-- SmartTalk focused-question navigation keeps the previous scroll position.
-- Explore discussion links point to `/smarttalk#question-{id}`, which resolves to the Not Found route when opened directly.
-- The post composer and SmartTalk ask surfaces behave like dialogs but lack production dialog semantics and focus handling.
-- Guest notifications open into a dead-end panel with outdated username wording.
-- Mobile navigation is visually usable but lacks current-page semantics.
-- Explore's pulse metric can contradict the visible active-discussion section.
-- Several small copy issues make the app feel slightly unfinished.
+## Dead Code Removed
 
-## P1.1 Work Completed
+- Dead Auth username/identity prompt components.
+- Dead `PostDiscoveryLinks`.
+- Unused SmartTalk `visibleQuestionRows`.
+- Unreachable Profile liked-section query and pagination path.
+- Strict TypeScript unused imports, props, locals, and callback values.
 
-- Restored the SmartTalk ask-question entry point without changing the ask flow.
-- Made SmartTalk question rows semantic links using the existing focused-question route.
-- Reset scroll position when opening a focused SmartTalk question.
-- Fixed Explore SmartTalk question hrefs and click behavior to target focused SmartTalk routes.
-- Added `role="dialog"`, `aria-modal`, labels, Escape handling, and explicit button types to the composer and SmartTalk ask surfaces.
-- Replaced the guest Notifications dead-end with current Google sign-in copy and CTA.
-- Added current-page semantics and explicit button types to the primary mobile nav.
-- Aligned Explore active-discussion counts and corrected SmartTalk empty-search wording.
+## Performance Improvements
+
+The release reduced unnecessary render/setup work by removing unreachable Profile state and listener logic. Bundle output also improved modestly:
+
+- Profile: about `55.17 kB / gzip 15.76 kB`.
+- SmartTalk: about `32.02 kB / gzip 9.55 kB`.
+- CSS: about `75.78 kB / gzip 13.37 kB`.
 
 ## Regression Verification
 
-- `npm run build`: passed.
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`: passed.
 - `npx tsc --noEmit`: passed.
-- Browser smoke checks passed for SmartTalk ask trigger, SmartTalk focused-question links, focused-question scroll reset, composer dialog semantics, guest Notifications CTA, and mobile nav current state.
-- Local Explore had no visible active-discussion cards during final browser smoke, so Explore focused-link behavior was verified from source and against the SmartTalk route target.
-- No Firestore schema changes were made.
-- No downloader, highlight, ranking, SEO infrastructure, or authentication provider logic was changed.
-
-## Future Release Grouping
-
-- P1.1: launch blockers and core accessibility. **Completed.**
-- P1.2: modal/focus consistency and route recovery.
-- P1.3: copy, trust, metrics, and visual polish.
+- `npm run build`: passed.
+- `git diff --check`: passed with line-ending warnings only.
+- Desktop browser smoke: Home, Knowledge Journey, Search, Notifications, SmartTalk, Explore, Profile, card actions, Download menu item, and Highlight Mode control verified.
+- Tablet browser smoke: Home and Knowledge Journey verified with no horizontal overflow.
+- Mobile browser smoke: Home and Profile loaded; Profile had no overflow and Home had only a `4px` tolerance observation with no Release X visual regression.
+- Browser console: no warnings or errors during the smoke pass.
 
 ## Production Readiness
 
-Current score: **84 / 100**.
+Release X is production-ready.
 
-Readative has cleared the P1.1 launch-blocker polish target. It is stronger for SmartTalk contribution, keyboard-accessible question links, guest notifications, and core dialog semantics. P1.2 and P1.3 remain before calling the product fully premium-production clean.
+The final state is cleaner, smaller, and stricter while preserving the existing product experience.

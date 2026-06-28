@@ -68,14 +68,16 @@ const Explore = lazy(() =>
   }))
 );
 
+const appPanelsModulePromise = import("./components/AppPanels");
+
 const InfoPanel = lazy(() =>
-  import("./components/AppPanels").then((module) => ({
+  appPanelsModulePromise.then((module) => ({
     default: module.InfoPanel,
   }))
 );
 
 const NotificationsPanel = lazy(() =>
-  import("./components/AppPanels").then((module) => ({
+  appPanelsModulePromise.then((module) => ({
     default: module.NotificationsPanel,
   }))
 );
@@ -197,9 +199,6 @@ export default function App() {
     setShowNotificationsPanel(false);
     setShowInfoPanel(true);
   }, []);
-  const handleOpenAboutPanel = useCallback(() => {
-    handleOpenInfoPanel("about");
-  }, [handleOpenInfoPanel]);
   const handleOpenSignInPrompt = useCallback(() => {
     setShowGoogleSignInPrompt(true);
   }, []);
@@ -421,7 +420,6 @@ export default function App() {
           identity={identity}
           onHomeAction={handleHomeAction}
           unreadNotificationCount={unreadNotificationCount}
-          onOpenComposer={handleOpenComposer}
           onOpenNotifications={handleOpenNotifications}
           onOpenInfo={handleOpenInfoPanel}
           onOpenSignIn={handleOpenSignInPrompt}
@@ -559,7 +557,7 @@ export default function App() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="sign-out-title"
-              className="relative w-full max-w-sm rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl"
+              className="readative-dialog-surface relative w-full max-w-sm p-5"
             >
               <button
                 type="button"

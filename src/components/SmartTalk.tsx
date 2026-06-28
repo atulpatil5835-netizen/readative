@@ -1040,31 +1040,6 @@ export function SmartTalk({
           ),
     [questions, searchTerms],
   );
-  const visibleQuestionRows = useMemo(
-    () =>
-      visibleQuestions.map((question) => {
-        const sortedAnswers = [...(question.answers || [])].sort(
-          (left, right) =>
-            getAnswerScore(right) - getAnswerScore(left) ||
-            left.createdAt - right.createdAt,
-        );
-        const topAnswerId = sortedAnswers[0]?.id || null;
-        const worstAnswerId =
-          sortedAnswers.length > 1
-            ? sortedAnswers[sortedAnswers.length - 1].id
-            : null;
-
-        return {
-          question,
-          sortedAnswers,
-          topAnswerId,
-          worstAnswerId,
-          featuredAnswer: sortedAnswers[0] || null,
-          hiddenAnswers: sortedAnswers.slice(1),
-        };
-      }),
-    [visibleQuestions],
-  );
   const trendingDiscussions = useMemo(
     () =>
       questions
@@ -1656,7 +1631,7 @@ export function SmartTalk({
             role="dialog"
             aria-modal="true"
             aria-labelledby="smarttalk-ask-title"
-            className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+            className="readative-dialog-surface w-full max-w-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">

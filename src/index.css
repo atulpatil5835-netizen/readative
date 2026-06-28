@@ -29,6 +29,68 @@
   }
 }
 
+@layer components {
+  .readative-card-surface {
+    border: 1px solid rgba(203, 213, 225, 0.78);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 14px 38px rgba(15, 23, 42, 0.075);
+  }
+
+  .readative-card-surface-hover {
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .readative-card-surface-hover:hover {
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.105);
+  }
+
+  .readative-panel-surface {
+    border: 1px solid rgb(226, 232, 240);
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 20px 70px rgba(15, 23, 42, 0.16);
+  }
+
+  .readative-dialog-surface {
+    border: 1px solid rgb(226, 232, 240);
+    border-radius: 26px;
+    background: #ffffff;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.2);
+  }
+
+  .readative-menu-surface {
+    overflow: hidden;
+    border: 1px solid rgb(226, 232, 240);
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 18px 52px rgba(15, 23, 42, 0.14);
+  }
+
+  .readative-touch-target {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .readative-footer-link {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding-inline: 0.375rem;
+  }
+
+  @media (min-width: 768px) {
+    .readative-panel-surface {
+      border-radius: 28px;
+    }
+  }
+}
+
 @keyframes readative-like-pop {
   0% {
     transform: scale(0.8);

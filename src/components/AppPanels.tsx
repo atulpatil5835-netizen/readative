@@ -67,7 +67,7 @@ export function InfoPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="readative-info-title"
-        className="absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)] md:bottom-auto md:left-auto md:right-4 md:top-20 md:max-h-[min(78vh,720px)] md:w-[min(92vw,390px)] md:rounded-[28px]"
+        className="readative-panel-surface absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden md:bottom-auto md:left-auto md:right-4 md:top-20 md:max-h-[min(78vh,720px)] md:w-[min(92vw,390px)]"
       >
         <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-4 py-4 text-white sm:px-6 sm:py-6">
           <div className="flex items-start justify-between gap-4">
@@ -529,7 +529,7 @@ export function NotificationsPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="notifications-panel-title"
-        className="absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.16)] md:bottom-auto md:left-auto md:right-3 md:top-16 md:max-h-[min(78vh,720px)] md:w-[min(94vw,380px)]"
+        className="readative-panel-surface absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] top-[calc(env(safe-area-inset-top)+4.5rem)] flex flex-col overflow-hidden md:bottom-auto md:left-auto md:right-3 md:top-16 md:max-h-[min(78vh,720px)] md:w-[min(94vw,380px)]"
       >
         <div className="shrink-0 border-b border-slate-100 px-4 py-3">
           <div className="flex items-center justify-between gap-4">

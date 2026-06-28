@@ -18,6 +18,7 @@ export function CardActions({
   return (
     <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:flex-wrap">
       <button
+        type="button"
         onClick={onHelpful}
         disabled={isUpdatingTrust}
         aria-label={
@@ -25,7 +26,7 @@ export function CardActions({
         }
         title={isHelpful ? "Remove helpful feedback" : "Helpful"}
         className={cn(
-          "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
+          "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
           isHelpful
             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
             : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700",
@@ -49,6 +50,7 @@ export function CardActions({
       </button>
 
       <button
+        type="button"
         onClick={onMisleading}
         disabled={isUpdatingTrust}
         aria-label={
@@ -58,7 +60,7 @@ export function CardActions({
         }
         title={isMisleading ? "Remove misleading feedback" : "Misleading"}
         className={cn(
-          "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
+          "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-70",
           isMisleading
             ? "border-amber-200 bg-amber-50 text-amber-700"
             : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700",
@@ -72,10 +74,11 @@ export function CardActions({
       </button>
 
       <button
+        type="button"
         onClick={onToggleComments}
         aria-label={showComments ? "Hide comments" : "Show comments"}
         className={cn(
-          "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-black transition-all",
+          "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-black transition-all",
           showComments
             ? "border-sky-200 bg-sky-50 text-sky-700"
             : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700",

@@ -7,7 +7,6 @@ import { CardHeaderProps } from "./cardTypes";
 import { buildProfilePath } from "./cardHelpers";
 
 export function CardHeader({
-  entry,
   resolvedAuthorId,
   authorProfile,
   authorDisplayName,
@@ -141,7 +140,7 @@ export function CardHeader({
           {actionsOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1.5 text-sm shadow-xl shadow-slate-900/12"
+              className="readative-menu-surface absolute right-0 top-11 z-40 w-52 py-1.5 text-sm"
             >
               <button
                 type="button"

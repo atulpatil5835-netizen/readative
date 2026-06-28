@@ -1,4 +1,4 @@
-import { type RefObject } from "react";
+import { useCallback, type RefObject } from "react";
 import {
   ArrowUp,
   BookOpenText,
@@ -15,9 +15,14 @@ import { SEO } from "../SEO";
 import { type SeoCategoryDefinition, type SeoTopicDefinition } from "../../utils/seoTaxonomy";
 import { navigateToRoute } from "../../utils/routes";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
-import { type FeedTopicFilter, type FeedTopicId, type FeedMessage } from "./feedTypes";
+import { type FeedTopicFilter, type FeedTopicId } from "./feedTypes";
 import { FEED_TOPIC_FILTERS } from "./feedFilters";
 import { buildKnowledgeSchemas } from "./feedHelpers";
+import {
+  getKnowledgeJourneyEstimatedHeight,
+  KnowledgeJourney,
+  type KnowledgeJourneyQuestion,
+} from "./KnowledgeJourney";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -131,74 +136,6 @@ export function CategoryKnowledgeBrief({
   );
 }
 
-export function PostDiscoveryLinks({
-  focusedEntry,
-  entries,
-  onOpenEntry,
-}: {
-  focusedEntry: KnowledgeEntry;
-  entries: KnowledgeEntry[];
-  onOpenEntry: (entryId: string) => void;
-}) {
-  const focusedTags = new Set(
-    focusedEntry.hashtags
-      .map((tag) => tag.replace(/^#/, "").trim().toLowerCase())
-      .filter((tag): tag is string => Boolean(tag)),
-  );
-  const relatedEntries = entries
-    .filter((entry) => entry.id !== focusedEntry.id)
-    .filter((entry) => {
-      if (entry.category && focusedEntry.category && entry.category === focusedEntry.category) {
-        return true;
-      }
-
-      return entry.hashtags.some((tag) => {
-        const normalizedTag = tag.replace(/^#/, "").trim().toLowerCase();
-        return Boolean(normalizedTag && focusedTags.has(normalizedTag));
-      });
-    })
-    .slice(0, 4);
-  const recentEntries = entries
-    .filter((entry) => entry.id !== focusedEntry.id)
-    .slice(0, 4);
-  const sections = [
-    { title: "Related Posts", entries: relatedEntries },
-    { title: "Recent Posts", entries: recentEntries },
-  ].filter((section) => section.entries.length > 0);
-
-  if (sections.length === 0) return null;
-
-  return (
-    <aside className="grid gap-3 sm:grid-cols-2" aria-label="Post discovery links">
-      {sections.map((section) => (
-        <section
-          key={section.title}
-          className="rounded-lg border border-slate-200 bg-white px-4 py-4 shadow-sm"
-        >
-          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-            {section.title}
-          </h2>
-          <div className="mt-3 space-y-2">
-            {section.entries.map((entry) => (
-              <a
-                key={entry.id}
-                href={`/post/${encodeURIComponent(entry.id)}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  onOpenEntry(entry.id);
-                }}
-                className="block border-t border-slate-100 pt-2 text-sm font-bold leading-5 text-slate-800 transition-colors first:border-t-0 first:pt-0 hover:text-emerald-700"
-              >
-                {entry.title}
-              </a>
-            ))}
-          </div>
-        </section>
-      ))}
-    </aside>
-  );
-}
-
 // ─── FeedRenderer ─────────────────────────────────────────────────────────────
 
 export interface FeedRendererProps {
@@ -222,6 +159,7 @@ export interface FeedRendererProps {
   filteredEntries: KnowledgeEntry[];
   visibleEntries: KnowledgeEntry[];
   profiles: UserProfile[];
+  journeyQuestions: KnowledgeJourneyQuestion[];
 
   // UI states
   feedSearchQuery: string;
@@ -280,6 +218,7 @@ export function FeedRenderer({
   filteredEntries,
   visibleEntries,
   profiles,
+  journeyQuestions,
   feedSearchQuery,
   shouldShowInitialFeedSkeleton,
   shouldShowFeedErrorState,
@@ -314,6 +253,27 @@ export function FeedRenderer({
   onBackToTopRefresh,
   identity,
 }: FeedRendererProps) {
+  const journeyEntries = visibleEntries.length > 0 ? visibleEntries : filteredEntries;
+  const renderKnowledgeJourney = useCallback(
+    (entry: KnowledgeEntry) => (
+      <KnowledgeJourney
+        entry={entry}
+        entries={journeyEntries}
+        questions={journeyQuestions}
+      />
+    ),
+    [journeyEntries, journeyQuestions],
+  );
+  const estimateKnowledgeJourneyHeight = useCallback(
+    (entry: KnowledgeEntry) =>
+      getKnowledgeJourneyEstimatedHeight({
+        entry,
+        entries: journeyEntries,
+        questions: journeyQuestions,
+      }),
+    [journeyEntries, journeyQuestions],
+  );
+
   return (
     <div className="pb-20">
       {isActive && (
@@ -566,14 +526,9 @@ export function FeedRenderer({
                 onSelectHashtag={onSelectHashtag}
                 onLikeChange={onLikeChange}
                 highlightedEntryId={focusedEntryId}
+                renderAfterCard={renderKnowledgeJourney}
+                estimateAfterCardHeight={estimateKnowledgeJourneyHeight}
               />
-              {focusedEntry && (
-                <PostDiscoveryLinks
-                  focusedEntry={focusedEntry}
-                  entries={filteredEntries}
-                  onOpenEntry={onOpenEntry}
-                />
-              )}
               {hasMoreEntries && (
                 <div
                   ref={loadMoreSentinelRef}

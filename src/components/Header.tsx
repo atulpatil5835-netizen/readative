@@ -21,7 +21,6 @@ interface HeaderProps {
   identity: KnowledgeIdentity | null;
   onHomeAction: () => void;
   unreadNotificationCount: number;
-  onOpenComposer: () => void;
   onOpenNotifications: () => void;
   onOpenInfo: (section?: InfoSection) => void;
   onOpenSignIn: () => void;
@@ -36,7 +35,6 @@ export const Header = memo(function Header({
   identity,
   onHomeAction,
   unreadNotificationCount,
-  onOpenComposer,
   onOpenNotifications,
   onOpenInfo,
   onOpenSignIn,
@@ -193,7 +191,7 @@ export const Header = memo(function Header({
               <div
                 id="readative-account-menu"
                 role="menu"
-                className="absolute right-0 top-12 z-50 max-h-[calc(100dvh-5rem)] w-64 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white py-2 text-sm shadow-xl shadow-slate-900/10"
+                className="readative-menu-surface absolute right-0 top-12 z-50 max-h-[calc(100dvh-5rem)] w-64 overflow-y-auto overscroll-contain py-2 text-sm"
               >
                 <div className="border-b border-slate-100 px-4 py-3">
                   <p className="truncate text-sm font-black text-slate-950">

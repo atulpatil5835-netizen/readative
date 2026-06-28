@@ -49,6 +49,8 @@ interface KnowledgeCardListProps {
     misleadingIds?: string[],
   ) => void;
   highlightedEntryId?: string | null;
+  renderAfterCard?: (entry: KnowledgeEntry) => ReactNode;
+  estimateAfterCardHeight?: (entry: KnowledgeEntry) => number;
 }
 
 interface ViewportWindow {
@@ -144,6 +146,8 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   onSelectHashtag,
   onLikeChange,
   highlightedEntryId,
+  renderAfterCard,
+  estimateAfterCardHeight,
 }: KnowledgeCardListProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -220,8 +224,13 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   }, [updateViewportWindow]);
 
   const estimatedHeights = useMemo(
-    () => entries.map((entry) => estimateKnowledgeCardHeight(entry)),
-    [entries],
+    () =>
+      entries.map(
+        (entry) =>
+          estimateKnowledgeCardHeight(entry) +
+          Math.max(0, estimateAfterCardHeight?.(entry) || 0),
+      ),
+    [entries, estimateAfterCardHeight],
   );
   const entryIndexById = useMemo(
     () =>
@@ -384,6 +393,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 onLikeChange={onLikeChange}
                 highlighted={entry.id === highlightedEntryId}
               />
+              {renderAfterCard?.(entry)}
             </Suspense>
           </MeasuredVirtualRow>
         );

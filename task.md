@@ -1,78 +1,107 @@
-# Release P1 Task List - Production Polish Audit And P1.1 Completion
+# Readative Release X Task List
 
-## Completed Audit Tasks
+## Release Type
 
-- [x] Audited existing workspace state and prior release documents.
-- [x] Inspected git changes without reverting prior work.
-- [x] Audited guest Home/Landing experience.
-- [x] Audited guest Explore experience.
-- [x] Audited guest Profile experience.
-- [x] Audited Google sign-in prompts and gated save/publish prompts.
-- [x] Audited Saved Posts entry point and profile saved language.
-- [x] Audited SmartTalk list, focused question, search, category links, and answer surface.
-- [x] Audited header, account menu, mobile navigation, dialogs, and deep links.
-- [x] Audited About, Privacy, Terms, Guidelines, Disclaimer, and Notifications panels.
-- [x] Reviewed logged-in-only Feed/Profile/Notifications surfaces from source.
-- [x] Classified each issue by severity, impact, regression risk, and effort.
-- [x] Grouped remaining work into P1.1, P1.2, and P1.3.
-- [x] Ran `npm run build`.
-- [x] Produced `production_audit.md`.
-- [x] Updated `implementation_plan.md`.
-- [x] Updated `walkthrough.md`.
-- [x] Updated `task.md`.
-- [x] Completed P1.1 launch-blocker polish after the audit.
-- [x] Re-ran TypeScript and production build verification after P1.1 changes.
+Engineering compression and production hardening for the live production application.
 
-## Completed P1.1 Tasks
+Release X preserves product behavior. It does not add features, redesign UI, change Firestore schema, alter routing, modify SEO, change SmartTalk logic, change feed ranking, change Downloader behavior, or change Highlight behavior.
 
-- [x] Restored the SmartTalk "Ask question" entry point.
-- [x] Converted SmartTalk question rows to semantic focused-question links.
-- [x] Reset scroll position when entering focused SmartTalk questions.
-- [x] Fixed Explore SmartTalk deep links to use route-builder focused-question targets.
-- [x] Added dialog semantics and Escape close behavior to the post composer.
-- [x] Added dialog semantics and Escape close behavior to the SmartTalk ask modal.
-- [x] Added Google sign-in copy and CTA to the guest Notifications panel.
-- [x] Added primary mobile nav `aria-current` states and explicit button types.
-- [x] Aligned Explore active-discussion count and SmartTalk empty-search wording.
+## Audit Tasks
 
-## Files Modified
+- [x] Read the Release X brief completely before implementation.
+- [x] Audited source structure, feature boundaries, utilities, CSS, dialogs, loading states, Firestore queries, assets, and build posture.
+- [x] Created `engineering_audit.md` before source edits.
+- [x] Confirmed the workspace already contained prior P1.2/R1 changes and treated those as the live baseline.
+- [x] Identified duplicate helper behavior, dead components, unused imports, unused props, unused state, unreachable profile code, and repeated lazy import boilerplate.
+- [x] Confirmed large components should not be split during Release X because behavior preservation is the priority.
 
-- `production_audit.md`
+## Implementation Tasks
+
+- [x] Removed unused `Header` composer prop plumbing.
+- [x] Consolidated duplicate lazy imports for `AppPanels`.
+- [x] Removed dead Auth prompt components that were no longer imported.
+- [x] Removed unused KnowledgeCard imports, props, and locals.
+- [x] Reused the existing shared `tokenizeSearch` helper instead of keeping a duplicate feed helper implementation.
+- [x] Removed unused KnowledgeFeed imports and dead focused-post discovery export.
+- [x] Removed unreachable Profile liked-section state, listener, pagination, and derived values.
+- [x] Removed unused SmartTalk derived rows.
+- [x] Removed the nonessential backend startup `console.log`.
+- [x] Preserved all user-visible behavior and existing data contracts.
+
+## Files Created
+
+- `engineering_audit.md`
+
+## Files Modified By Release X
+
 - `implementation_plan.md`
 - `task.md`
 - `walkthrough.md`
+- `server.ts`
 - `src/App.tsx`
-- `src/components/AppPanels.tsx`
-- `src/components/Explore.tsx`
-- `src/components/KnowledgeFeed/FeedComposer.tsx`
+- `src/components/Auth.tsx`
+- `src/components/Header.tsx`
+- `src/components/KnowledgeCard/CardHeader.tsx`
+- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `src/components/KnowledgeCard/cardTypes.ts`
+- `src/components/KnowledgeCard/highlightHelpers.tsx`
+- `src/components/KnowledgeFeed/FeedRenderer.tsx`
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+- `src/components/KnowledgeFeed/feedHelpers.ts`
+- `src/components/KnowledgeFeed/feedTypes.ts`
+- `src/components/Profile.tsx`
 - `src/components/SmartTalk.tsx`
 
-## Files Not Modified
+The worktree also contains prior release changes in P1.2/R1 files. Release X did not revert or rewrite those existing changes.
 
-- Application source files were not modified during the audit phase.
-- P1.1 source changes were limited to the files listed above.
-- Firestore schema was not modified.
-- Downloader logic was not modified.
-- Highlight logic was not modified.
-- KnowledgeFeed ranking was not modified.
-- SEO infrastructure was not modified.
-- Authentication provider logic was not modified.
+## Duplicate Code Removed
 
-## Remaining Release Tasks
+- Removed the duplicate `tokenizeSearch` implementation from feed helpers and re-exported the shared utility from `src/utils/searchHelpers.ts`.
+- Consolidated duplicate AppPanels lazy import setup in `App.tsx`.
 
-- [x] P1.1: Fix SmartTalk ask entry point, SmartTalk semantic rows, focused-question scroll reset, Explore discussion deep links, composer dialog semantics, and guest notification dead-end.
-- [ ] P1.2: Normalize shared modal focus management, remaining button types, recovery states, and focus restoration.
-- [ ] P1.3: Clean production copy, saved-item language, legal/info panel tone, highlight icon treatment, and small visual polish.
+## Dead Code Removed
 
-## Verification
+- Dead Auth username/identity prompt components.
+- Dead `PostDiscoveryLinks` export after R1 Knowledge Journey replaced the focused-only discovery surface.
+- Unused SmartTalk `visibleQuestionRows` memo.
+- Unreachable Profile `liked` section type, state, query path, pagination, and derived ordering.
+- Unused imports, props, locals, and map indexes reported by strict TypeScript checks.
 
-- `npm run build`: passed.
+## Shared Utilities Created
+
+No new utility module was created. Release X intentionally reused the existing shared search helper instead of introducing another abstraction.
+
+## Performance And Bundle Observations
+
+- Profile chunk decreased from about `58.20 kB / gzip 16.40 kB` after R1 to `55.17 kB / gzip 15.76 kB`.
+- SmartTalk chunk decreased from about `32.33 kB / gzip 9.63 kB` to `32.02 kB / gzip 9.55 kB`.
+- CSS output decreased from about `77.17 kB / gzip 13.53 kB` to `75.78 kB / gzip 13.37 kB`, including earlier release polish already in the worktree.
+- Rendering work was reduced by removing unreachable Profile liked-section listeners and unused derived state.
+
+## Regression Verification
+
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`: passed during hardening.
 - `npx tsc --noEmit`: passed.
-- Browser smoke: SmartTalk ask trigger, SmartTalk focused-question links, focused-question scroll reset, mobile nav `aria-current`, composer dialog semantics, and guest Notifications Google CTA passed.
-- Browser note: local Explore had no visible active-discussion cards during the final smoke pass, so Explore SmartTalk link behavior was verified from source and by matching SmartTalk focused-route behavior.
+- `npm run build`: passed.
+- `git diff --check`: passed with line-ending warnings only.
+- Browser QA desktop: Home loaded, search shell present, Knowledge Journey rendered after the loaded post, and no console warnings or errors appeared.
+- Browser QA notifications: notification button opened the lazy-loaded panel and closed cleanly.
+- Browser QA SmartTalk: route loaded with search shell and expected headings.
+- Browser QA Explore/Search: route loaded with unified search shell.
+- Browser QA Profile guest state: Google sign-in shell loaded and no visible liked-section route remained.
+- Browser QA card controls: post action menu opened and still exposed Save, Share, and Download actions; Highlight Mode control remained visible.
+- Browser QA tablet: Home loaded with Knowledge Journey and no horizontal overflow.
+- Browser QA mobile: Home and Profile loaded; mobile Profile had no horizontal overflow. Home had a `4px` overflow tolerance observation with no visible regression from Release X.
+- Browser console during QA: `0` warnings/errors.
+
+## Remaining Work
+
+No Release X implementation work remains.
+
+Large components such as Profile, KnowledgeFeed, SmartTalk, Explore, and KnowledgeCard are still candidates for future planned decomposition, but that work was intentionally left out because it would carry behavior risk.
 
 ## Production Readiness
 
-- Current score: 84 / 100.
-- Status: P1 audit complete and P1.1 launch-blocker polish complete.
-- Recommendation: complete P1.2 before calling Readative fully premium-production ready.
+Release X is production-ready.
+
+The release removes proven dead code and duplicate helper behavior, improves strict TypeScript cleanliness, preserves visible behavior, and passes build, TypeScript, diff, and browser smoke verification.

@@ -1,4 +1,3 @@
-import { ComponentType } from "react";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -29,7 +28,6 @@ export interface EditPostModalProps {
 }
 
 export interface CardHeaderProps {
-  entry: KnowledgeEntry;
   resolvedAuthorId: string;
   authorProfile?: UserProfile;
   authorDisplayName: string;

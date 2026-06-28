@@ -147,7 +147,7 @@ export function ComposerModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="knowledge-composer-title"
-        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)] md:max-h-[calc(100vh-6rem)]"
+        className="readative-dialog-surface relative flex w-full max-w-2xl flex-col overflow-hidden md:max-h-[calc(100vh-6rem)]"
       >
         <div className="shrink-0 border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
           <button

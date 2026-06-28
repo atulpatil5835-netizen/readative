@@ -1,4 +1,4 @@
-import { ShieldCheck, Bookmark, Lock } from "lucide-react";
+import { ShieldCheck, Bookmark, Highlighter, Lock } from "lucide-react";
 import { CardTrustProps } from "./cardTypes";
 
 export function CardTrust({
@@ -47,16 +47,17 @@ export function CardTrust({
 
       {onToggleHighlightMode && (
         <button
+          type="button"
           onClick={onToggleHighlightMode}
           aria-label="Highlight Mode"
           title="Highlight Mode"
-          className={`shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full transition-all ${
+          className={`readative-touch-target shrink-0 inline-flex items-center justify-center rounded-full transition-all ${
             isHighlightMode
               ? "bg-amber-100 border border-amber-300 text-amber-600 shadow-sm"
-              : "border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+              : "border border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600"
           }`}
         >
-          🖍
+          <Highlighter className="h-4 w-4" />
         </button>
       )}
     </div>

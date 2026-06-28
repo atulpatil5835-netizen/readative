@@ -45,7 +45,7 @@ export const DiscoverySearch = memo(function DiscoverySearch({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-xl items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-all ${styles.shell}`}
+      className={`mx-auto flex min-h-11 w-full max-w-xl items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-all ${styles.shell}`}
     >
       <Search className={`h-4 w-4 shrink-0 ${styles.icon}`} />
       <input
@@ -59,9 +59,10 @@ export const DiscoverySearch = memo(function DiscoverySearch({
       />
       {value && (
         <button
+          type="button"
           onClick={onClear}
           aria-label="Clear search"
-          className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${styles.clear}`}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${styles.clear}`}
         >
           <X className="h-3.5 w-3.5" />
         </button>

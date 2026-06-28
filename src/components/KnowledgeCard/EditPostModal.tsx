@@ -48,7 +48,7 @@ export function EditPostModal({
 
   return (
     <div className="fixed inset-0 z-[75] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-3 pt-16 backdrop-blur-sm sm:p-4 sm:pt-20">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.2)]">
+      <div className="readative-dialog-surface relative w-full max-w-2xl overflow-hidden">
         <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
           <button
             type="button"
