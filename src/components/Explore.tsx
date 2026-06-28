@@ -1,4 +1,5 @@
 import {
+  type MouseEvent,
   type ReactNode,
   useDeferredValue,
   useEffect,
@@ -1264,7 +1265,7 @@ export function Explore({
             >
               <div className="space-y-2">
                 {activeDiscussions.map((question) => (
-                  <a
+                  <DiscoveryListRow
                     key={question.id}
                     href={buildPublicPath("smarttalk", {
                       selectedTopic: question.category,
@@ -1274,7 +1275,7 @@ export function Explore({
                       event.preventDefault();
                       onOpenSmartTalk(question.id, question.category);
                     }}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
+                    tone="discussion"
                   >
                     <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">
                       {question.content}
@@ -1284,7 +1285,7 @@ export function Explore({
                       <span>/</span>
                       <span>{formatCompactDate(getDiscussionActivity(question, now).latestActivity)}</span>
                     </div>
-                  </a>
+                  </DiscoveryListRow>
                 ))}
               </div>
             </ExploreSection>
@@ -1597,7 +1598,7 @@ function UnifiedSearchResults({
         <ExploreSection icon={<MessageSquareMore className="h-4 w-4" />} title="Questions">
           <div className="space-y-2">
             {results.questions.map((question) => (
-              <a
+              <DiscoveryListRow
                 key={question.id}
                 href={buildPublicPath("smarttalk", {
                   selectedTopic: question.category,
@@ -1607,7 +1608,7 @@ function UnifiedSearchResults({
                   event.preventDefault();
                   onOpenSmartTalk(question.id, question.category);
                 }}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50"
+                tone="discussion"
               >
                 <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">
                   {question.content}
@@ -1615,7 +1616,7 @@ function UnifiedSearchResults({
                 <p className="mt-1 text-[11px] font-bold text-slate-400">
                   {question.answers.length} answers / {question.author}
                 </p>
-              </a>
+              </DiscoveryListRow>
             ))}
           </div>
         </ExploreSection>
@@ -1666,14 +1667,14 @@ function DiscoveryPostList({
         const metrics = getTrustMetrics(entry);
 
         return (
-          <a
+          <DiscoveryListRow
             key={entry.id}
             href={`/post/${entry.id}`}
             onClick={(e) => {
               e.preventDefault();
               onOpenEntry(entry.id);
             }}
-            className="block w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
+            tone="post"
           >
             <p className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
               {entry.title}
@@ -1691,10 +1692,37 @@ function DiscoveryPostList({
               <span>/</span>
               <span>{formatCompactDate(entry.createdAt)}</span>
             </div>
-          </a>
+          </DiscoveryListRow>
         );
       })}
     </div>
+  );
+}
+
+function DiscoveryListRow({
+  children,
+  href,
+  onClick,
+  tone,
+}: {
+  children: ReactNode;
+  href: string;
+  onClick: (event: MouseEvent<HTMLAnchorElement>) => void;
+  tone: "post" | "discussion";
+}) {
+  const hoverClasses =
+    tone === "post"
+      ? "hover:border-emerald-200 hover:bg-emerald-50/40"
+      : "hover:border-indigo-200 hover:bg-indigo-50/50";
+
+  return (
+    <a
+      href={href}
+      onClick={onClick}
+      className={`block w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors ${hoverClasses}`}
+    >
+      {children}
+    </a>
   );
 }
 
