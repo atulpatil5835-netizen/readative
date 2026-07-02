@@ -9,7 +9,7 @@ import {
 import { type ContributorReputation } from "../../utils/trustSystem";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { type TrustMetrics } from "../../utils/trustSystem";
-import { type UserHighlight } from "../../context/HighlightsContext";
+import type { InkColor, InkWidth } from "../../ink/types";
 
 export interface CommentMentionState {
   query: string;
@@ -45,7 +45,7 @@ export interface CardHeaderProps {
   onDownload: () => void;
   setShowEditModal: (show: boolean) => void;
   onDeleteEntry: () => void;
-  hasHighlights?: boolean;
+  hasInk?: boolean;
 }
 
 export interface CardMediaProps {
@@ -61,8 +61,12 @@ export interface CardTrustProps {
   localSaveCount: number;
   entry: KnowledgeEntry;
   entryVisibility: "public" | "private";
-  isHighlightMode?: boolean;
-  onToggleHighlightMode?: () => void;
+  isInkMode?: boolean;
+  inkColor: InkColor;
+  inkWidth: InkWidth;
+  onToggleInkMode?: () => void;
+  onSetInkColor: (color: InkColor) => void;
+  onSetInkWidth: (width: InkWidth) => void;
 }
 
 export interface CardContentProps {
@@ -76,10 +80,14 @@ export interface CardContentProps {
   topCommentProfile?: UserProfile;
   topCommentDisplayName: string;
   topCommentUsername: string;
-  isHighlightMode?: boolean;
-  highlights?: UserHighlight[];
-  onAddHighlight?: (hl: Omit<UserHighlight, "id" | "userId" | "createdAt">) => void;
-  onRemoveHighlight?: (id: string) => void;
+  currentUserId: string | null;
+  isFocusedPost: boolean;
+  isInkMode: boolean;
+  shouldRenderInk: boolean;
+  inkColor: InkColor;
+  inkWidth: InkWidth;
+  onPostHasInk: (postId: string) => void;
+  onInkStatus: (message: string) => void;
 }
 
 export interface CardActionsProps {
@@ -115,7 +123,7 @@ export interface CardCommentsProps {
   updateCommentMentionState: (value: string, cursorPosition: number) => void;
   setCommentMessage: (msg: string | null) => void;
   onIdentityRequired: (action: {
-    type: "helpful" | "misleading" | "comment" | "save";
+    type: "helpful" | "misleading" | "comment" | "save" | "ink";
     entryId: string;
   }) => void;
 }

@@ -24,7 +24,7 @@ export function CardHeader({
   onDownload,
   setShowEditModal,
   onDeleteEntry,
-  hasHighlights,
+  hasInk,
 }: CardHeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -116,8 +116,8 @@ export function CardHeader({
                 <Award className="h-4 w-4" />
               </span>
             )}
-            {hasHighlights && (
-              <span title="You have highlights in this post" aria-label="Highlighted post">
+            {hasInk && (
+              <span title="You have Ink in this post" aria-label="Annotated with Ink">
                 🖍
               </span>
             )}

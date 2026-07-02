@@ -229,7 +229,7 @@ function buildExploreSchemas({
     ? `${activeTopic.label} Topic`
     : "Readative Explore";
   const itemList = buildItemListSchema({
-    name: `${collectionName} Highlights`,
+    name: `${collectionName} Picks`,
     url: pageUrl,
     items: [
       ...topPosts.slice(0, 5).map((entry) => ({

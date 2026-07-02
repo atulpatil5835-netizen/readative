@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   type ReactNode,
   useCallback,
   useEffect,
@@ -83,10 +85,11 @@ import {
   normalizeTrustIdArray,
 } from "../utils/trustSystem";
 import { getSaveMetrics } from "../utils/bookmarks";
-import { useHighlights } from "../context/HighlightsContext";
-import { ProfileHighlights } from "./ProfileHighlights";
+import { useInk } from "../context/InkContext";
 
-type ProfileSection = "shared" | "activity" | "saved" | "highlights";
+const ProfileMyNotes = lazy(() => import("./ProfileMyNotes"));
+
+type ProfileSection = "shared" | "activity" | "saved" | "notes";
 type ProfileActivityType =
   | "post"
   | "answer"
@@ -96,7 +99,7 @@ type ProfileActivityType =
   | "level";
 type ProfilePaginationMode = "ordered" | "fallback" | null;
 type KnowledgePendingAction = {
-  type: "helpful" | "misleading" | "comment" | "save";
+  type: "helpful" | "misleading" | "comment" | "save" | "ink";
   entryId: string;
 };
 
@@ -830,7 +833,7 @@ export function Profile({
   const [smartTalkSummary, setSmartTalkSummary] =
     useState<ProfileSmartTalkSummary>(EMPTY_PROFILE_SMARTTALK_SUMMARY);
   const [section, setSection] = useState<ProfileSection>("shared");
-  const { highlights } = useHighlights();
+  const { inkPostIds } = useInk();
   const [pendingAction, setPendingAction] =
     useState<KnowledgePendingAction | null>(null);
   const activeAuthorIdRef = useRef<string | null>(null);
@@ -868,8 +871,8 @@ export function Profile({
         const tabParam = searchParams.get("tab") || hashParams.get("tab");
         if (tabParam === "saved") {
           setSection("saved");
-        } else if (tabParam === "highlights" && isOwnProfile) {
-          setSection("highlights");
+        } else if (tabParam === "notes" && isOwnProfile) {
+          setSection("notes");
         } else {
           setSection("shared");
         }
@@ -1886,7 +1889,7 @@ export function Profile({
                     insights={profileTrustInsights}
                     expertiseTags={expertiseTags}
                   />
-                  <ProfileDiscoveryHighlights
+                  <ProfileDiscoverySummary
                     expertiseTags={expertiseTags}
                     recentItems={recentContributionItems}
                     mostHelpfulPost={mostHelpfulPost}
@@ -1919,10 +1922,10 @@ export function Profile({
             />
             {isOwnProfile && (
               <SectionButton
-                active={section === "highlights"}
-                onClick={() => setSection("highlights")}
-                label="Highlights"
-                count={highlights.length}
+                active={section === "notes"}
+                onClick={() => setSection("notes")}
+                label="My Notes"
+                count={inkPostIds.size}
               />
             )}
           </div>
@@ -1968,8 +1971,14 @@ export function Profile({
             />
           )}
 
-          {section === "highlights" && isOwnProfile && (
-            <ProfileHighlights />
+          {section === "notes" && isOwnProfile && currentIdentity?.authorId && (
+            <Suspense
+              fallback={
+                <div className="h-48 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+              }
+            >
+              <ProfileMyNotes userId={currentIdentity.authorId} />
+            </Suspense>
           )}
         </>
       )}
@@ -2046,7 +2055,9 @@ export function Profile({
                 ? "Sign in to mark misleading"
                 : pendingAction.type === "save"
                   ? "Sign in to save"
-                  : "Sign in to comment"
+                  : pendingAction.type === "ink"
+                    ? "Sign in to use Ink"
+                    : "Sign in to comment"
           }
           description="Use your Google account so this activity is saved to your profile on every browser and device."
           submitLabel="Continue with Google"
@@ -2443,7 +2454,7 @@ function ProfileTrustOverview({
   );
 }
 
-function ProfileDiscoveryHighlights({
+function ProfileDiscoverySummary({
   expertiseTags,
   recentItems,
   mostHelpfulPost,

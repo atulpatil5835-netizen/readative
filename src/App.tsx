@@ -1,6 +1,6 @@
 import { HelmetProvider } from "react-helmet-async";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import { HighlightsProvider } from "./context/HighlightsContext";
+import { InkProvider } from "./context/InkContext";
 import {
   CirclePlus,
   Compass,
@@ -412,7 +412,10 @@ export default function App() {
 
   return (
     <HelmetProvider>
-      <HighlightsProvider identity={identity}>
+      <InkProvider
+        identity={identity}
+        focusedPostId={activeTab === "knowledge" ? focusedEntryId : null}
+      >
         <div className="min-h-screen bg-[#f7f8fb] font-sans text-slate-950">
         <Header
           activeTab={activeTab}
@@ -681,7 +684,7 @@ export default function App() {
           </button>
         </nav>
       </div>
-      </HighlightsProvider>
+      </InkProvider>
     </HelmetProvider>
   );
 }

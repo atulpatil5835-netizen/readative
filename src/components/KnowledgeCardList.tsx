@@ -36,7 +36,7 @@ interface KnowledgeCardListProps {
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: {
-    type: "helpful" | "misleading" | "comment" | "save";
+    type: "helpful" | "misleading" | "comment" | "save" | "ink";
     entryId: string;
   }) => void;
   onOpenProfile: (authorId: string) => void;
@@ -48,7 +48,7 @@ interface KnowledgeCardListProps {
     helpfulIds: string[],
     misleadingIds?: string[],
   ) => void;
-  highlightedEntryId?: string | null;
+  focusedEntryId?: string | null;
   renderAfterCard?: (entry: KnowledgeEntry) => ReactNode;
   estimateAfterCardHeight?: (entry: KnowledgeEntry) => number;
 }
@@ -145,7 +145,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   onVisible,
   onSelectHashtag,
   onLikeChange,
-  highlightedEntryId,
+  focusedEntryId,
   renderAfterCard,
   estimateAfterCardHeight,
 }: KnowledgeCardListProps) {
@@ -391,7 +391,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 onOpenEntry={onOpenEntry}
                 onSelectHashtag={onSelectHashtag}
                 onLikeChange={onLikeChange}
-                highlighted={entry.id === highlightedEntryId}
+                focused={entry.id === focusedEntryId}
               />
               {renderAfterCard?.(entry)}
             </Suspense>

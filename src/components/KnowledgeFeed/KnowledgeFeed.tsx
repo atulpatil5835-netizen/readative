@@ -2254,7 +2254,9 @@ export function KnowledgeFeed({
                 ? "Sign in to mark misleading"
                 : pendingAction.type === "save"
                   ? "Sign in to save"
-                  : "Sign in to comment"
+                  : pendingAction.type === "ink"
+                    ? "Sign in to use Ink"
+                    : "Sign in to comment"
           }
           description="Use your Google account so this activity is saved to your Readative profile on every browser and device."
           submitLabel="Continue with Google"

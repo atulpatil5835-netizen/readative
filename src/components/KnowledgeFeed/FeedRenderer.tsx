@@ -197,7 +197,7 @@ export interface FeedRendererProps {
   onRetryFeedLoad: () => void;
   onLoadMoreActiveEntries: () => void;
   onVisibleEntry: (entry: KnowledgeEntry) => void;
-  onIdentityRequired: (action: { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }) => void;
+  onIdentityRequired: (action: { type: "helpful" | "misleading" | "comment" | "save" | "ink"; entryId: string }) => void;
   onOpenProfile: (authorId: string) => void;
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag: (tag: string) => void;
@@ -525,7 +525,7 @@ export function FeedRenderer({
                 onOpenEntry={onOpenEntry}
                 onSelectHashtag={onSelectHashtag}
                 onLikeChange={onLikeChange}
-                highlightedEntryId={focusedEntryId}
+                focusedEntryId={focusedEntryId}
                 renderAfterCard={renderKnowledgeJourney}
                 estimateAfterCardHeight={estimateKnowledgeJourneyHeight}
               />

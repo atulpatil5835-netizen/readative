@@ -41,7 +41,7 @@ import {
   type ContributorReputation,
 } from "../../utils/trustSystem";
 import { getSaveMetrics, toggleKnowledgeSave } from "../../utils/bookmarks";
-import { useHighlights } from "../../context/HighlightsContext";
+import { useInk } from "../../context/InkContext";
 
 // Subcomponents
 import { CardHeader } from "./CardHeader";
@@ -70,7 +70,7 @@ interface KnowledgeCardProps {
   authorReputation?: ContributorReputation;
   onVisible?: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: {
-    type: "helpful" | "misleading" | "comment" | "save";
+    type: "helpful" | "misleading" | "comment" | "save" | "ink";
     entryId: string;
   }) => void;
   onOpenProfile: (authorId: string) => void;
@@ -81,7 +81,7 @@ interface KnowledgeCardProps {
     helpfulIds: string[],
     misleadingIds?: string[],
   ) => void;
-  highlighted?: boolean;
+  focused?: boolean;
 }
 
 interface MeasuredExportParagraph {
@@ -120,31 +120,48 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   onOpenEntry,
   onSelectHashtag,
   onLikeChange,
-  highlighted = false,
+  focused = false,
 }: KnowledgeCardProps) {
-  const { highlights, highlightModePostIds, toggleHighlightMode, addHighlight, removeHighlight } = useHighlights();
-  const cardHighlights = useMemo(() => highlights.filter(hl => hl.postId === entry.id), [highlights, entry.id]);
-  const hasHighlights = cardHighlights.length > 0;
-  const isHighlightMode = !!highlightModePostIds[entry.id];
+  const {
+    activePostId,
+    inkPostIds,
+    color: inkColor,
+    width: inkWidth,
+    activateInk,
+    deactivateInk,
+    markPostHasInk,
+    setColor: setInkColor,
+    setWidth: setInkWidth,
+  } = useInk();
+  const hasInk = inkPostIds.has(entry.id);
+  const isInkMode = focused && activePostId === entry.id;
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportPages, setExportPages] = useState<ExportPage[]>([]);
 
-  const handleToggleHighlightMode = () => {
-    const nextState = !isHighlightMode;
-    toggleHighlightMode(entry.id);
-    if (nextState) {
-      setInteractionMessage("Highlight Mode Enabled");
+  const handleToggleInkMode = () => {
+    if (!currentIdentity) {
+      onIdentityRequired({ type: "ink", entryId: entry.id });
+      return;
+    }
+
+    if (isInkMode) {
+      deactivateInk();
+      setInteractionMessage(null);
+      return;
+    }
+
+    if (!focused) {
+      recordKnowledgeFeedActivity({ type: "open", entry });
+      onOpenEntry(entry.id);
+    }
+    activateInk(entry.id);
+    setInteractionMessage("Ink Mode On — hold, draw, release.");
       setTimeout(() => {
         setInteractionMessage((current) =>
-          current === "Highlight Mode Enabled" ? null : current
+          current === "Ink Mode On — hold, draw, release." ? null : current
         );
       }, 3000);
-    } else {
-      setInteractionMessage((current) =>
-        current === "Highlight Mode Enabled" ? null : current
-      );
-    }
   };
 
   const [showComments, setShowComments] = useState(false);
@@ -376,7 +393,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     const handler = (event: Event) => {
       const detail = (
         event as CustomEvent<{
-          type: "like" | "helpful" | "misleading" | "comment" | "save";
+          type: "like" | "helpful" | "misleading" | "comment" | "save" | "ink";
           entryId: string;
           username: string;
           authorId: string;
@@ -390,6 +407,13 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         authorId: detail.authorId,
       };
       setActionIdentity(nextIdentity);
+
+      if (detail.type === "ink") {
+        onOpenEntry(entry.id);
+        activateInk(entry.id);
+        setInteractionMessage("Ink Mode On — hold, draw, release.");
+        return;
+      }
 
       if (detail.type === "like" || detail.type === "helpful") {
         void updateHelpful(true, nextIdentity);
@@ -414,7 +438,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     window.addEventListener("knowledge-action", handler);
     return () => window.removeEventListener("knowledge-action", handler);
-  }, [commentText, entry.id, localHelpfulIds, localMisleadingIds]);
+  }, [activateInk, commentText, entry.id, localHelpfulIds, localMisleadingIds, onOpenEntry]);
 
   const updateCommentMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -1280,7 +1304,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       data-publisher-content="knowledge-post"
       className={cn(
         "readative-card-surface readative-card-surface-hover overflow-hidden",
-        highlighted &&
+        focused &&
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
       )}
     >
@@ -1302,7 +1326,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         onDownload={handleDownload}
         setShowEditModal={setShowEditModal}
         onDeleteEntry={handleDeleteEntry}
-        hasHighlights={hasHighlights}
+        hasInk={hasInk}
       />
 
       <CardMedia
@@ -1319,8 +1343,12 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           localSaveCount={localSaveCount}
           entry={entry}
           entryVisibility={entryVisibility}
-          isHighlightMode={isHighlightMode}
-          onToggleHighlightMode={handleToggleHighlightMode}
+          isInkMode={isInkMode}
+          inkColor={inkColor}
+          inkWidth={inkWidth}
+          onToggleInkMode={handleToggleInkMode}
+          onSetInkColor={setInkColor}
+          onSetInkWidth={setInkWidth}
         />
 
         <CardContent
@@ -1334,10 +1362,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           topCommentProfile={topCommentProfile}
           topCommentDisplayName={topCommentDisplayName}
           topCommentUsername={topCommentUsername}
-          isHighlightMode={isHighlightMode}
-          highlights={cardHighlights}
-          onAddHighlight={addHighlight}
-          onRemoveHighlight={removeHighlight}
+          currentUserId={currentIdentity?.authorId || null}
+          isFocusedPost={focused}
+          isInkMode={isInkMode}
+          shouldRenderInk={focused && (hasInk || isInkMode)}
+          inkColor={inkColor}
+          inkWidth={inkWidth}
+          onPostHasInk={markPostHasInk}
+          onInkStatus={setInteractionMessage}
         />
 
         <div className="mt-4 flex flex-col gap-2.5 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">

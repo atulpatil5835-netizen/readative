@@ -1,8 +1,11 @@
+import { lazy, Suspense, useMemo, useRef } from "react";
 import { ProfileAvatar } from "../ProfileAvatar";
 import { renderRichText } from "../../utils/renderRichText";
 import { CardContentProps } from "./cardTypes";
 import { buildProfilePath, buildTagPath } from "./cardHelpers";
-import { highlightReactTree, getAbsoluteOffsets } from "./highlightHelpers";
+import { buildInkBlockKey } from "../../ink/blockKey";
+
+const InkSurface = lazy(() => import("../../ink/InkSurface"));
 
 export function CardContent({
   entry,
@@ -15,55 +18,25 @@ export function CardContent({
   topCommentProfile,
   topCommentDisplayName,
   topCommentUsername,
-  isHighlightMode,
-  highlights = [],
-  onAddHighlight,
-  onRemoveHighlight,
+  currentUserId,
+  isFocusedPost,
+  isInkMode,
+  shouldRenderInk,
+  inkColor,
+  inkWidth,
+  onPostHasInk,
+  onInkStatus,
 }: CardContentProps) {
-  const handleTextSelection = () => {
-    if (!isHighlightMode || !onAddHighlight) return;
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-
-    const range = selection.getRangeAt(0);
-    const selectedText = selection.toString().trim();
-    if (!selectedText) return;
-
-    const startNode = range.startContainer;
-    const paragraphElement = startNode.parentElement?.closest("[data-paragraph-index]") as HTMLElement | null;
-    if (!paragraphElement) return;
-
-    const paragraphIndexAttr = paragraphElement.getAttribute("data-paragraph-index");
-    if (paragraphIndexAttr === null) return;
-    const paragraphIndex = parseInt(paragraphIndexAttr, 10);
-
-    const { startOffset, endOffset } = getAbsoluteOffsets(paragraphElement, range);
-
-    onAddHighlight({
-      postId: entry.id,
-      postTitle: entry.title,
-      authorName: entry.author,
-      selectedText,
-      paragraphIndex,
-      startOffset,
-      endOffset,
+  const inkHostRef = useRef<HTMLDivElement | null>(null);
+  const blockKeys = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    return contentSections.map((section) => {
+      const normalized = section.replace(/\s+/g, " ").trim();
+      const occurrence = occurrences.get(normalized) || 0;
+      occurrences.set(normalized, occurrence + 1);
+      return buildInkBlockKey(section, occurrence);
     });
-
-    selection.removeAllRanges();
-  };
-
-  const handleParagraphClick = (e: React.MouseEvent) => {
-    if (!onRemoveHighlight) return;
-    const target = e.target as HTMLElement;
-    const highlightId = target.getAttribute("data-highlight-id");
-    if (highlightId) {
-      e.stopPropagation();
-      if (window.confirm("Remove this highlight?")) {
-        void onRemoveHighlight(highlightId);
-      }
-    }
-  };
+  }, [contentSections]);
 
   return (
     <div>
@@ -83,41 +56,49 @@ export function CardContent({
 
         {contentSections.length > 0 && (
           <div
-            className="mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8"
-            onMouseUp={handleTextSelection}
-            onTouchEnd={handleTextSelection}
-            onClick={handleParagraphClick}
+            ref={inkHostRef}
+            className="relative mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8"
           >
-            {contentSections.map((section, index) => {
-              const paragraphHighlights = highlights
-                .filter((hl) => hl.paragraphIndex === index)
-                .map((hl) => ({
-                  startOffset: hl.startOffset,
-                  endOffset: hl.endOffset,
-                  id: hl.id,
-                }));
-
-              return (
-                <div key={`${entry.id}-section-${index}`} data-paragraph-index={index}>
+            {contentSections.map((section, index) => (
+                <div
+                  key={`${entry.id}-section-${index}`}
+                  data-ink-block-key={blockKeys[index]}
+                  data-ink-block-ordinal={index}
+                >
                   {index > 0 && (
                     <div
                       className="my-6 border-t border-slate-100"
                       aria-hidden="true"
                     />
                   )}
-                  <p className="whitespace-pre-wrap select-text">
-                    {highlightReactTree(
-                      renderRichText({
-                        text: section,
-                        mentions,
-                        onOpenProfile: onOpenAuthorProfile,
-                      }),
-                      paragraphHighlights
-                    )}
+                  <p
+                    className={`whitespace-pre-wrap ${
+                      isFocusedPost && isInkMode ? "select-none" : "select-text"
+                    }`}
+                  >
+                    {renderRichText({
+                      text: section,
+                      mentions,
+                      onOpenProfile: onOpenAuthorProfile,
+                    })}
                   </p>
                 </div>
-              );
-            })}
+              ))}
+            {shouldRenderInk && currentUserId && (
+              <Suspense fallback={null}>
+                <InkSurface
+                  hostRef={inkHostRef}
+                  userId={currentUserId}
+                  postId={entry.id}
+                  content={entry.content}
+                  isInkMode={isFocusedPost && isInkMode}
+                  color={inkColor}
+                  width={inkWidth}
+                  onPostHasInk={onPostHasInk}
+                  onStatus={onInkStatus}
+                />
+              </Suspense>
+            )}
           </div>
         )}
       </div>

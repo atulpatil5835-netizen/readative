@@ -1,217 +1,313 @@
-# Readative Content Architecture Audit
+# Readative Release Y — Ink System Architecture
 
-## Executive Summary
+Date: 2026-07-01
 
-Readative is a Single Page Application (SPA) built using React, Vite, and TypeScript. The frontend interacts directly with Google Cloud Firestore via the Firebase Web SDK. For search engine optimization (SEO) and bots, a Vercel Serverless API layer (`/api/...`) fetches and pre-renders static HTML pages using the Firebase Admin SDK or Firestore REST API.
+Status: Architecture proposal only; awaiting approval
 
-This document presents a complete audit of the content architecture of Readative (Release G). It details the current lifecycle, relationships, and performance of posts, SmartTalk, categories, search, explore, and personalization, identifies architectural problems, and proposes a target architecture for future releases.
+Priority: Performance first
 
----
+## Scope Guard
 
-## Phase 1 — Deep Audit
+This document designs the future Ink System. Release Y architecture approval does not change production code, the current Highlight experience, Firestore data, security rules, indexes, routes, or UI.
 
-### 1. Feed Architecture
-*   **Source File(s):** [KnowledgeFeed.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/KnowledgeFeed/KnowledgeFeed.tsx), [feedHelpers.ts](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/KnowledgeFeed/feedHelpers.ts), [feedFilters.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/KnowledgeFeed/feedFilters.tsx)
-*   **Loading Mechanism:**
-    *   The primary "All" (home) feed queries the `knowledge` collection in Firestore. It establishes a real-time subscription (`onSnapshot`) for the first page (`FEED_INITIAL_PAGE_SIZE = 10` documents) sorted by `createdAt` desc.
-    *   Subsequent pages are loaded on demand via `getDocs` queries, starting after the document snapshot cursor (`paginationCursorRef.current`) and fetching `FEED_NEXT_PAGE_SIZE = 5` documents at a time.
-    *   Filtered feeds (by topic or hashtag) bypass real-time subscription and are loaded on demand via `getDocs`. It attempts to run ordered queries (`createdAt` desc).
-    *   If composite indexes are missing (causing a Firestore `failed-precondition` or "requires an index" error), the system falls back to unordered/limit-free queries using `getDocsWithIndexFallback` and performs sorting and filtering in memory.
-*   **Personalization & Sorting:**
-    *   The home feed sorting is processed entirely client-side using a scoring and ranking algorithm in [feedPersonalization.ts](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/utils/feedPersonalization.ts).
-    *   A user's interaction history (views, opens, likes, comments, shares, author/hashtag affinities) is stored in the browser's `localStorage` (`readativeKnowledgeFeedActivity:v2` and `readativeKnowledgeSeenEntries:v3`).
-    *   `rankKnowledgeEntries` calculates a dynamic score based on recency, quality (word count/images/mentions), user affinities, novelty, and cooldowns/penalties for already-seen or liked posts.
-    *   A client-side diversification algorithm (`diversifyRankedEntries`) prevents consecutive posts from the same author or topic.
+The eventual system must preserve all existing user capabilities while replacing yellow text highlights with private blue-pen-style vector annotations. It must not add stickers, a shape library, brushes, handwriting recognition, screenshots, bitmap storage, a fullscreen editor, a floating toolbar, or a permanent scroll-blocking drawing mode.
 
-### 2. SmartTalk Architecture
-*   **Source File(s):** [SmartTalk.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/SmartTalk.tsx), [Skeletons.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/Skeletons.tsx)
-*   **Loading Mechanism:**
-    *   The SmartTalk feed subscribes to the `smarttalk` Firestore collection using a real-time `onSnapshot` query ordered by `createdAt` desc, limited to `SMART_TALK_PAGE_SIZE = 50` documents.
-    *   Subsequent pages are loaded via `getDocs` starting after the last query snapshot.
-*   **Data Structure:**
-    *   SmartTalk questions contain answers as a nested array of maps (`answers`) directly within the question document in Firestore.
-    *   Upvoting or downvoting ("helpful" / "misleading") of answers is performed via Firestore transactions (`runTransaction`) that fetch the question, toggle the vote in the nested answers array, recalculate the "best answer" status (highest helpful score), and update the parent question document.
-    *   Saves are toggled using transactions that update the `savedBy` array and `saveCount` on the question, and update `savedSmartTalkIds` on the user's profile document.
-*   **Search & Filtering:**
-    *   Search on the SmartTalk feed is done entirely in-memory client-side using `matchesSmartTalkSearch(question, terms)` on the questions that have been loaded.
+## Current Architecture to Evolve
 
-### 3. Category Architecture
-*   **Source File(s):** [seoTaxonomy.ts](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/utils/seoTaxonomy.ts), [contentIntelligence.ts](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/utils/contentIntelligence.ts)
-*   **Definitions:**
-    *   Categories (e.g., AI, Technology, Business, Marketing, Startup, Productivity, Development, Cybersecurity) are statically defined in `seoTaxonomy.ts`.
-    *   Each category has associated path slugs, descriptions, topic slugs, tag slugs, keywords, and aliases.
-*   **Content Association:**
-    *   Posts store category IDs in a `category` field. The creator suggests categories based on text classification rules (`suggestKnowledgeCategory` in `contentIntelligence.ts`).
-    *   SmartTalk questions also contain a `category` field suggested or selected by the user.
-    *   Explore calculations match posts and discussions to categories and topics using tag match rules (`matchesTopicEntry` and `matchesTopicQuestion`).
+The existing feature has useful seams and should not be rebuilt wholesale.
 
-### 4. Search Architecture
-*   **Source File(s):** [DiscoverySearch.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/DiscoverySearch.tsx), [feedHelpers.ts](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/KnowledgeFeed/feedHelpers.ts)
-*   **Implementation:**
-    *   Search is entirely in-memory and client-side. The application does not issue server-side search queries or use search indexers (e.g. Algolia/Elasticsearch).
-    *   For posts, `matchesKnowledgeSearch` checks `title`, `content`, `author`, `hashtags`, comments, and mentions against search terms.
-    *   For questions, `matchesSmartTalkSearch` checks `author`, `content`, and answer text.
-    *   Users cannot search across documents that have not been loaded or cached in the current browser session.
+| Current seam | Current behavior | Reuse decision |
+| --- | --- | --- |
+| `HighlightsProvider` in `src/App.tsx` | Subscribes to every `userHighlights` document for the active user | Reuse the feature boundary, but replace the app-wide realtime listener with on-demand Ink reads |
+| `KnowledgeCard` | Derives highlights for one post and owns per-card mode state | Reuse its action/content prop seam; change mode ownership to one active post ID |
+| `CardTrust` | Hosts the Highlight button | Reuse the exact control location for the Ink crayon |
+| `CardContent` | Owns text interaction and paragraph wrappers | Reuse the content boundary and paragraph DOM anchors; replace text selection with a lazy Ink surface |
+| `highlightHelpers.tsx` | Maps paragraph indexes and character offsets to yellow `<mark>` elements | Reuse only its lessons and legacy-range adapter; it is not a vector renderer |
+| `ProfileHighlights` | Groups snippets by post | Reuse the private-profile section slot; replace the content with post-level My Notes cards |
+| `/post/:id` and `focusedEntryId` | Reuses the standard card while focusing one post | Make this the only full Ink surface; do not create an editor route |
+| `KnowledgeEntry.updatedAt` | Changes when post content is edited | Use as a quick revision hint, backed by a content hash in Ink metadata |
 
-### 5. Explore Architecture
-*   **Source File(s):** [Explore.tsx](file:///c:/Users/Atul/OneDrive/Documents/readative%20(1)/src/components/Explore.tsx)
-*   **Loading & Calculations:**
-    *   When the Explore tab mounts, it queries the `knowledge` collection (limit 80), `smarttalk` collection (limit 50), and `userProfiles` collection (limit 80) in parallel via `getDocs`.
-    *   It filters, matches, and ranks categories, topics, active discussions, top posts, and top contributors entirely in-memory using React `useMemo` blocks.
-    *   It calculates dynamic scores for topics based on post count, discussion count, answers count, helpfulness ratings, and recency.
-    *   It generates contributor leaderboards based on the combined post/answer activity and helpfulness scores of profiles.
+The current global listener, duplicated title/author fields, selected snippets, yellow DOM marks, and `Record<postId, boolean>` mode map are the parts that should not survive the final cutover.
 
-### 6. Trending Calculation
-*   **Formula for Posts:**
-    *   Calculated client-side in `getKnowledgeTrendingScore(entry)`:
-        $$\text{Trending Score} = (\text{likesCount} \times 8) + (\text{commentsCount} \times 4) + \text{qualityBoost} + \text{recencyBoost}$$
-        *   `recencyBoost` decays based on age: $\max(0, 6 - \text{ageHours}/18)$.
-        *   `qualityBoost` is based on `qualityScore/25`.
-*   **Formula for Discussions:**
-    *   Calculated client-side in `getDiscussionActivity(question)`:
-        $$\text{Discussion Score} = (\text{answersCount} \times 6) + (\text{helpfulAnswersScore} \times 4) + \text{bestAnswerBonus} + \text{unansweredBonus} + \text{recencyBoost}$$
-        *   `unansweredBonus` adds 18 to encourage contributions on unanswered questions.
-        *   `bestAnswerBonus` adds 16 if a best answer exists.
-*   **Trending Query:**
-    *   In the database feed helpers (`loadTrendingKnowledgeEntries`), it queries Firestore sorted by `likeCount` desc, with index fallback to query sorting by `createdAt` desc.
+## Recommended Product Model
 
-### 7. Firestore Collections
-The database relies on five primary collections:
-1.  `knowledge`: Stores posts. Fields include `title`, `content`, `author`, `authorId`, `category`, `hashtags`, `likes`, `likeCount`, `helpfulIds`, `helpfulCount`, `dislikes`, `dislikeCount`, `comments` (nested array), `mentions`, `images`, `imageLayout`, `excerpt`, `readingMinutes`, `qualityScore`, `savedBy`, and `saveCount`.
-2.  `smarttalk`: Stores questions. Fields include `author`, `authorId`, `content`, `category`, `difficulty`, `savedBy`, `saveCount`, `createdAt`, and `answers` (nested array of maps containing `id`, `author`, `authorId`, `content`, `likes`, `dislikes`, `bestAnswer`, `createdAt`).
-3.  `userProfiles`: Stores user profiles. Fields include `displayName`, `username`, `usernameLower`, `email`, `bio`, `socialLinks`, `likedKnowledgeIds`, `savedKnowledgeIds`, `savedSmartTalkIds`, `reputationScore`, `helpfulCount`, `misleadingCount`, and `bestAnswerCount`.
-4.  `notifications`: Stores user notifications. Fields include `targetAuthorId`, `actorAuthorId`, `actorUsername`, `type` (like, comment, tag, milestone, etc.), `entryId`, `entryTitle`, `preview`, `read`, and `createdAt`.
-5.  `userHighlights`: Stores highlights associated with posts.
+Ink has two distinct states. This distinction is the key to preserving scrolling.
 
-### 8. Firestore Indexes
-Composite indexes are utilized for several ordered filters:
-*   `knowledge`: `hashtags` (array-contains) + `createdAt` (desc)
-*   `knowledge`: `likeCount` (desc) + `createdAt` (desc)
-*   `knowledge`: `hashtags` (array-contains-any) + `createdAt` (desc)
-*   `notifications`: `targetAuthorId` (asc) + `createdAt` (desc)
+1. **OFF** — Ink interaction is off. No gesture capture exists. If the focused post has stored Ink, it may enter VIEWING after its route-scoped manifest read.
+2. **VIEWING** — existing vectors render read-only on the focused post; scrolling, tapping, selection, and zoom remain browser-owned.
+3. **ARMED** — Ink is enabled for exactly one focused post, but the browser still owns normal scrolling, tapping, and pinch zoom.
+4. **CANDIDATE** — one primary contact is stationary and a short hold timer is running. Scrolling is still native.
+5. **DRAWING** — only after the hold succeeds does the app temporarily capture movement and draw one stroke.
+6. **COMMITTING** — release simplifies and saves the stroke optimistically, then returns immediately to ARMED.
 
-The client uses fallback queries without orderBy constraints when composite indexes are missing to prevent query execution failures.
+There is no Done button. ARMED is not a drawing lock; it is permission to recognize a deliberate hold. Navigation, closing the focused post, signing out, or tapping the active crayon returns the system to OFF.
 
-### 9. Data Relationships
-*   **Posts and Profiles:** A post document contains `authorId` referencing `userProfiles`. A user profile records arrays of liked post IDs (`likedKnowledgeIds`) and saved post IDs (`savedKnowledgeIds`).
-*   **Discussions and Profiles:** A question contains `authorId`. Nested answers within questions reference an `authorId`. A profile document maintains saved discussion IDs (`savedSmartTalkIds`).
-*   **Comments/Answers:** Comments on posts are stored in a nested array `comments` inside the `knowledge` post document. Answers on questions are stored in a nested array `answers` inside the `smarttalk` question document.
-*   **Highlights:** Highlight documents in `userHighlights` contain reference fields linking a user profile and a post in the `knowledge` collection.
-*   **Notifications:** Notification documents link a target user (`targetAuthorId`), an actor (`actorAuthorId`), and a post (`entryId`).
+On an ordinary feed card, tapping the crayon should reuse `onOpenEntry` to open the existing `/post/:id` focus route and arm that post. This gives Ink one clear coordinate space without creating a fullscreen editor or mounting overlays throughout the feed.
 
-### 10. Current Routing
-*   **Client-Side:** Single Page App (SPA) hash-based/pathname-based routing in the browser using custom popstate and hashchange event handlers, alongside a custom window event `readative:routechange`.
-*   **Server-Side:** Custom rewrites in `vercel.json` rewrite clean routes (e.g. `/post/:id`, `/profile/:id`, `/smarttalk`, `/explore`) to `/index.html` to keep SPA history functionality working on manual refreshes.
-*   **SEO Routes:** Vercel serverless functions intercept bots at `/posts` (discovery page) and `/smarttalks` / `/smarttalks/:id` (static HTML representation of questions and answers).
+## Scroll-versus-Draw Architecture
 
-### 11. Current Content Lifecycle
-*   **Creation:** Creators write content (posts, questions, answers, comments) in the browser. Before submission, the content is evaluated client-side.
-*   **Moderation Check:** Local pattern rules in `contentModeration.ts` block spam, adult, or abusive terms, and verify length.
-*   **Storage:** If passed, the document is written directly to Firestore using the client SDK.
-*   **Retrieval:** The feed retrieves content using client-side Firestore queries (`onSnapshot` / `getDocs`).
-*   **Modification/Deletion:** Posts are updated or archived using `deletedAt` metadata timestamps.
+### Options considered
 
-### 12. Current Moderation Flow
-*   Executed entirely on the client before submission using `moderateContent` in `contentModeration.ts`.
-*   Applies RegEx checks for explicit language (`EXPLICIT_RULES`), promotions (`PROMO_RULES`), casual chat (`CHAT_RULES`), and abuse/harassment (`ABUSE_RULES`).
-*   Computes a `knowledgeScore` based on text depth, word counts, sentence count, and formatting triggers.
-*   If hard-blocked or the knowledge score is below the pass threshold, the write is aborted, and suggestions are displayed to the user. No backend validation or server-side security rules enforce these constraints during database writes.
+| Option | Scrolling | Drawing freedom | Risk | Decision |
+| --- | --- | --- | --- | --- |
+| `touch-action: none` while Ink is armed | Blocked unless scrolling is reimplemented in JavaScript | Full | High jank and accessibility risk | Reject |
+| `touch-action: pan-y` | Native vertical scroll | Vertical portions of circles/arrows may be canceled by the browser | Medium/high | Reject as the primary model |
+| Dedicated draw mode after tapping Ink | Blocked until mode is exited | Full | Violates automatic return to scrolling | Reject |
+| Two separate gestures: hold to arm, second touch to draw | Native | Full | Safe but does not match Touch → Hold → Draw | Reject |
+| Timed first-move handoff | Native until a stationary hold succeeds | Full after the handoff | Medium; requires device testing | **Recommend** |
 
-### 13. Current Recommendation Logic
-*   Managed in the browser via `feedPersonalization.ts`.
-*   Logs user activities (likes, opens, comments, shares, views) locally.
-*   Maps interests (affinities) to authors and hashtags.
-*   Ranks candidates using personalization, freshness, recency, quality, and cooldown filters to calculate a sorting score, then runs a author/topic diversification loop.
+### Recommended handoff
 
-### 14. Current Caching
-*   Home feed posts are cached client-side in memory (`knowledgeFeedMemoryCache`) and in `localStorage` (`readativeKnowledgeFeedCache:v2`).
-*   Features a 6-hour cache TTL.
-*   To fit local storage constraints, the cache size is capped (120 entries in memory, 32 entries in localStorage) and inline image data URLs are stripped if they exceed a budget of 900,000 characters.
+- Initial touch hold: 280 ms, subject to usability testing.
+- Pre-hold movement tolerance: 8 CSS pixels. Movement beyond it cancels the candidate and leaves the gesture entirely to native scrolling.
+- Start only on non-interactive post content. Links, buttons, media controls, form elements, browser selection, and multi-touch never start Ink.
+- Use passive observation while waiting. Do not register a non-passive `touchmove` handler for normal reading.
+- If the timer wins before movement, attach a narrowly scoped `{ passive: false }` handler for that active touch. Prevent the first post-hold move, capture the stroke, and remove the handler on release/cancel.
+- Disable native selection/callout only inside the armed content surface and only while required. Do not disable page zoom globally.
+- A second contact, `touchcancel`, route change, visibility change, lost pointer capture, or scroll beginning before the timer cancels the stroke without saving.
+- Release commits only strokes that exceed a small distance/point threshold. A hold-and-release without drawing is a no-op.
+- Pen and mouse use the same state machine with a shorter initial dwell target; they do not get a separate toolbar or brush model.
 
-### 15. Current Pagination
-*   Loads an initial page (`FEED_INITIAL_PAGE_SIZE = 10`) via query subscriptions.
-*   Loads next pages (`FEED_NEXT_PAGE_SIZE = 5`) on-demand via `getDocs` using `startAfter(paginationCursorRef.current)`.
-*   Under idle conditions, it performs a background prefetch of one page using `requestIdleCallback` (or a 350ms timeout backup).
+This uses the Touch Events rule that canceling the first active `touchmove` can suppress scrolling for that contact. Pointer Events remain useful for unified coordinates, coalesced samples, and mouse/pen input, but Pointer Events alone cannot take panning away after it has started. The implementation must feature-detect and test the exact handoff on Safari iOS, Chrome Android, Samsung Internet, desktop Chrome/Edge, and touch-enabled Windows before production approval.
 
-### 16. Current Duplicate Logic
-*   To prevent duplicate logs, the client checks incoming actions against recent logs in a rolling time window (e.g. view duplicate window: 6 hours, open duplicate window: 30 minutes) using `isDuplicateActivity`.
+## Compact Settings
 
-### 17. Current Reusable Logic
-*   **Trust System:** Metrics for helpfulness and misleading count calculations.
-*   **Bookmarks:** `getSaveMetrics` and `toggleKnowledgeSave`/`toggleSmartTalkSave` update profiles and target documents.
-*   **SeoTaxonomy:** Defines taxonomy helper mappings for categories, topics, and tags.
-*   **SeoSchemas:** Generates sitemap, breadcrumb, and posting JSON-LD schemas.
+### Options considered
 
----
+| Option | Benefit | Cost | Decision |
+| --- | --- | --- | --- |
+| Always-visible color/width controls | Discoverable | Permanent clutter | Reject |
+| Anchored popover | Compact | It is a floating panel and can cover text | Reject |
+| Bottom sheet | Large touch targets | Interrupts reading | Reject |
+| Repeated tap to cycle every value | Smallest | Hidden and slow to use | Reject |
+| Temporary inline settings rail | Visible only on request; never covers content | Small, temporary layout shift | **Recommend** |
 
-## Phase 2 — Find Problems
+Tap the crayon to toggle Ink. Press and hold the crayon itself to expand a single compact rail inside the existing card chrome, never over the article. The rail contains five color swatches and three fixed line samples. It collapses immediately after a choice, on outside interaction, or on route change.
 
-### 1. SmartTalk Data Structure Scaling Limit (Critical Risk)
-*   **Problem:** SmartTalk questions store answers as a nested array of maps directly within the question document.
-*   **Risk:** Firestore has a hard limit of 1MB per document. If a discussion becomes highly popular (many answers, comments, or votes), the question document will exceed 1MB, throwing database write errors and preventing further answers.
-*   **Implication:** Scaling bottleneck and data loss risk for active discussions.
+Defaults and bounded values:
 
-### 2. Lack of Backend Security and Moderation Enforcement
-*   **Problem:** Content moderation and spam filtering are executed exclusively client-side in the browser.
-*   **Risk:** Users can bypass client-side validation by calling the Firebase API directly, writing unmoderated, inappropriate, or malicious content.
-*   **Implication:** Security and quality vulnerabilities.
+- Color: Blue (`blue`) by default; optional `black`, `red`, `green`, and `orange`.
+- Width: Medium (`medium`) by default; optional `thin` and `thick`.
+- Store enum codes, not arbitrary colors or numeric widths.
+- Store the preference locally. Do not add a Firestore preference read or write.
 
-### 3. Client-Side Only Search (No Global Database Search)
-*   **Problem:** Search matching is processed client-side in-memory using `matchesKnowledgeSearch` and `matchesSmartTalkSearch`.
-*   **Risk:** Users can only search items currently loaded or cached in the client feed. They cannot search the entire historical database of posts and questions.
-*   **Implication:** Severely limited search functionality as the platform grows.
+The exact color values and CSS widths remain design tokens, allowing visual tuning without migrating stored annotations.
 
-### 4. Poor Performance and Heavy Queries in Explore Tab
-*   **Problem:** The Explore tab loads the entire set of posts (limit 80), questions (limit 50), and profiles (limit 80) on mount, performing stats calculations, contributor rankings, and topic matching in-memory.
-*   **Risk:** High bandwidth consumption, long rendering blocks, and sluggish page loads.
-*   **Implication:** Degraded UX on mobile and slower connections.
+## Rendering Decision
 
-### 5. Duplicated Code and Redundant State Logic
-*   **Problem:** Type definitions (`Answer` vs `SmartAnswer`, `Question` vs `SmartQuestion`) and core text parsing utilities (e.g. `tokenizeSearch`) are copy-pasted and redefined across `SmartTalk.tsx`, `Explore.tsx`, and `types.ts`.
-*   **Risk:** Harder to maintain, higher risk of drift or regression, and testing complexity.
-*   **Implication:** Code debt.
+| Renderer | Strengths | Weaknesses | Fit |
+| --- | --- | --- | --- |
+| SVG overlay | Native vector paths, resolution independent, direct preview reuse, easy responsive viewBox, no dependency | Too many individual path nodes can become expensive | Best overall |
+| Canvas overlay | Excellent raw raster throughput and one DOM node | High-DPI redraws, manual hit testing, separate SVG preview path, more lifecycle code | Useful only if profiling disproves SVG |
+| Hybrid canvas + SVG | Fast live stroke plus vector committed output | Two renderers, synchronization cost, larger lazy chunk | Premature for this scale |
+| DOM elements per mark | Simple for underlines | Poor for freehand/circles/arrows; excessive layout and DOM | Reject |
 
-### 6. Unused/Dead Backend APIs
-*   **Problem:** `server.ts`, `api/posts.ts`, and `api/profile/[id].ts` run Express endpoints and serverless functions using temporary in-memory arrays. The frontend, however, uses direct client SDK calls and never fetches from these endpoints.
-*   **Risk:** Extra maintenance overhead and confusion for developers.
-*   **Implication:** Bloated repository.
+### Recommendation: native SVG
 
-### 7. Device-Locked Feed Personalization
-*   **Problem:** Personalization logic, activity logs, and seen history are stored exclusively in the browser's `localStorage`.
-*   **Risk:** If a user logs in on a new device or clears browser cache, their feed personalization is reset.
-*   **Implication:** Broken omni-channel user experience.
+Use one absolutely positioned SVG per active content surface, not per post card and not per paragraph. The SVG is lazy-mounted only on the focused post when Ink is armed or when that focused post has existing annotations.
 
----
+Performance rules:
 
-## Phase 3 — Target Architecture
+- Keep one active `<path>` outside React state and update its `d` attribute at most once per animation frame.
+- Consume coalesced pointer samples when available.
+- Simplify on release with a small in-house polyline simplifier; do not add a drawing library.
+- Quantize coordinates before persistence.
+- Render committed strokes as combined path strings grouped by anchor block, color, and width. Keep individual stroke identity in data, not necessarily in the DOM.
+- Use `vector-effect="non-scaling-stroke"` so Thin/Medium/Thick stay visually stable across responsive scaling.
+- Use `pointer-events="none"` for committed SVG. The transient capture layer exists only during CANDIDATE/DRAWING.
+- One route-scoped `ResizeObserver`, throttled to animation frames, recomputes projection after width/orientation changes. No observer exists in the feed.
+- Do not mount an off-screen canvas, hidden preview DOM, image generator, or screenshot pipeline.
 
-### 1. How should SmartTalk work?
-SmartTalk should separate Questions and Answers into a relational schema.
-*   **Questions:** Stored in a top-level `/smarttalk` collection. Question documents hold reference fields (category, difficulty, authorId, etc.) and metrics (saveCount, totalAnswersCount).
-*   **Answers:** Stored in a subcollection under the parent question: `/smarttalk/{questionId}/answers/{answerId}`.
-*   This schema eliminates the 1MB document limit, enables efficient pagination of answers, and simplifies querying.
+SVG is not selected because it beats Canvas at every possible stroke count. It is selected because hundreds of simplified, grouped vectors are within the expected scale and it gives the smallest coherent system for live rendering, responsive replay, and My Notes previews. Canvas remains a measured fallback only if the acceptance tests fail.
 
-### 2. SmartTalk Ownership Boundaries
-*   **Questions & Answers:** Owned entirely by the SmartTalk module.
-*   **Categories & Tags:** Managed through a shared, centralized registry module (e.g., `seoTaxonomy.ts`). Questions and answers select category keys from this shared taxonomy.
-*   **Trending & Scores:** SmartTalk owns its discussion activity rating formula, but it should share standard recency, engagement, and normalization functions with the main post feed.
-*   **Search:** Integrated into a unified search index (such as Algolia or a unified search serverless function) rather than client-side in-memory search.
-*   **Recommendations:** SmartTalk question views and answers should trigger activity signals that feed into a unified user interest profile.
+## Coordinate and Anchor Model
 
-### 3. Integration with the Feed
-*   The main feed component (`KnowledgeFeed`) and the SmartTalk feed component (`SmartTalk`) should be isolated.
-*   The main feed can display discussion cards by fetching from `/smarttalk` using a common card renderer or content interface wrapper, preserving clear boundary separation.
+Pixel coordinates alone are unsafe because Readative posts reflow. Paragraph indexes alone are also unsafe because the current content is split on blank lines and indexes change when an author inserts a paragraph.
 
-### 4. Explore Interaction
-*   Instead of fetching raw collections and aggregating statistics in the browser, the Explore tab should query a pre-aggregated statistics collection (e.g. `/exploreStats/{topicId}`) compiled by backend triggers or fetch from paginated indexes.
+Use a dual anchor for every stroke:
 
-### 5. Sharing vs. Isolation
-*   **Shared Code:**
-    *   Taxonomy mappings, slug validation, and tag normalization.
-    *   Trust system scoring rules (helpful, misleading metrics, user reputation calculation).
-    *   Shared utility functions: text excerpting, reading time estimation, date formats.
-    *   Bookmark/save transaction utilities.
-*   **Isolated Code:**
-    *   Feed ranking logic and diversification filters (unique to posts).
-    *   Best-answer recalculation algorithms and discussion scores (unique to SmartTalk).
-    *   Component-specific visual styling and layout logic.
+1. **Geometric anchor** — a simplified polyline in a 0–4095 block-local coordinate space, original block bounds/aspect, and sparse text pins.
+2. **Semantic anchor** — canonical full-content offsets, paragraph ordinal as a hint, block fingerprint, content revision, and hashed quote context.
+
+No selected text is stored. The quote context contains lengths and SHA-256 hashes for the exact nearby range, prefix, and suffix. On an edited post, the resolver can scan candidate ranges and compare hashes without persisting readable snippets.
+
+Sparse text pins attach selected polyline point indexes to nearby character positions plus `dx`/`dy` offsets in `em` units. They allow piecewise reprojection when line wrapping changes without attaching metadata to every point.
+
+### Resolution order
+
+1. If the content revision and layout signature match, replay the block-local polyline directly.
+2. If content matches but width, font metrics, or orientation changed, resolve text pins and piecewise-warp the path; fall back to block-normalized geometry only when pins are insufficient.
+3. If content changed, try the original offsets, then block fingerprint, then hashed exact/prefix/suffix context.
+4. If anchors resolve uniquely, replay against the new DOM without rewriting source data immediately.
+5. If resolution is ambiguous or insufficient, fail closed: preserve the stroke in storage and preview, but do not draw it at a potentially incorrect place.
+
+This cannot guarantee pixel-identical freehand across arbitrary text rewrites; no reflowing web architecture can. The safe guarantee is that Ink will not silently attach a mark to unrelated text.
+
+## Firestore Storage Options
+
+| Model | Reads | Writes | Scale/safety | Decision |
+| --- | --- | --- | --- | --- |
+| All strokes in one user/post document | One | One document update per save | Eventually approaches Firestore's 1 MiB document limit; rewrites grow | Reject |
+| One document per stroke | Hundreds | Simple and conflict-safe | Hundreds of reads to open a heavily annotated post | Reject |
+| Store paths on `knowledge` posts | Low | Contends with public post writes | Mixes private user data with shared content and duplicates ownership | Reject |
+| Summary + bounded stroke chunks | One summary plus a few chunk reads | Two batched writes per flush | Bounded documents, private, scalable, preview efficient | **Recommend** |
+
+Firestore documents have a hard 1 MiB limit, so the architecture must use a much lower internal chunk ceiling rather than treating that maximum as a target.
+
+### Recommended future schema
+
+```text
+/userInk/{uid}
+  /posts/{postId}                       # private summary/manifest
+    schemaVersion: 1
+    createdAt: Timestamp
+    lastAnnotatedAt: Timestamp
+    strokeCount: number
+    chunkCount: number
+    contentRevision: string
+    preview: {
+      viewBox: [number, number, number, number]
+      vectors: [{ geometry: string, c: 0..4, w: 0..2 }]
+    }
+    migrationVersion?: number
+
+    /chunks/{sessionId_sequence}        # private bounded vectors
+      schemaVersion: 1
+      createdAt: Timestamp
+      updatedAt: Timestamp
+      strokeCount: number
+      pointCount: number
+      strokes: [{
+        id: string
+        at: number
+        c: 0..4
+        w: 0..2
+        geometry: string
+        anchor: compact map
+      }]
+```
+
+The document paths already identify the user and post. Do not duplicate `userId`, `postId`, title, author, body, excerpt, selected text, image, or screenshot fields.
+
+Chunk policy:
+
+- One active chunk per browser session/post, so two devices or tabs never overwrite the same chunk.
+- Seal a chunk at 40 strokes or 32 KiB of encoded payload, whichever comes first.
+- Hard reject a client chunk above 64 KiB before write.
+- Encode simplified, quantized point deltas as a compact string or Firestore bytes value; it remains vector source data, not a bitmap.
+- Cap preview data at 8 KiB and a small representative vector count. The preview is derived from stored vectors and is not authoritative source data.
+- Exempt `geometry`, stroke arrays, anchor maps, and preview vector fields from indexing. Only `lastAnnotatedAt` needs ordering for My Notes; no composite index should be required for the user-scoped query.
+
+### Read behavior
+
+- Base feed: zero Ink reads and zero Ink listeners.
+- Focused post: after the post paints, read one manifest. If it exists, lazy-load the Ink chunk and fetch its bounded chunks. Do not subscribe.
+- First Ink activation before the idle read: the same manifest request is reused, never duplicated.
+- My Notes: only when the private tab opens, query `/userInk/{uid}/posts` ordered by `lastAnnotatedAt desc`, limit 12, using a cursor for later pages.
+- My Notes post metadata: resolve from existing in-memory/cache data first; fetch only missing `knowledge` documents in a bounded document-ID query. This avoids duplicating post data, at the cost of additional reads only inside My Notes.
+- Do not hydrate full posts for preview generation. Preview vectors already live in the Ink manifest.
+
+### Write behavior
+
+- Save optimistically at release.
+- Update the session chunk and manifest in one Firestore write batch.
+- Use unique stroke IDs and session-owned chunk IDs for idempotency and multi-tab safety.
+- Use atomic counters for stroke/chunk counts. A last-writer preview race may affect only the thumbnail and self-heals when all vectors are next loaded; it must never lose source strokes.
+- Optionally coalesce strokes released within a short 500 ms window into one flush, but always flush on route change or `visibilitychange`.
+- Firestore's existing persistent local cache can queue offline writes. The UI should distinguish local saved/pending/failed state without blocking reading.
+
+### Privacy and rules requirement
+
+Ink is private. Future security rules must require authenticated ownership at every summary and chunk path: `request.auth != null && request.auth.uid == uid`. Validate allowed fields, schema version, enum ranges, bounded list/string sizes, and immutable ownership. My Notes remains own-profile only.
+
+Rules and index exemptions are production Firestore changes and are explicitly outside this architecture-only release.
+
+## My Notes Architecture
+
+Rename the private Profile tab from Highlights to My Notes at final cutover. Its unit is an annotated post, not a stroke.
+
+Each paginated card contains:
+
+- Live post title from `knowledge/{postId}`.
+- Live author from the same canonical post document/profile resolution.
+- `lastAnnotatedAt` from the private Ink manifest.
+- A tiny inline SVG whose paths are generated by decoding `preview.vectors`.
+- Continue Reading, routed through the existing `/post/:id` path.
+
+The tab count becomes annotated-post count, not total-stroke count. No card contains a text snippet. No preview loads a post body, image, canvas snapshot, or screenshot.
+
+If a post is deleted or no longer visible, the system must not expose stale duplicated content. Show an unavailable state using the stored vector preview and allow the user to delete their private Ink data; Continue Reading is disabled.
+
+To preserve the current removal capability, My Notes keeps a confirmed “Delete notes from this post” secondary action. Individual stroke editing is not required for Release Y.
+
+## Lazy-loading and Ownership Boundaries
+
+The final architecture should have these boundaries:
+
+- `InkController`: one active post ID and OFF/VIEWING/ARMED/CANDIDATE/DRAWING/COMMITTING state. Route-scoped, not an app-wide annotation collection.
+- `InkSurface`: gesture arbitration, sampling, and live SVG. Loaded only after Ink activation or an existing manifest on the focused route.
+- `InkProjection`: anchors, hashes, coordinate transforms, and SVG path generation.
+- `InkRepository`: on-demand Firestore reads/writes, chunking, batches, and migration adapter.
+- `MyNotes`: paginated manifests, canonical post metadata hydration, previews, and delete-post-notes action.
+- `LegacyHighlightAdapter`: read-only compatibility during migration; never part of the steady-state bundle unless legacy data is detected.
+
+The crayon shell and active-state token may remain in the existing card chunk. Gesture, codec, repository, projection, migration, and My Notes preview code must be dynamic imports.
+
+## Performance Budgets
+
+These are implementation gates, not measured results.
+
+| Surface | Budget |
+| --- | --- |
+| Initial application JS | 0–1 KiB gzip increase; no drawing dependency in the initial graph |
+| Lazy Ink interaction chunk | Target 6–10 KiB gzip; hard gate 12 KiB gzip |
+| Lazy My Notes-specific UI | Target 2–4 KiB gzip beyond shared Ink codec |
+| Feed Firestore | 0 reads, 0 listeners caused by Ink |
+| Feed DOM | 0 SVG overlays and 0 hidden Ink surfaces |
+| Active drawing | One DOM path update per animation frame; no React render per pointer sample |
+| Typical focused load | 1 manifest + 1–4 chunk documents |
+| 200-stroke focused load | Approximately 1 manifest + 5 chunk documents under the 40-stroke ceiling |
+| My Notes first page | 12 manifests + 0–12 canonical post reads, with cache-first hydration |
+| Stored typical stroke | Target 0.4–1.2 KiB after simplification, quantization, and anchor metadata |
+
+If native SVG cannot meet the drawing/frame budget at 500 strokes on the agreed low-end device, only then prototype a live-canvas/committed-SVG hybrid behind the same interfaces.
+
+## Behavior Under Change
+
+| Change | Required response |
+| --- | --- |
+| Title or author changes | My Notes shows current canonical values on next load; Ink data is unchanged |
+| Content edit with stable nearby text | Hash/offset resolver reanchors and reprojects |
+| Content rewrite or ambiguous anchor | Preserve but hide unresolved strokes; never guess |
+| Paragraph inserted before a mark | Block ordinal is only a hint; hashes and offsets relocate it |
+| Screen width/device/orientation changes | Recompute sparse text pins and block transform; no Firestore read/write |
+| Font metrics change | Re-resolve `em`-based pins after layout settles |
+| Post deleted/private | Preserve private Ink until user deletes it; do not expose duplicated post data |
+| Multiple tabs/devices | Unique session chunks prevent source overwrites; manifests use atomic counters |
+| Offline release | Optimistic local Ink remains visible and queued; failures are recoverable |
+
+## Architectural Decision
+
+Approve the following target as one decision set:
+
+1. Ink exists only on the existing focused post route.
+2. ARMED never blocks normal reading; DRAWING exists only for one held contact.
+3. Native SVG is the renderer, with Canvas retained only as a benchmarked fallback.
+4. Vectors use geometric plus semantic hashed anchors and fail closed after unsafe edits.
+5. Firestore uses private user/post manifests plus bounded session chunks.
+6. My Notes reads manifests only when opened and hydrates canonical post metadata without duplicating it.
+7. The base feed has no Ink reads, listeners, overlays, hidden DOM, or drawing bundle.
+8. Migration is additive and reversible; the current Highlight system remains live until explicit cutover approval.
+
+## References
+
+- [Firestore usage and document limits](https://firebase.google.com/docs/firestore/quotas)
+- [Firestore cursor pagination](https://firebase.google.com/docs/firestore/query-data/query-cursors)
+- [Firestore owner-scoped security rule conditions](https://firebase.google.com/docs/firestore/security/rules-conditions)
+- [W3C Pointer Events and `touch-action`](https://www.w3.org/TR/pointerevents/)
+- [W3C Touch Events first-`touchmove` cancellation behavior](https://www.w3.org/TR/touch-events/)
+- [W3C selector model for text position and quote anchoring](https://www.w3.org/TR/selectors-states/)
+
+## Approval Boundary
+
+No part of this proposal is authorized for production implementation or Firestore deployment until the user approves the architecture.

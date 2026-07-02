@@ -4,7 +4,7 @@ import { type KnowledgeEntry } from "../../types";
 import { type SeoCategoryDefinition } from "../../utils/seoTaxonomy";
 
 export type PendingAction =
-  | { type: "helpful" | "misleading" | "comment" | "save"; entryId: string }
+  | { type: "helpful" | "misleading" | "comment" | "save" | "ink"; entryId: string }
   | null;
 
 export interface SelectedImage {
