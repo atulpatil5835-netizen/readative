@@ -42,7 +42,6 @@ import {
   type AppTab,
 } from "./utils/routes";
 import { trackPageView } from "./utils/analytics";
-import type { InfoSection } from "./components/AppPanels";
 
 const KnowledgeFeed = lazy(() =>
   import("./components/KnowledgeFeed").then((module) => ({
@@ -68,16 +67,8 @@ const Explore = lazy(() =>
   }))
 );
 
-const appPanelsModulePromise = import("./components/AppPanels");
-
-const InfoPanel = lazy(() =>
-  appPanelsModulePromise.then((module) => ({
-    default: module.InfoPanel,
-  }))
-);
-
 const NotificationsPanel = lazy(() =>
-  appPanelsModulePromise.then((module) => ({
+  import("./components/AppPanels").then((module) => ({
     default: module.NotificationsPanel,
   }))
 );
@@ -113,9 +104,6 @@ export default function App() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [composerOpenSignal, setComposerOpenSignal] = useState(0);
-  const [showInfoPanel, setShowInfoPanel] = useState(false);
-  const [infoPanelSection, setInfoPanelSection] =
-    useState<InfoSection>("about");
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
@@ -138,7 +126,6 @@ export default function App() {
     nextProfileAuthorId: string | null = null,
     nextFocusedEntryId: string | null = null
   ) => {
-    setShowInfoPanel(false);
     setShowNotificationsPanel(false);
     navigateToRoute(tab, {
       profileAuthorId: nextProfileAuthorId,
@@ -155,13 +142,11 @@ export default function App() {
   }, [handleTabChange]);
 
   const handleOpenTopic = useCallback((topicId: string | null) => {
-    setShowInfoPanel(false);
     setShowNotificationsPanel(false);
     navigateToRoute("explore", { selectedTopic: topicId });
   }, []);
 
   const handleHomeAction = useCallback(() => {
-    setShowInfoPanel(false);
     setShowNotificationsPanel(false);
 
     const route = parseRouteFromLocation();
@@ -184,20 +169,12 @@ export default function App() {
       handleTabChange("knowledge");
     }
 
-    setShowInfoPanel(false);
     setShowNotificationsPanel(false);
     setComposerOpenSignal((current) => current + 1);
   }, [activeTab, handleTabChange]);
 
   const handleOpenNotifications = useCallback(() => {
-    setShowInfoPanel(false);
     setShowNotificationsPanel((current) => !current);
-  }, []);
-
-  const handleOpenInfoPanel = useCallback((section: InfoSection = "about") => {
-    setInfoPanelSection(section);
-    setShowNotificationsPanel(false);
-    setShowInfoPanel(true);
   }, []);
   const handleOpenSignInPrompt = useCallback(() => {
     setShowGoogleSignInPrompt(true);
@@ -425,12 +402,17 @@ export default function App() {
           onHomeAction={handleHomeAction}
           unreadNotificationCount={unreadNotificationCount}
           onOpenNotifications={handleOpenNotifications}
-          onOpenInfo={handleOpenInfoPanel}
           onOpenSignIn={handleOpenSignInPrompt}
           onSignOut={handleHeaderSignOut}
         />
 
-        <main className="mx-auto max-w-3xl px-3 pb-28 pt-20 sm:px-4">
+        <main
+          className={`mx-auto px-3 pb-28 pt-20 sm:px-4 ${
+            activeTab === "knowledge"
+              ? "max-w-3xl min-[1400px]:max-w-[1400px] min-[1400px]:px-6"
+              : "max-w-3xl"
+          }`}
+        >
           {notificationsError && (
             <BannerNotice
               title="Notifications unavailable"
@@ -514,16 +496,7 @@ export default function App() {
           )}
         </main>
 
-        <AppFooter onOpenInfo={handleOpenInfoPanel} />
-
-        {showInfoPanel && (
-          <Suspense fallback={null}>
-            <InfoPanel
-              initialSection={infoPanelSection}
-              onClose={() => setShowInfoPanel(false)}
-            />
-          </Suspense>
-        )}
+        <AppFooter />
         {showNotificationsPanel && (
           <Suspense fallback={null}>
             <NotificationsPanel

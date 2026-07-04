@@ -1,68 +1,132 @@
-# Release Z.1 - Desktop Experience V2 Task Status
+# Release P1 — Production SEO Foundation
 
-Status: Phase 1 desktop UX architecture audit complete.
+Status: complete.
+Date: 2026-07-04
 
-Production code modified: no.
+## Objective
 
-## Requested deliverables
+Transform Readative into a production-grade crawlable website while preserving all existing functionality.
 
-Created/updated only the requested architecture-phase files:
+## Constraints honored
 
-- `desktop_architecture.md`
-- `implementation_plan.md`
-- `engineering_risk.md`
-- `performance_plan.md`
-- `task.md`
+- No product redesign.
+- No business logic change.
+- No Firestore schema change.
+- No feed ranking change.
+- No SmartTalk functionality change.
+- No Notebook change.
+- No authentication change.
+- No virtualization change.
+- No dependencies added.
+- No polling, timers, intervals, or listeners added.
+- Google Analytics and production error logging were not removed.
 
-## Audit checklist
+## Implementation checklist
 
-Completed:
+### Part 1 — Premium legal pages
 
-- AppShell audit
-- Header audit
-- Feed container audit
-- KnowledgeFeed audit
-- Explore audit
-- SmartTalk audit
-- Profile audit
-- Desktop breakpoint audit
-- Max-width container audit
-- Scroll container audit
-- Sticky/fixed element audit
-- Responsive CSS audit
-- Virtualization audit
-- Existing side panel audit
-- Cached/local data reuse audit
-- Firestore/listener boundary audit
-- Render/repaint/memory risk audit
+- [x] `/about`
+- [x] `/contact`
+- [x] `/privacy`
+- [x] `/terms`
+- [x] `/disclaimer`
+- [x] `/community`
+- [x] SEO title and description
+- [x] canonical URL
+- [x] Open Graph
+- [x] Twitter Card
+- [x] JSON-LD
+- [x] Breadcrumb schema
+- [x] responsive server-rendered layout
+- [x] footer/header links use public URLs
+- [x] old panel reduced to optional lightweight preview
 
-## Key finding
+### Part 2 — SmartTalk SEO
 
-The current desktop layout is a centered `max-w-3xl` reading column inside a wider viewport. Reading width is already close to the target, but desktop whitespace is unused and there is no persistent knowledge-workspace shell.
+- [x] canonical hub `/smarttalks`
+- [x] canonical question route `/smarttalks/{questionId}`
+- [x] FAQ schema
+- [x] DiscussionForumPosting schema
+- [x] Breadcrumb schema
+- [x] related questions
+- [x] related posts/next reading links
+- [x] category links
+- [x] author attribution when available
+- [x] old `/smarttalk` route redirects/resolves
+- [x] old `/smarttalk?id=...` route redirects/resolves
+- [x] category query aliases remain safely resolved by SPA
 
-The recommended architecture is a desktop-only, route-owned adaptive shell above 1400px:
+### Part 3 — Knowledge post SEO hardening
 
-- left rail: 220-260px;
-- center reading column: 760-820px;
-- right rail: 260-320px;
-- sticky rails;
-- no new Firestore listeners;
-- no new dependencies;
-- no changes to mobile/tablet layout.
+- [x] `/post/{postId}` server SEO document
+- [x] canonical URL
+- [x] meta description
+- [x] title
+- [x] Open Graph
+- [x] Twitter Card
+- [x] Article schema
+- [x] Breadcrumb schema
+- [x] author schema when available
+- [x] share URL consistency through canonical route helpers
+- [x] no duplicate canonical after hydration
 
-## Recommended implementation posture
+### Part 4 — Internal linking
 
-After approval:
+- [x] posts expose related posts
+- [x] posts expose related SmartTalk
+- [x] posts expose category, author, tags, and Knowledge Journey links
+- [x] SmartTalk exposes related questions
+- [x] SmartTalk exposes related posts/next reading fallbacks
+- [x] SmartTalk exposes category and author links
+- [x] footer/legal pages link to each other
+- [x] Explore schema points SmartTalk items to canonical question URLs
 
-1. Add a small presentational desktop shell.
-2. Keep the existing mobile/tablet route rendering path.
-3. Keep feed virtualization untouched.
-4. Let KnowledgeFeed supply rail view models from already-loaded data.
-5. Do not preload Explore, SmartTalk, Profile, or My Notes for rails.
-6. Validate with build, TypeScript, diff check, and desktop/tablet/mobile QA.
+### Part 5 — Google indexing
 
-## Stop condition
+- [x] duplicate URL audit completed
+- [x] canonical conflicts fixed for SmartTalk and post SEO documents
+- [x] soft-404 risk reduced for missing/private dynamic records
+- [x] route/client mismatch reduced by supporting `/smarttalks` in the app router
+- [x] orphan/discovery links strengthened
+- [x] sitemap excludes legacy/query/tag URLs
+- [x] sitemap fails closed with 503 if dynamic data is unavailable
+- [x] robots remains consistent with sitemap URL
 
-STOP.
+### Part 6 — Cleanup
 
-Waiting for architecture approval before implementation.
+- [x] obsolete primary legal panel routing removed
+- [x] duplicated legal panel content removed
+- [x] obsolete imports/helpers removed from the legal panel path
+- [x] duplicate hydrated metadata generation fixed through Helmet-compatible server tags
+- [x] no analytics removal
+
+## Validation
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `git diff --check`
+- [x] Desktop QA
+- [x] Tablet QA
+- [x] Mobile QA
+- [x] SEO route QA
+- [x] Canonical QA
+- [x] Structured data QA
+- [x] Sitemap QA
+- [x] Robots QA
+- [x] Browser console QA
+
+## Final QA evidence
+
+- REST SEO loader: 328 public posts, 109 SmartTalk questions, 33 profiles.
+- Sitemap: 495 URLs.
+- Handler QA: legal, SmartTalk, post, legacy redirect, and sitemap routes passed.
+- Browser QA: 24 route/viewport checks passed.
+- Hydrated canonical count: one per checked SmartTalk/post route.
+- Browser console errors: none from the app origin.
+- Bundle impact: below 2 kB gzip.
+
+## Stop conditions
+
+No implementation section was stopped.
+
+Compatibility note: server redirects were added only where safe. Category query SmartTalk aliases remain SPA-resolved to preserve category route ownership.

@@ -1,186 +1,137 @@
-# Release Z.1 - Engineering Risk
+# Production SEO Engineering Risk Register
 
-Status: risk audit complete. Production code was not modified.
+Audit date: 2026-07-04
+Status: Pre-implementation risk assessment
 
-## Risk summary
+## Risk scale
 
-The release is feasible, but the primary risks are not visual. They are scroll, virtualization, and hidden data-loading regressions.
-
-The safest implementation is desktop-only, route-owned, and presentational. Rails must be outside the virtualized card list and must use only already-loaded data.
+- Critical: can expose private data, deindex the corpus, or break public routes.
+- High: can fragment canonical signals, create widespread crawl failures, or regress core navigation.
+- Medium: can reduce quality, increase cost, or create operational drift.
+- Low: localized quality issue with straightforward rollback.
 
 ## Risk register
 
-| Risk | Severity | Why it matters | Mitigation |
-|---|---:|---|---|
-| Mobile/tablet layout regression | High | Current app is mobile/tablet-first and all routes share one `main` container. | Gate all new layout behavior above 1400px. Do not rewrite existing `sm`/`md` behavior. |
-| Feed virtualization breakage | High | `KnowledgeCardList` measures row heights and uses window scroll. Width or scroll-container changes can cause jumps. | Keep the center column stable. Do not place rails inside `KnowledgeCardList`. Do not create nested main scroll containers. |
-| Extra Firestore reads/listeners | High | Rails could accidentally become new data surfaces. | Rail components must not import Firestore. Pass already-loaded route data as props. |
-| Startup bundle growth over 2KB gzip | Medium | A broad shell/module set could add more JS than the budget. | Use tiny presentational components, existing icons only if already in the chunk, no dependency, no full card duplication. |
-| Re-render churn during scroll | Medium | Sticky rails tied to visible-entry updates can render too often. | Use memoized selectors, cap item counts, avoid per-scroll state updates for rails. |
-| Duplicate heavy card rendering | High | Rendering full cards in rails defeats virtualization and increases memory. | Rails must render compact text/link rows only. |
-| Header/body/footer visual mismatch | Medium | Current header/footer are wider than body; new desktop shell can worsen imbalance if not aligned. | Align desktop workspace visually without changing header behavior. |
-| Sticky rail overflow | Medium | Tall rails can create unusable columns or nested scroll conflicts. | Cap rail content. Prefer compact modules. Avoid independent rail scrolling in the first implementation unless necessary. |
-| Route data coupling | High | App does not own feed/profile/explore/smarttalk data. Global rails could force broad architecture changes. | Use route-owned rail data. Keep App shell presentational. |
-| SmartTalk/Profile logic regression | High | Both routes have listeners, pagination, and focused-route scroll behavior. | Do not modify their data logic. Any rails must be route-local and use existing state. |
-| Explore preload regression | Medium | Explore currently loads three collections when mounted. Preloading it for desktop rails would violate performance rules. | Never mount Explore just to populate desktop rails. |
-| My Notes lazy-load regression | Medium | My Notes currently loads only from the Profile notes tab. | Do not touch Profile My Notes loading in Z.1. |
-| Accessibility/focus regression | Medium | New side rails add more keyboard targets before/after reading content. | Keep center content first in source order where practical; provide semantic `aside` labels; avoid focus traps. |
-| Social-media layout drift | Product risk | Dense sidebars could make Readative feel like LinkedIn/Reddit. | Rail modules should be calm, knowledge-oriented, compact, and reading-supportive. |
+| ID | Severity | Risk | Current trigger | Required mitigation | Rollback signal |
+| --- | --- | --- | --- | --- | --- |
+| R-01 | Critical | Private/profile data enters SEO output | Profiles and SmartTalk do not check `visibility`; profile name can fall back to email | Shared public predicate; prohibit email/ID fallback; private-data fixtures | Any private/email value in sitemap, discovery HTML, schema, or page source |
+| R-02 | Critical | Canonical question migration breaks SmartTalk direct loads | Product and server use different question URLs | Add target support first, then links/sitemap, then redirects | 404/loop/hydration mismatch on old or new cohort |
+| R-03 | Critical | Sitemap silently loses dynamic URLs | Loader falls back to static data with HTTP 200 | Minimum-count guard, last-known-good artifact, alerting, source header checks | Post/profile/question counts collapse unexpectedly |
+| R-04 | High | Post document delivery breaks interactive app | `/post/{id}` currently relies on SPA rewrite | One-route spike, hydration parity tests, feature flag or route rollback | Duplicate content, blank app, console hydration errors |
+| R-05 | High | Search sees cloaked or inconsistent content | Separate crawler/server and reader/client documents | Same canonical content and eligibility for all clients; no user-agent branching | Material source-vs-hydrated content mismatch |
+| R-06 | High | Redirect loops or chains | `/knowledge` already redirects; aliases and new SmartTalk redirects may overlap rewrites | Route table tests and one-hop redirect budget | More than one redirect or target returns another redirect |
+| R-07 | High | Indexable soft 404s remain | SPA patterns return `index.html` before client not-found | Server resource check and real 404/410 | Invalid route returns 200/index |
+| R-08 | High | Legal pages publish inaccurate claims | Current content is brief and not legally reviewed | Legal/operator review against actual data flows | Any mismatch with Firebase, Google auth, analytics, ads, cookies, or UGC practice |
+| R-09 | High | Category/topic cannibalization | Overlapping AI/category/topic/filter URLs | Taxonomy contract, canonical paths, unique copy, qualification thresholds | Multiple indexable URLs target same intent/content |
+| R-10 | High | CDN serves stale canonical/sitemap after migration | One-hour shared caches and stale-while-revalidate | Versioned rollout, purge plan, live cache/header checks | Old canonical persists after redirect/sitemap change |
+| R-11 | Medium | Firestore cost/latency grows with SEO traffic | Each SEO endpoint loads entire collections on cache miss | Direct document reads, shared cache/last-known-good data, endpoint budgets | Full scans per post request or serverless timeouts |
+| R-12 | Medium | Discovery pages exceed function/HTML limits | `/posts` and `/smarttalks` are unbounded | Pagination/splitting, response-size budgets | Response size/latency crosses agreed threshold |
+| R-13 | Medium | Client and server normalization drift | Separate metadata/schema code paths | Shared pure normalizers and parity fixtures | Same resource produces different title/status/canonical |
+| R-14 | Medium | Alternate hosting behaves differently | `vercel.json`, `_redirects`, Express, and Vite route sets differ | Declare supported production host; route manifest or parity tests | Route passes locally but fails on deployed host |
+| R-15 | Medium | False `lastmod` wastes crawl budget | Generated time used as fallback | Omit unknown `lastmod`; use real persisted timestamps | Unchanged URL timestamp moves between runs |
+| R-16 | Medium | Verification reports false success | Current script infers links/meta from code | Fetch and parse built/live responses | Script passes while representative response fails |
+| R-17 | Medium | Support hubs are classified as doorway pages | Machine-oriented full inventories are indexable | Make them useful user hubs or `noindex, follow` | Low engagement, duplication, quality exclusions |
+| R-18 | Medium | Author links lead to missing profiles | Content author IDs are not synthesized into profile SEO data | Validate public profile destination before linking/indexing | Authored content links to profile 404 |
+| R-19 | Medium | AMP creates host/canonical conflict | AMP canonical uses non-`www` | Normalize and validate AMP or retire it deliberately | AMP validator/canonical chain failure |
+| R-20 | Low | Rich preview quality remains generic | Logo fallback and missing dimensions | Content image validation and complete OG metadata | Preview debugger shows wrong/generic asset |
 
-## Root technical hazards
+## Highest-risk files for later implementation
 
-### 1. Window-scroll dependency
+| Area | Files | Why sensitive |
+| --- | --- | --- |
+| Client route contract | `src/utils/routes.ts`, `src/App.tsx`, `vercel.json` | A mismatch can break every direct load or create redirects loops |
+| SEO eligibility/data | `api/_seoData.ts` | Controls public exposure, sitemap counts, and server content |
+| Post route delivery | `src/components/KnowledgeFeed/*`, future server handler | Must preserve reading, feed cache, Notebook, and virtualization behavior |
+| SmartTalk route delivery | `src/components/SmartTalk.tsx`, `api/smarttalks.ts` | Two implementations must become one canonical resource without logic changes |
+| Global metadata | `src/components/SEO.tsx`, `src/utils/seoSchemas.ts`, `index.html` | A global regression can affect every indexed URL |
+| Footer/legal | `src/components/AppShell.tsx`, `src/components/AppPanels.tsx`, route layer | Must separate authoritative pages without breaking panel behavior |
+| Sitemap/routing | `api/sitemap.xml.ts`, `vercel.json`, `public/_redirects` | Production-specific and highly cached |
 
-The feed virtualizer, feed scroll persistence, focused post navigation, SmartTalk focused question behavior, and Profile author-change behavior all assume the browser window is the primary scroll container.
+## Required safeguards
 
-Regression pattern:
+### Public-content contract
 
-```text
-New desktop shell adds nested scroll
-  -> window scroll no longer represents content scroll
-  -> virtualization window is wrong
-  -> focused/restore scroll behavior is wrong
-```
+Before expanding indexability, define one pure eligibility contract per resource:
 
-Mitigation:
+- public visibility;
+- published status;
+- no deletion/moderation marker;
+- required title/content fields;
+- qualifying content threshold;
+- valid canonical owner/author relationship;
+- real timestamp handling.
 
-- Keep page scroll on the window.
-- Use sticky rails inside the normal document flow.
-- Do not put the center column in `overflow-y-auto`.
+The same predicate must drive sitemap, discovery, server document, client robots, and schema.
 
-### 2. Center width changes
+### Route contract tests
 
-`KnowledgeCardList` estimates card height and then measures actual card height. Changing center width changes text wrapping and media layout, which can trigger measurement churn.
+Every canonical family needs table-driven tests for:
 
-Mitigation:
+- canonical route;
+- legacy route;
+- alias route;
+- malformed identifier;
+- missing resource;
+- private/deleted resource;
+- trailing slash;
+- query-string variant;
+- HEAD behavior;
+- redirect count and destination.
 
-- Keep center width in the same practical range as today's `max-w-3xl`.
-- Avoid dynamic width changes based on rail content.
-- Test at 1400px, 1440px, 1536px, and larger desktop widths.
+### Deployment gates
 
-### 3. Data ownership leakage
+Do not advance phases when:
 
-App owns routing, identity, notifications, panels, and lazy routes. It does not own feed entries, Explore entries, SmartTalk questions, or Profile entries.
+- live sitemap counts collapse;
+- any valid canonical returns non-200;
+- any invalid/private route returns indexable 200;
+- source HTML and hydrated canonical differ;
+- server and client schema entity URLs differ;
+- redirects exceed one hop;
+- legal review is incomplete.
 
-Mitigation:
+### Rollback assets
 
-- Do not introduce a global desktop data store.
-- Do not import route data loaders in App.
-- Let route components pass already-loaded data to desktop rail modules.
+Prepare before each deploy:
 
-### 4. Rail over-rendering
+- previous route/redirect manifest;
+- previous sitemap output or last-known-good generator version;
+- canonical URL cohort list;
+- cache purge procedure;
+- feature flag or rewrite rollback for server documents;
+- Search Console annotation/date record.
 
-A rail tied to scroll position can re-render on every scroll animation frame.
+## Regression risk by phase
 
-Mitigation:
+| Phase | Risk | Reason |
+| --- | --- | --- |
+| 1.1 Legal pages | Medium | New route surface and content accuracy, but isolated from product logic |
+| 1.2 SmartTalk SEO | High | Public URL and direct-load migration |
+| 1.3 Post SEO | High | Changes initial document delivery for the core reading route |
+| 1.4 Internal linking | Medium | Broad anchor changes can expose redirect or missing destinations |
+| 1.5 Index optimization | High | Sitemap and status changes can add/remove hundreds of URLs |
+| 1.6 Validation | Low | Read-only, but must be run against the actual deployment |
 
-- Rail modules should update on loaded data, focused entry, route, search/topic changes, or coarse visible-entry changes only.
-- Cap derived arrays and memoize them.
+## Expected operational improvements
 
-## Files with highest regression sensitivity
+After the staged work:
 
-- `src/App.tsx`
-  - Top-level layout, route rendering, panels, mobile nav.
-- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
-  - Feed data lifecycle, scroll restoration, route filters, pagination.
-- `src/components/KnowledgeFeed/FeedRenderer.tsx`
-  - Feed UI composition, category controls, card list placement.
-- `src/components/KnowledgeCardList.tsx`
-  - Virtualization and measurement.
-- `src/components/Header.tsx`
-  - Fixed header and account/notification controls.
-- `src/components/Explore.tsx`
-  - Discovery route data loading and derived sections.
-- `src/components/SmartTalk.tsx`
-  - Route listeners, count query, focused-question scroll.
-- `src/components/Profile.tsx`
-  - Profile listeners, virtualized shared/saved sections, My Notes tab.
+- fewer repeated full-corpus SEO reads;
+- smaller, more deliberate sitemap corpus;
+- fewer unnecessary Google crawls of empty/noindex URLs;
+- fewer client renders required for Google to understand a page;
+- clearer failure detection when SEO data disappears;
+- no expected increase in feed render count or startup bundle when server work remains isolated.
 
-## Regression risk by surface
+## Current production-readiness risk
 
-### Home feed
+Overall risk: **High**.
 
-Risk: high.
+The privacy/eligibility findings must be addressed before aggressively increasing author or SmartTalk indexing. Canonical consolidation and server document delivery must be staged separately.
 
-Reason:
+Related documents:
 
-- It is the primary reading surface and uses virtualization, scroll persistence, focus scroll, pagination, and already-loaded SmartTalk/profile preview data.
-
-Control:
-
-- Implement rails outside the virtualized list.
-- Use KnowledgeFeed-owned selectors.
-
-### Focused post
-
-Risk: medium-high.
-
-Reason:
-
-- Focused post route scrolls the target into view.
-- Desktop rails should not alter focus scroll behavior.
-
-Control:
-
-- Test focused post open from feed and direct route.
-- Do not add route-level scroll restoration changes.
-
-### Explore
-
-Risk: medium.
-
-Reason:
-
-- Explore has route-local one-shot reads and many derived sections.
-
-Control:
-
-- Do not preload Explore.
-- Preserve single-column behavior below 1400px.
-
-### SmartTalk
-
-Risk: medium-high.
-
-Reason:
-
-- SmartTalk uses listeners, count query, pagination, and focused-question scroll.
-
-Control:
-
-- Do not change SmartTalk data logic.
-- Avoid global SmartTalk rail subscriptions.
-
-### Profile
-
-Risk: medium-high.
-
-Reason:
-
-- Profile combines document listeners, post listeners, saved item reads, lazy My Notes, and virtualized card lists.
-
-Control:
-
-- Do not change profile data logic.
-- Confirm My Notes remains lazy.
-
-## Recommended minimal implementation risk posture
-
-1. Build the desktop shell as presentational.
-2. Keep route data ownership unchanged.
-3. Complete the Knowledge Feed workspace first.
-4. Keep other route rails minimal or absent unless they can be derived from route-local state without new reads.
-5. Validate mobile/tablet before judging desktop polish.
-
-## Production readiness gate after implementation
-
-Production readiness requires:
-
-- `npm run build` passes.
-- `npx tsc --noEmit` passes.
-- `git diff --check` passes.
-- Desktop/tablet/mobile QA passes.
-- No added dependencies.
-- No new Firestore reads/listeners for rails.
-- Center reading column remains 760-820px.
-- Virtualization behavior is unchanged.
+- [production_seo_audit.md](production_seo_audit.md)
+- [implementation_plan.md](implementation_plan.md)
+- [migration_plan.md](migration_plan.md)
+- [google_indexing_audit.md](google_indexing_audit.md)

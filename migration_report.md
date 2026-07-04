@@ -1,90 +1,98 @@
-# Readative Release Y.2 — Migration Report
+# Release P1 — Migration Report
 
-Date: 2026-07-03
+Status: implemented and validated.
+Date: 2026-07-04
 
-## Decision
+## Migration type
 
-Release Y.2 starts a clean semantic Notebook Highlight namespace.
+This release is a URL, routing, metadata, and crawlability migration.
 
-No old Ink stroke was migrated. No archived semantic Highlight row was migrated in this release. No legacy document was read, changed, copied, or deleted.
+No Firestore documents were migrated, copied, rewritten, deleted, or reshaped.
 
-## Legacy sources
+## URL migration
 
-### Release Y.1 Ink
+| Old surface | New canonical surface | Migration behavior |
+| --- | --- | --- |
+| legal AppPanel sections | `/about`, `/contact`, `/privacy`, `/terms`, `/disclaimer`, `/community` | footer/header links now navigate to public URLs |
+| `/community-guidelines` | `/community` | permanent redirect |
+| `/smarttalk` | `/smarttalks` | server 308 redirect |
+| `/smarttalk?id={questionId}` | `/smarttalks/{questionId}` | server 308 redirect |
+| `/smarttalk/{questionId}` | `/smarttalks/{questionId}` | server 308 redirect |
+| `/category/{slug}?id={questionId}` | `/smarttalks/{questionId}` | preserved as client-resolved compatibility to avoid breaking category routing |
+| `/post/{postId}` SPA shell | `/post/{postId}` server SEO document plus SPA hydration | same public URL, stronger initial HTML |
 
-Legacy paths:
+## SmartTalk migration
 
-```text
-userInk/{uid}
-userInk/{uid}/posts/{postId}
-```
-
-Status: archived in place.
-
-Y.2 does not import the old repository and has no runtime reference to `userInk`. Vector geometry cannot be reliably converted to paragraph/character ranges, so no heuristic migration exists.
-
-### Pre-Y.1 semantic Highlight
-
-Legacy path:
+Canonical SmartTalk URLs are now:
 
 ```text
-userHighlights/{autoId}
+/smarttalks
+/smarttalks/{questionId}
 ```
 
-Status: archived in place.
+Internal SmartTalk question links, SmartTalk schema, Explore schema, discovery output, and sitemap output now point to canonical question URLs.
 
-Although some rows contain paragraph indexes and offsets, converting them requires a separately approved validation migration against current post text. Y.2 application startup does not scan or convert them.
+Backward compatibility remains through:
 
-## New namespace
+- server redirect for `/smarttalk`
+- server redirect for `/smarttalk?id={questionId}`
+- server redirect for `/smarttalk/{questionId}`
+- SPA parsing for category query aliases
+- SPA parsing for old hash aliases
 
-```text
-userNotebook/{uid}/posts/{postId}
-```
+## Legal migration
 
-Each document contains one array of records with only:
+The legal side panel is no longer the primary legal experience.
 
-- `postId`
-- `paragraphId`
-- `startOffset`
-- `endOffset`
-- `color`
-- `createdAt`
+Authoritative legal pages are single-source server-rendered documents in `api/legal.ts`.
 
-No legacy ID, vector, path, coordinate, selected sentence, post metadata, schema marker, or migration marker is stored.
+The optional `InfoPanel` was reduced to a lightweight preview that links to:
 
-## Code migration
+- `/about`
+- `/contact`
+- `/privacy`
+- `/terms`
+- `/community`
+- `/disclaimer`
 
-| Y.1 component | Y.2 result |
-| --- | --- |
-| `InkProvider` | Replaced by route-aware `NotebookProvider` |
-| Ink post-ID manifest | Replaced by a count aggregation; no manifest document |
-| `InkSurface` | Deleted |
-| Stroke schema | Deleted |
-| Geometry codec/projector | Deleted |
-| SVG overlay/path rendering | Deleted |
-| Hold/touch/pointer drawing state | Deleted |
-| Pen colors/widths/preferences | Deleted |
-| `InkPreview` | Replaced by derived yellow text preview |
-| `userInk` repository | Replaced by semantic one-document-per-post repository |
-| Ink card indicator/settings | Replaced by one Notebook Highlight icon and paragraph margin controls |
-| Vector My Notes | Replaced by post-level semantic My Notes |
+Duplicated legal content inside the panel was removed.
 
-## Source archive verification
+## Sitemap migration
 
-- No Y.2 highlight source imports the deleted `src/ink` directory.
-- No Y.2 highlight source references `userInk`.
-- No migration script was added to the web bundle.
-- No Firestore write was executed during this implementation/QA session.
-- Old collections remain available for rollback/data-retention decisions.
+The sitemap now contains production URLs only:
+
+- static public pages
+- legal/trust pages
+- public posts
+- public SmartTalk questions
+- public author profiles with public contribution evidence
+- non-empty categories/topics
+
+The sitemap excludes:
+
+- legacy `/smarttalk` URLs
+- query URLs
+- `/tag/` URLs
+- empty/thin taxonomy URLs
+- private/deleted/hidden content
+- fallback timestamps when no reliable lastmod exists
 
 ## Rollback
 
-Application rollback can restore Release Y.1, which will continue reading its archived `userInk` namespace. Y.1 ignores `userNotebook`.
+Application rollback restores the previous SPA shell behavior and old footer/panel routing. No database rollback is required.
 
-Y.2 rollback must not delete `userNotebook` automatically. Any future data cleanup requires a separately approved, scoped process.
+Operational rollback watch items:
+
+- Vercel rewrites for `/about`, `/contact`, `/privacy`, `/terms`, `/disclaimer`, `/community`, `/post/:id`, `/smarttalks`, and `/smarttalks/:id`.
+- Vercel redirect/rewrite for `/smarttalk`.
+- Sitemap dynamic data availability.
+
+## Compatibility note
+
+No server redirect was added for `/category/{slug}?id={questionId}` because that would require query-sensitive category route interception and could introduce breaking category behavior. The old URL shape remains resolved by the existing SPA route parser, preserving user navigation while canonical links and sitemap discovery point to `/smarttalks/{questionId}`.
 
 ## Migration status
 
-Complete as archive-and-start-clean.
+Complete for P1.
 
-Production activation remains conditional on deployed security-rule validation for the new owner-scoped path.
+No data migration remains.

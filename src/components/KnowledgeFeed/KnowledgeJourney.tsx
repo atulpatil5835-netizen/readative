@@ -73,6 +73,7 @@ interface KnowledgeJourneyInput {
 
 interface KnowledgeJourneyProps extends KnowledgeJourneyInput {
   className?: string;
+  variant?: "inline" | "rail";
 }
 
 function normalizeJourneyToken(value: string | null | undefined) {
@@ -406,6 +407,7 @@ export function KnowledgeJourney({
   entries,
   questions,
   className = "",
+  variant = "inline",
 }: KnowledgeJourneyProps) {
   const actions = useMemo(
     () => getKnowledgeJourneyActions({ entry, entries, questions }),
@@ -424,16 +426,20 @@ export function KnowledgeJourney({
 
   return (
     <section
-      className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm ${className}`}
+      className={`mt-4 rounded-2xl border border-slate-100 bg-slate-50/70 px-3.5 py-3.5 shadow-none ${className}`}
       aria-label={`Knowledge journey after ${entry.title}`}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
           Continue learning
         </p>
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      <div
+        className={
+          variant === "rail" ? "mt-2 grid gap-2" : "mt-2 grid gap-2 sm:grid-cols-2"
+        }
+      >
         {actions.map((action) => {
           const ActionIcon = action.icon;
 
@@ -442,16 +448,16 @@ export function KnowledgeJourney({
               key={action.id}
               href={action.href}
               onClick={(event) => handleNavigate(event, action)}
-              className="group flex min-h-[58px] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+              className="group flex min-h-[58px] items-center gap-2 rounded-xl border border-slate-100 bg-white/80 px-3 py-2 text-left transition-colors hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm transition-colors group-hover:text-emerald-700">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:text-emerald-700">
                 <ActionIcon className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                <span className="block truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
                   {action.label}
                 </span>
-                <span className="mt-0.5 line-clamp-1 text-xs font-bold leading-5 text-slate-800 group-hover:text-emerald-700">
+                <span className="mt-0.5 line-clamp-1 text-xs font-semibold leading-5 text-slate-800 group-hover:text-emerald-700">
                   {action.title}
                 </span>
                 <span className="block truncate text-[11px] font-semibold text-slate-400">

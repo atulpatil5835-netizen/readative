@@ -258,6 +258,8 @@ export function KnowledgeFeed({
   const [feedEntryOrder, setFeedEntryOrder] =
     useState<string[]>(initialFeedOrder);
   const [visibleLikedEntryIds, setVisibleLikedEntryIds] = useState<string[]>([]);
+  const [desktopContextEntryId, setDesktopContextEntryId] =
+    useState<string | null>(null);
   const [hasMoreServerEntries, setHasMoreServerEntries] = useState(
     () => initialFeedCache?.hasMoreServerEntries ?? true,
   );
@@ -1449,11 +1451,18 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     lastAutoLoadEntryCountRef.current = 0;
+    setDesktopContextEntryId(null);
   }, [deferredFeedSearchQuery, focusedEntryId, independentFeedKey]);
 
   const handleVisibleEntry = useCallback(
     (entry: KnowledgeEntry) => {
       markKnowledgeEntrySeen(entry);
+
+      if (typeof window !== "undefined" && window.innerWidth >= 1400) {
+        setDesktopContextEntryId((current) =>
+          current === entry.id ? current : entry.id,
+        );
+      }
 
       if (
         !isActive ||
@@ -2156,6 +2165,7 @@ export function KnowledgeFeed({
         normalizedSelectedHashtag={normalizedSelectedHashtag}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
+        desktopContextEntryId={desktopContextEntryId}
         profiles={profiles}
         journeyQuestions={journeyQuestions}
         feedSearchQuery={feedSearchQuery}

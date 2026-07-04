@@ -271,6 +271,29 @@ function parsePostRoute(
   });
 }
 
+function parseSmartTalkCanonicalRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  const hubPath = source === "hash" ? "smarttalks" : "/smarttalks";
+  if (routePart === hubPath) {
+    return createRoute("smarttalk", source, attemptedLocation);
+  }
+
+  const questionPrefix = source === "hash" ? "smarttalks/" : "/smarttalks/";
+  if (!routePart.startsWith(questionPrefix)) return null;
+
+  const focusedEntryId = safeDecode(routePart.slice(questionPrefix.length));
+  if (!focusedEntryId) {
+    return createRoute("notFound", source, attemptedLocation);
+  }
+
+  return createRoute("smarttalk", source, attemptedLocation, {
+    focusedEntryId,
+  });
+}
+
 function parseHashRoute(hash: string) {
   const cleanedHash = hash.replace(/^#/, "").trim();
   const attemptedLocation = cleanedHash ? `#${cleanedHash}` : "#";
@@ -295,6 +318,7 @@ function parseHashRoute(hash: string) {
 
   return (
     parseCategoryRoute(routePart, search, "hash", attemptedLocation) ||
+    parseSmartTalkCanonicalRoute(routePart, "hash", attemptedLocation) ||
     parseTagRoute(routePart, "hash", attemptedLocation) ||
     parsePostRoute(routePart, "hash", attemptedLocation) ||
     parseTopicRoute(routePart, "hash", attemptedLocation) ||
@@ -324,6 +348,13 @@ function parsePathRoute(pathname: string, search: string) {
       focusedEntryId,
     });
   }
+
+  const canonicalSmartTalkRoute = parseSmartTalkCanonicalRoute(
+    normalizedPathname,
+    "path",
+    attemptedLocation,
+  );
+  if (canonicalSmartTalkRoute) return canonicalSmartTalkRoute;
 
   if (normalizedPathname === "/explore" || normalizedPathname === "/jobs") {
     return createRoute("explore", "path", attemptedLocation);
@@ -404,17 +435,15 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "smarttalk") {
-    const params = new URLSearchParams();
     if (options.focusedEntryId) {
-      params.set("id", options.focusedEntryId);
+      return `/smarttalks/${encodeURIComponent(options.focusedEntryId)}`;
     }
+
     const category = options.selectedTopic ? normalizeCategorySlug(options.selectedTopic) : null;
     if (category) {
-      const search = params.toString();
-      return `/category/${encodeURIComponent(category)}${search ? `?${search}` : ""}`;
+      return `/category/${encodeURIComponent(category)}`;
     }
-    const search = params.toString();
-    return search ? `/smarttalk?${search}` : "/smarttalk";
+    return "/smarttalks";
   }
 
   return "/";

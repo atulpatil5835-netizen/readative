@@ -30,6 +30,7 @@ interface ArticleSchemaInput {
   description: string;
   url: string;
   authorName: string;
+  authorUrl?: string;
   datePublished: string;
   dateModified?: string;
   keywords?: string[];
@@ -42,17 +43,21 @@ interface DiscussionForumPostingInput {
   text: string;
   url: string;
   authorName: string;
+  authorUrl?: string;
   datePublished: string;
+  dateModified?: string;
   answerCount?: number;
   commentCount?: number;
   keywords?: string[];
+  answers?: Array<{ text: string; authorName: string; authorUrl?: string }>;
 }
 
 interface FAQPageInput {
   url: string;
   questions: Array<{
     question: string;
-    answer: string;
+    answer?: string;
+    suggestedAnswers?: Array<{ text: string; authorName?: string }>;
   }>;
 }
 
@@ -144,6 +149,7 @@ export function buildArticleSchema({
   description,
   url,
   authorName,
+  authorUrl,
   datePublished,
   dateModified,
   keywords = [],
@@ -158,6 +164,7 @@ export function buildArticleSchema({
     author: {
       "@type": "Person",
       name: authorName,
+      url: authorUrl ? getReadativeUrl(authorUrl) : undefined,
     },
     publisher: {
       "@type": "Organization",
@@ -172,6 +179,7 @@ export function buildArticleSchema({
     articleSection: section,
     keywords: keywords.join(", "),
     mainEntityOfPage: getReadativeUrl(url),
+    url: getReadativeUrl(url),
     image: Array.isArray(image) ? image : image ? [image] : undefined,
   };
 }
@@ -181,10 +189,13 @@ export function buildDiscussionForumPostingSchema({
   text,
   url,
   authorName,
+  authorUrl,
   datePublished,
+  dateModified,
   answerCount = 0,
   commentCount = 0,
   keywords = [],
+  answers = [],
 }: DiscussionForumPostingInput) {
   return {
     "@context": "https://schema.org",
@@ -194,8 +205,10 @@ export function buildDiscussionForumPostingSchema({
     author: {
       "@type": "Person",
       name: authorName,
+      url: authorUrl ? getReadativeUrl(authorUrl) : undefined,
     },
     datePublished,
+    dateModified,
     url: getReadativeUrl(url),
     keywords: keywords.join(", "),
     interactionStatistic: [
@@ -213,8 +226,17 @@ export function buildDiscussionForumPostingSchema({
     isPartOf: {
       "@type": "CollectionPage",
       name: "SmartTalk",
-      url: getReadativeUrl("/smarttalk"),
+      url: getReadativeUrl("/smarttalks"),
     },
+    comment: answers.map((answer) => ({
+      "@type": "Comment",
+      text: answer.text,
+      author: {
+        "@type": "Person",
+        name: answer.authorName,
+        url: answer.authorUrl ? getReadativeUrl(answer.authorUrl) : undefined,
+      },
+    })),
   };
 }
 
@@ -226,10 +248,19 @@ export function buildFAQPageSchema({ url, questions }: FAQPageInput) {
     mainEntity: questions.map((item) => ({
       "@type": "Question",
       name: item.question,
-      acceptedAnswer: {
+      acceptedAnswer: item.answer
+        ? {
+            "@type": "Answer",
+            text: item.answer,
+          }
+        : undefined,
+      suggestedAnswer: item.suggestedAnswers?.map((answer) => ({
         "@type": "Answer",
-        text: item.answer,
-      },
+        text: answer.text,
+        author: answer.authorName
+          ? { "@type": "Person", name: answer.authorName }
+          : undefined,
+      })),
     })),
   };
 }

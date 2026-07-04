@@ -13,7 +13,6 @@ import {
 import { Logo } from "./Logo";
 import { buildPublicPath, navigateToRoute, type AppTab } from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { type InfoSection } from "./AppPanels";
 
 interface HeaderProps {
   activeTab: AppTab | "notFound";
@@ -22,7 +21,6 @@ interface HeaderProps {
   onHomeAction: () => void;
   unreadNotificationCount: number;
   onOpenNotifications: () => void;
-  onOpenInfo: (section?: InfoSection) => void;
   onOpenSignIn: () => void;
   onSignOut: () => void;
 }
@@ -36,7 +34,6 @@ export const Header = memo(function Header({
   onHomeAction,
   unreadNotificationCount,
   onOpenNotifications,
-  onOpenInfo,
   onOpenSignIn,
   onSignOut,
 }: HeaderProps) {
@@ -89,7 +86,7 @@ export const Header = memo(function Header({
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6">
+      <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6 min-[1400px]:max-w-[1400px]">
         <div className="flex items-center gap-3">
           <a
             href="/"
@@ -230,33 +227,33 @@ export const Header = memo(function Header({
                   <Bookmark className="h-4 w-4" />
                   <span className="flex-1">Saved Posts</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleMenuAction(() => onOpenInfo("about"))}
+                <a
+                  href="/about"
+                  onClick={() => setActionsOpen(false)}
                   role="menuitem"
                   className="flex min-h-11 w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <Info className="h-4 w-4" />
                   About Readative
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMenuAction(() => onOpenInfo("privacy"))}
+                </a>
+                <a
+                  href="/privacy"
+                  onClick={() => setActionsOpen(false)}
                   role="menuitem"
                   className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Privacy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMenuAction(() => onOpenInfo("terms"))}
+                </a>
+                <a
+                  href="/terms"
+                  onClick={() => setActionsOpen(false)}
                   role="menuitem"
                   className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
                 >
                   <FileText className="h-4 w-4" />
                   Terms
-                </button>
+                </a>
                 {hasSignedInAccount && (
                   <button
                     type="button"

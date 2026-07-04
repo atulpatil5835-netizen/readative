@@ -25,6 +25,10 @@ export interface SeoPost {
   updatedAt: number | null;
 }
 
+export interface SeoPostDocument extends SeoPost {
+  content: string;
+}
+
 export interface SeoProfile {
   id: string;
   name: string;
@@ -68,10 +72,17 @@ export interface SeoData {
   errors: string[];
 }
 
+export interface SeoPostPageData {
+  source: "admin" | "rest";
+  post: SeoPostDocument;
+  relatedPosts: SeoPost[];
+  relatedSmartTalks: SeoSmartTalk[];
+}
+
 export interface SitemapEntry {
   loc: string;
   path: string;
-  lastmod: string;
+  lastmod?: string;
   changefreq: "daily" | "weekly" | "monthly";
   priority: string;
   type: "page" | "category" | "topic" | "tag" | "post" | "profile" | "smarttalk";
@@ -93,11 +104,16 @@ type FirestoreValue =
   | { nullValue: null };
 
 const STATIC_PAGES = [
-  { path: "/", priority: "1.0", changefreq: "daily" as const },
-  { path: "/explore", priority: "0.8", changefreq: "weekly" as const },
-  { path: "/smarttalk", priority: "0.8", changefreq: "weekly" as const },
-  { path: "/smarttalks", priority: "0.75", changefreq: "weekly" as const },
-  { path: DISCOVERY_INDEX_PATH, priority: "0.9", changefreq: "daily" as const },
+  { path: "/", priority: "1.0", changefreq: "daily" as const, lastmod: null },
+  { path: "/explore", priority: "0.8", changefreq: "weekly" as const, lastmod: null },
+  { path: "/smarttalks", priority: "0.8", changefreq: "weekly" as const, lastmod: null },
+  { path: DISCOVERY_INDEX_PATH, priority: "0.9", changefreq: "daily" as const, lastmod: null },
+  { path: "/about", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/contact", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/privacy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/terms", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/disclaimer", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/community", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
 ];
 
 function readEnv(name: string) {
@@ -211,6 +227,67 @@ async function fetchRestCollection(collectionId: string) {
   return documents;
 }
 
+async function fetchRestDocument(collectionId: string, id: string) {
+  const projectId = getProjectId();
+  const apiKey = getApiKey();
+  const url = new URL(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionId}/${encodeURIComponent(id)}`,
+  );
+  if (apiKey) url.searchParams.set("key", apiKey);
+
+  const response = await fetch(url);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `${collectionId}/${id} REST fetch failed (${response.status}): ${body.slice(0, 220)}`,
+    );
+  }
+
+  return decodeRestDocument((await response.json()) as FirestoreDocument);
+}
+
+async function fetchRestMatches(collectionId: string, field: string, value: string) {
+  if (!value) return [];
+
+  const projectId = getProjectId();
+  const apiKey = getApiKey();
+  const url = new URL(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+  );
+  if (apiKey) url.searchParams.set("key", apiKey);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: field },
+            op: "EQUAL",
+            value: { stringValue: value },
+          },
+        },
+        limit: 8,
+      },
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `${collectionId} related REST query failed (${response.status}): ${body.slice(0, 220)}`,
+    );
+  }
+
+  const payload = (await response.json()) as Array<{ document?: FirestoreDocument }>;
+  return payload
+    .map((row) => row.document)
+    .filter((document): document is FirestoreDocument => Boolean(document))
+    .map(decodeRestDocument);
+}
+
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -278,13 +355,24 @@ function isPublishedPost(data: Record<string, unknown>) {
   );
 }
 
+function isPublicRecord(data: Record<string, unknown>) {
+  const visibility = normalizeString(data.visibility).toLowerCase();
+  const status = normalizeString(data.status || data.publishStatus).toLowerCase();
+
+  return (
+    visibility !== "private" &&
+    !PRIVATE_STATUSES.has(status) &&
+    !data.deletedAt
+  );
+}
+
 function normalizePost(id: string, data: Record<string, unknown>): SeoPost | null {
   if (!id || !isPublishedPost(data)) return null;
 
   const createdAt =
     normalizeTimestamp(data.createdAt) ||
     normalizeTimestamp(data.updatedAt) ||
-    Date.now();
+    0;
   const updatedAt = normalizeTimestamp(data.updatedAt);
   const authorName =
     normalizeString(data.author) ||
@@ -306,25 +394,34 @@ function normalizePost(id: string, data: Record<string, unknown>): SeoPost | nul
   };
 }
 
+function normalizePostDocument(
+  id: string,
+  data: Record<string, unknown>,
+): SeoPostDocument | null {
+  const post = normalizePost(id, data);
+  if (!post) return null;
+
+  return {
+    ...post,
+    content: normalizeString(data.content),
+  };
+}
+
 function normalizeProfile(
   id: string,
   data: Record<string, unknown>,
 ): SeoProfile | null {
-  if (!id || data.deletedAt) return null;
-
-  const status = normalizeString(data.status).toLowerCase();
-  if (PRIVATE_STATUSES.has(status)) return null;
+  if (!id || !isPublicRecord(data)) return null;
 
   const name =
     normalizeString(data.displayName) ||
-    normalizeString(data.username) ||
-    normalizeString(data.email) ||
-    id;
+    normalizeString(data.username);
+  if (!name) return null;
 
   return {
     id,
     name,
-    username: normalizeString(data.username) || normalizeSeoSlug(name) || id,
+    username: normalizeString(data.username) || normalizeSeoSlug(name) || name,
     description:
       normalizeString(data.bio) ||
       "A Readative contributor publishing and curating practical knowledge.",
@@ -338,10 +435,7 @@ function normalizeSmartTalk(
   id: string,
   data: Record<string, unknown>,
 ): SeoSmartTalk | null {
-  if (!id || data.deletedAt) return null;
-
-  const status = normalizeString(data.status).toLowerCase();
-  if (PRIVATE_STATUSES.has(status)) return null;
+  if (!id || !isPublicRecord(data)) return null;
 
   const content = normalizeString(data.content);
   if (!content) return null;
@@ -349,7 +443,7 @@ function normalizeSmartTalk(
   const createdAt =
     normalizeTimestamp(data.createdAt) ||
     normalizeTimestamp(data.updatedAt) ||
-    Date.now();
+    0;
   const updatedAt = normalizeTimestamp(data.updatedAt);
   const answers = Array.isArray(data.answers) ? data.answers : [];
 
@@ -360,10 +454,11 @@ function normalizeSmartTalk(
     authorId: normalizeString(data.authorId),
     authorName: normalizeString(data.author) || "Readative contributor",
     category: normalizeSeoSlug(normalizeString(data.category)),
-    answerCount: answers.length,
     answers: answers
       .map((answer) =>
-        answer && typeof answer === "object"
+        answer &&
+        typeof answer === "object" &&
+        isPublicRecord(answer as Record<string, unknown>)
           ? {
               authorName:
                 normalizeString((answer as Record<string, unknown>).author) ||
@@ -380,6 +475,13 @@ function normalizeSmartTalk(
           Boolean(answer?.text),
       )
       .slice(0, 5),
+    answerCount: answers.filter(
+      (answer) =>
+        answer &&
+        typeof answer === "object" &&
+        isPublicRecord(answer as Record<string, unknown>) &&
+        Boolean(normalizeString((answer as Record<string, unknown>).content)),
+    ).length,
     createdAt,
     updatedAt,
   };
@@ -423,17 +525,19 @@ function enrichProfiles(
     stats.lastmod = Math.max(stats.lastmod || 0, contentLastmod(question));
   }
 
-  return profiles.map((profile) => {
-    const stats = profileStats.get(profile.id);
-    if (!stats) return profile;
+  return profiles
+    .map((profile) => {
+      const stats = profileStats.get(profile.id);
+      if (!stats) return profile;
 
-    return {
-      ...profile,
-      postCount: stats.postCount,
-      smartTalkCount: stats.smartTalkCount,
-      updatedAt: Math.max(profile.updatedAt || 0, stats.lastmod || 0) || profile.updatedAt,
-    };
-  });
+      return {
+        ...profile,
+        postCount: stats.postCount,
+        smartTalkCount: stats.smartTalkCount,
+        updatedAt: Math.max(profile.updatedAt || 0, stats.lastmod || 0) || profile.updatedAt,
+      };
+    })
+    .filter((profile) => profile.postCount + profile.smartTalkCount > 0);
 }
 
 function buildTags(posts: SeoPost[]) {
@@ -563,8 +667,70 @@ export async function loadSeoData(): Promise<SeoData> {
   };
 }
 
-function toIsoDate(value: number | null | undefined, fallback: number) {
-  return new Date(value || fallback).toISOString();
+export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | null> {
+  if (!id) return null;
+
+  const database = getAdminDatabase();
+  if (database) {
+    const snapshot = await database.collection("knowledge").doc(id).get();
+    if (!snapshot.exists) return null;
+
+    const rawData = snapshot.data() || {};
+    const post = normalizePostDocument(snapshot.id, rawData);
+    if (!post) return null;
+
+    const categoryValue = normalizeString(rawData.category);
+    const [relatedPostSnapshot, relatedSmartTalkSnapshot] = categoryValue
+      ? await Promise.all([
+          database.collection("knowledge").where("category", "==", categoryValue).limit(8).get(),
+          database.collection("smarttalk").where("category", "==", categoryValue).limit(8).get(),
+        ])
+      : [null, null];
+
+    return {
+      source: "admin",
+      post,
+      relatedPosts: (relatedPostSnapshot?.docs || [])
+        .map((document) => normalizePost(document.id, document.data()))
+        .filter((candidate): candidate is SeoPost => Boolean(candidate && candidate.id !== id))
+        .slice(0, 4),
+      relatedSmartTalks: (relatedSmartTalkSnapshot?.docs || [])
+        .map((document) => normalizeSmartTalk(document.id, document.data()))
+        .filter((candidate): candidate is SeoSmartTalk => Boolean(candidate))
+        .slice(0, 4),
+    };
+  }
+
+  const document = await fetchRestDocument("knowledge", id);
+  if (!document) return null;
+
+  const post = normalizePostDocument(document.id, document.data);
+  if (!post) return null;
+
+  const categoryValue = normalizeString(document.data.category);
+  const [relatedPostDocuments, relatedSmartTalkDocuments] = categoryValue
+    ? await Promise.all([
+        fetchRestMatches("knowledge", "category", categoryValue).catch(() => []),
+        fetchRestMatches("smarttalk", "category", categoryValue).catch(() => []),
+      ])
+    : [[], []];
+
+  return {
+    source: "rest",
+    post,
+    relatedPosts: relatedPostDocuments
+      .map((candidate) => normalizePost(candidate.id, candidate.data))
+      .filter((candidate): candidate is SeoPost => Boolean(candidate && candidate.id !== id))
+      .slice(0, 4),
+    relatedSmartTalks: relatedSmartTalkDocuments
+      .map((candidate) => normalizeSmartTalk(candidate.id, candidate.data))
+      .filter((candidate): candidate is SeoSmartTalk => Boolean(candidate))
+      .slice(0, 4),
+  };
+}
+
+function toIsoDate(value: number | null | undefined) {
+  return value ? new Date(value).toISOString() : undefined;
 }
 
 function getChangeFrequency(updatedAt: number | null | undefined, createdAt: number) {
@@ -613,14 +779,13 @@ function buildEntry(
   path: string,
   type: SitemapEntry["type"],
   lastmod: number | null,
-  fallbackLastmod: number,
   changefreq: SitemapEntry["changefreq"],
   priority: string,
 ): SitemapEntry {
   return {
     loc: `${SITE_URL}${path}`,
     path,
-    lastmod: toIsoDate(lastmod, fallbackLastmod),
+    lastmod: toIsoDate(lastmod),
     changefreq,
     priority,
     type,
@@ -628,23 +793,23 @@ function buildEntry(
 }
 
 export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
-  const generatedAt = data.generatedAt;
   const entries: SitemapEntry[] = [];
 
   for (const page of STATIC_PAGES) {
     entries.push(
-      buildEntry(page.path, "page", generatedAt, generatedAt, page.changefreq, page.priority),
+      buildEntry(page.path, "page", page.lastmod, page.changefreq, page.priority),
     );
   }
 
   for (const category of SEO_CATEGORIES) {
     const categoryTagSlugs = category.tagSlugs as readonly string[];
+    const categoryLastmod = maxCategoryLastmod(data, category.id, categoryTagSlugs);
+    if (!categoryLastmod) continue;
     entries.push(
       buildEntry(
         category.path,
         "category",
-        maxCategoryLastmod(data, category.id, categoryTagSlugs),
-        generatedAt,
+        categoryLastmod,
         "weekly",
         "0.9",
       ),
@@ -652,23 +817,18 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   }
 
   for (const topic of SEO_TOPICS) {
+    const topicLastmod = maxPostLastmod(data.posts, (post) =>
+      post.hashtags.some((tag) => topic.tagSlugs.includes(tag) || tag === topic.id),
+    );
+    if (!topicLastmod) continue;
     entries.push(
       buildEntry(
         topic.path,
         "topic",
-        maxPostLastmod(data.posts, (post) =>
-          post.hashtags.some((tag) => topic.tagSlugs.includes(tag) || tag === topic.id),
-        ),
-        generatedAt,
+        topicLastmod,
         "weekly",
         "0.75",
       ),
-    );
-  }
-
-  for (const tag of data.tags) {
-    entries.push(
-      buildEntry(`/tag/${encodeURIComponent(tag.id)}`, "tag", tag.lastmod, generatedAt, "weekly", "0.6"),
     );
   }
 
@@ -678,7 +838,6 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         `/post/${encodeURIComponent(post.id)}`,
         "post",
         post.updatedAt || post.createdAt,
-        generatedAt,
         getChangeFrequency(post.updatedAt, post.createdAt),
         "0.8",
       ),
@@ -691,7 +850,6 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         `/profile/${encodeURIComponent(profile.id)}`,
         "profile",
         profile.updatedAt,
-        generatedAt,
         "weekly",
         "0.7",
       ),
@@ -704,7 +862,6 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         `/smarttalks/${encodeURIComponent(question.id)}`,
         "smarttalk",
         question.updatedAt || question.createdAt,
-        generatedAt,
         getChangeFrequency(question.updatedAt, question.createdAt),
         "0.65",
       ),
@@ -729,7 +886,7 @@ export function buildSitemapXml(entries: SitemapEntry[]) {
     .map(
       (entry) => `  <url>
     <loc>${escapeXml(entry.loc)}</loc>
-    <lastmod>${entry.lastmod}</lastmod>
+    ${entry.lastmod ? `<lastmod>${entry.lastmod}</lastmod>` : ""}
     <changefreq>${entry.changefreq}</changefreq>
     <priority>${entry.priority}</priority>
   </url>`,

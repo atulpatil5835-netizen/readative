@@ -119,7 +119,9 @@ function isAdsEligibleRoute() {
     pathname === "/index.html" ||
     pathname === "/knowledge" ||
     pathname.startsWith("/knowledge/") ||
-    pathname === "/smarttalk"
+    pathname === "/smarttalk" ||
+    pathname === "/smarttalks" ||
+    pathname.startsWith("/smarttalks/")
   ) {
     return true;
   }

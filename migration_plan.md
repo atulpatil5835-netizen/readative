@@ -1,237 +1,225 @@
-# Readative Release Y.2 — Migration Plan
+# Production SEO Migration Plan
 
-Date: 2026-07-03
-
-Status: Proposed only; no Firestore data has been read or modified
+Plan date: 2026-07-04
+Status: Proposed; no migration executed
 
 ## Migration objective
 
-Introduce one semantic Highlight V2 document per user/post without deleting or guessing from historical data.
+Move Readative from separate SPA, crawler-support, and sitemap URL systems to one canonical public-document contract without changing content IDs, Firestore schema, or product behavior.
 
-There are two legacy sources with different safety properties:
+## Non-negotiable rules
 
-1. Archived `userHighlights` semantic ranges from before Release Y.1.
-2. Live/current `userInk` freehand vectors created by Release Y.1.
+- Add target support before changing links or redirects.
+- Never change canonical, sitemap, and redirects in unrelated deployments.
+- Preserve existing post document IDs.
+- Do not migrate Firestore content for this foundation unless a separately approved data contract requires it.
+- Do not expose a profile/question merely to preserve sitemap counts.
+- Keep old public routes redirecting after migration; do not create chains.
+- Validate source HTML and HTTP status before Search Console submission.
 
-They must not be treated as equivalent.
+## Current-to-target URL map
 
-## Decision summary
+| Resource | Current public forms | Recommended target | Migration action |
+| --- | --- | --- | --- |
+| Home | `/`, `/index.html`, legacy `/knowledge` | `/` | 301 `/index.html` and `/knowledge` to `/` |
+| Post | `/post/{id}`, legacy `/knowledge/{id}` | `/post/{id}` | Preserve target; keep one-hop legacy 301 |
+| SmartTalk hub | `/smarttalk`, `/smarttalks` | `/smarttalks` | Support target in product, then 301 singular hub |
+| SmartTalk question | `/smarttalk?id={id}`, `/category/{slug}?id={id}`, `/smarttalks/{id}` | `/smarttalks/{id}` | Support direct target, update anchors/sitemap/schema, then redirect legacy query forms where technically safe |
+| Category | `/category/{slug}` plus aliases | `/category/{canonicalSlug}` | 301 aliases; distinct broad-pillar content |
+| Topic | `/topic/{slug}`, `/?topic={slug}`, `/knowledge?topic={slug}` | `/topic/{canonicalSlug}` | Update links and canonicals; redirect legacy filter paths where safe |
+| Tag | `/tag/{slug}` | Same, `noindex` initially | Remove from sitemap until indexable quality threshold exists |
+| Author | `/profile/{authorId}` | Same | Preserve URL; index only intentionally public, substantial profiles |
+| Discovery support | `/posts` | Decision required | User-grade canonical hub or `noindex, follow` support index |
+| About | Modal state | `/about` | Create page; panel links to it |
+| Contact | Modal state | `/contact` | Create page; panel links to it |
+| Privacy | Modal state | `/privacy` | Create page; panel links to it |
+| Terms | Modal state | `/terms` | Create page; panel links to it |
+| Community | Modal state | `/community-guidelines` | Create page; panel links to it |
+| Disclaimer | Modal state | `/disclaimer` | Create page; panel links to it |
+| Editorial | Missing | `/editorial-policy` | Create reviewed page |
+| Corrections | Missing | `/corrections-policy` | Create reviewed page |
+| Cookie | Missing | `/cookie-policy` | Create when actual cookie/ads obligations require it |
 
-| Source | Automatic conversion | Decision |
-| --- | --- | --- |
-| `userHighlights` semantic rows | Possible only after exact validation against current post text | Migrate validated rows in an offline/admin process; archive rejected rows |
-| `userInk` vector strokes | Cannot be mapped reliably to semantic text ranges | Do not convert; archive in place |
+## Stage 0 — Baseline and freeze
 
-Normal Y.2 application startup does not scan, migrate, copy, or delete either legacy collection.
+Before the first implementation deployment:
 
-## Target paths
+1. Export the current canonical sitemap URL set and URL-type counts.
+2. Record representative live response headers and source HTML.
+3. Record current redirect behavior for legacy post/tag/home URLs.
+4. Select canonical cohorts for posts, questions, categories, topics, authors, and invalid/private resources.
+5. Freeze new public URL patterns until the route contract is approved.
+6. Preserve the last known good sitemap output and deployment alias.
 
-- `userNotebook/{uid}`: schema version, highlighted `postIds`, and update time for the existing My Notes count compatibility seam.
-- `userNotebook/{uid}/posts/{postId}`: one semantic Highlight V2 document for that user/post.
+Exit criterion: repeatable baseline with rollback artifacts.
 
-The post subdocument is the only highlight document for that user/post. It stores ranges only; canonical post metadata remains in `knowledge/{postId}`.
+## Stage 1 — Legal/trust routes
 
-## Why vector Ink cannot be converted
+1. Publish dedicated reviewed documents at final paths.
+2. Keep modal sections available during transition.
+3. Change footer/header controls to real page anchors.
+4. Make modal summaries link to authoritative pages.
+5. Add indexable trust pages to the sitemap only after direct-load validation.
 
-Ink strokes contain normalized geometry, block hash/ordinal, source dimensions, color, width, and a content revision. They do not identify characters.
+No redirects are needed because modal state had no public URLs.
 
-Converting a path to a semantic range would require guessing:
+Exit criterion: every trust page is directly addressable, canonical, crawlable, and linked.
 
-- Whether a stroke was an underline, circle, arrow, handwriting, or unrelated mark.
-- Which rendered line or characters it intended.
-- How it should map after responsive reflow.
-- Whether the target post has changed.
+## Stage 2 — SmartTalk route convergence
 
-Bounding-box intersection with text would still be heuristic and could highlight unrelated words. That violates semantic correctness. Therefore:
+### Deployment A: target support
 
-- `userInk` remains untouched.
-- Y.2 does not read `userInk` during normal use.
-- No SVG/path/geometry is copied into `userNotebook`.
-- No deletion occurs as part of Y.2.
-- Rollback to Y.1 remains possible while the archive exists.
+- Make `/smarttalks` and `/smarttalks/{id}` usable as approved reader routes.
+- Preserve existing `/smarttalk` behavior.
+- Align server/client eligibility and metadata.
+- Do not redirect yet.
 
-## Why legacy semantic Highlight may be converted
+### Deployment B: link and sitemap switch
 
-Archived `userHighlights` rows already contain:
+- Change all internal question anchors, notification destinations, schema URLs, shares, and sitemap entries to `/smarttalks/{id}`.
+- Change primary hub navigation to `/smarttalks`.
+- Keep old URLs functional.
 
-- User ID.
-- Post ID.
-- Paragraph index.
-- Start/end rendered-text offsets.
-- Selected text.
-- Capture timestamp.
+### Deployment C: redirects
 
-This is enough to validate, not enough to trust blindly. A post may have been edited, a paragraph may have moved, or the old range may have been malformed.
+- Add one-hop permanent redirects from `/smarttalk` to `/smarttalks` once the target is stable.
+- Where legacy query question URLs are externally reachable, resolve them to the question target without losing the ID.
+- Do not redirect category hubs that contain no question ID.
 
-## Migration prerequisites
+### Deployment D: cleanup
 
-Before any data operation:
+- Remove duplicate hub indexability.
+- Retain legacy parser/redirect coverage for an agreed long-term period.
 
-- Architecture approval.
-- Final Y.2 schema approval.
-- Backup/export or confirmed retention policy for both legacy collections.
-- Reviewed owner-only Firestore rules for `userNotebook`.
-- Required query index available for `updatedAt` paging.
-- Admin credentials used outside the browser application.
-- A dry-run mode that performs zero writes.
-- A durable report path and run ID.
-- A maintenance/ordering decision that prevents live Y.2 writes from being overwritten.
+Exit criterion: one canonical URL per question and no redirect chains.
 
-## Semantic migration algorithm
+## Stage 3 — Post document delivery
 
-### 1. Read and group
+1. Keep `/post/{id}` unchanged.
+2. Introduce server-delivered/prerendered source HTML behind the same URL.
+3. Validate a small canary cohort before all posts.
+4. Expand to the public corpus only after hydration and status-code parity.
+5. Preserve `/knowledge/{id}` → `/post/{id}` permanent redirects.
+6. Return 404/410 for missing, deleted, or private IDs.
 
-- Stream legacy `userHighlights` rows in bounded pages.
-- Validate basic types and lengths.
-- Group by `(userId, postId)`.
-- Deduplicate exact legacy document IDs and exact semantic ranges.
-- Never load all users into memory at once.
+No slug migration is included. If title slugs are ever desired, they require a separate migration and redirect strategy.
 
-### 2. Load canonical post
+Exit criterion: source HTML is complete and the interactive reader remains unchanged.
 
-- Read `knowledge/{postId}` once per group.
-- Reject the group if the post is missing or inaccessible to the migration job.
-- Do not reconstruct title/author from the legacy row.
+## Stage 4 — Taxonomy normalization
 
-### 3. Reconstruct paragraph model
+1. Declare categories as broad pillars and topics as narrower collections.
+2. Map every category alias to one canonical slug.
+3. Replace internal `/knowledge?topic=` links with `/topic/{slug}` or `/category/{slug}` according to intent.
+4. Ensure category/topic pages have unique copy and qualifying content.
+5. Remove empty category/topic URLs from the sitemap.
+6. Keep tags `noindex` and out of sitemap until a separate indexability decision.
 
-- Split current `content` with the exact production blank-line expression.
-- Trim and remove empty sections exactly as `KnowledgeCard` does.
-- Generate each current paragraph ID from normalized source plus duplicate occurrence.
-- Generate display text with the same pure transformation represented by `renderRichText`.
+Exit criterion: no indexable taxonomy pair has the same purpose or canonical mismatch.
 
-The migration tool must share or test against the production pure paragraph/display-text logic. It must not use a browser screenshot or DOM geometry.
+## Stage 5 — Author eligibility migration
 
-### 4. Validate each row
+No Firestore schema change is assumed.
 
-Accept only when all conditions pass:
+Initial eligibility can use existing fields and derived public contributions:
 
-- `paragraphIndex` is an integer within current paragraph bounds.
-- `startOffset` and `endOffset` are integers with `0 <= start < end`.
-- `endOffset` is within the current rendered paragraph text length.
-- The current rendered slice matches legacy `selectedText` after only a documented trim/line-ending normalization.
-- The resulting paragraph ID and all target field lengths pass V2 validation.
+- exclude deleted/private/hidden/draft profiles;
+- never publish email or document ID as display-name fallback;
+- require a valid public display name/username;
+- require at least one qualifying public post/question, or an explicit existing public indicator if trustworthy;
+- ensure author links resolve to a valid public page.
 
-Reject when any check fails. Do not search other paragraphs, fuzzy-match text, or shift offsets automatically.
+If current fields cannot express intentional public profile consent safely, stop and request a separately approved data-contract/schema release rather than guessing.
 
-### 5. Build one target document
+Exit criterion: no thin, missing, email-fallback, or private profile is in the public SEO corpus.
 
-For accepted rows in one user/post group:
+## Stage 6 — Sitemap and support-index migration
 
-- Map to `{id, paragraphId, startOffset, endOffset, color: "yellow", createdAt}`.
-- Preserve a valid legacy timestamp; otherwise use a documented migration timestamp.
-- Sort deterministically.
-- Normalize exact duplicates and overlaps according to the approved V2 rule.
-- Apply range-count and serialized-size caps.
-- Set document `createdAt` to the earliest accepted range and `updatedAt` to the latest accepted range.
+1. Generate URLs only from the shared eligibility contract.
+2. Remove `noindex`, redirecting, empty, and non-200 URLs.
+3. Omit `lastmod` when no real modification timestamp exists.
+4. Add minimum healthy counts and last-known-good fallback.
+5. Split sitemaps by type when useful:
+   - pages/legal;
+   - posts;
+   - SmartTalk;
+   - authors;
+   - taxonomy.
+6. Decide whether `/posts` and `/smarttalks` are indexable user hubs or `noindex, follow` discovery support.
+7. Paginate large indexes or stop duplicating full content excerpts.
 
-No `selectedText`, title, author, HTML, pixels, or migration geometry is copied.
+Exit criterion: sitemap URL → final response is always one-hop 200, canonical, and indexable.
 
-### 6. Merge safely
+## AMP migration
 
-Preferred rollout: finish the validated migration before enabling public Y.2 writes.
+Choose one:
 
-If target documents can already exist:
+### Maintain
 
-- Use a transaction.
-- Read the current V2 document.
-- Merge by stable range ID/semantic signature.
-- Preserve user-created V2 ranges.
-- Normalize and validate the merged result.
-- Write only if the result differs.
+- Change AMP canonical and all links to `https://www.readative.com`.
+- Validate AMP markup and reciprocal `amphtml` relationship.
+- Keep content and policy links current.
 
-Never replace a live target document with a stale migration snapshot.
+### Retire
 
-### 7. Update the user index
+- Remove the homepage `amphtml` link.
+- Permanently redirect `/amp/` to `/`.
+- Confirm no AMP URLs remain in sitemap or internal links.
 
-For every user with at least one successfully written post document:
+Do not leave the current mixed-host state.
 
-- Add the post ID once to `userNotebook/{uid}.postIds`.
-- Set schema version/update time.
-- Do not add groups with zero accepted ranges.
+## Redirect rules
 
-Batch within Firestore operation limits and keep checkpoints so a retry is idempotent.
+- Permanent only when the resource has permanently moved.
+- Exactly one hop.
+- Preserve resource identity and required query identifiers.
+- Destination must return 200 and self-canonical.
+- Do not redirect missing resources to home; return 404/410.
+- Do not use client `pushState` as the only migration mechanism.
+- Keep Vercel and any supported alternate-host route manifests synchronized.
 
-## Dry-run report
+## Cache and deployment sequence
 
-The dry run must report:
+For each route migration:
 
-- Run ID, code/schema version, start/end time.
-- Total legacy rows scanned.
-- Users and posts encountered.
-- Accepted rows.
-- Exact duplicates removed.
-- Overlaps normalized.
-- Rejected missing posts.
-- Rejected invalid paragraph indexes.
-- Rejected invalid offsets.
-- Rejected text mismatches.
-- Rejected malformed fields.
-- Rejected cap/size groups.
-- Target documents that would be created, merged, or unchanged.
-- Estimated reads and writes.
-- A small redacted sample for manual validation.
+1. Deploy target response.
+2. Verify uncached target source HTML.
+3. Deploy internal links and schema.
+4. Deploy sitemap changes.
+5. Deploy redirects.
+6. Purge/age out CDN cache.
+7. Verify final live responses and counts.
+8. Submit/inspect in Search Console.
 
-The report must not expose private selected sentences in logs beyond an explicitly protected validation artifact.
+## Rollback sequence
 
-## Write-run safety
+If a release fails:
 
-- Require an explicit non-default `--write`/equivalent switch.
-- Require project/environment confirmation.
-- Persist checkpoints by stable source cursor.
-- Make every target range ID deterministic from the source document ID or stable semantic signature.
-- Make index updates idempotent.
-- Limit batch size and retry transient failures with bounded backoff.
-- Stop on schema mismatch, permission error, unexpected target shape, or error-rate threshold.
-- Produce a final reconciliation report.
+1. Stop sitemap submission and preserve evidence.
+2. Restore the previous rewrite/handler deployment.
+3. Restore previous internal link generation if targets fail.
+4. Restore the last known good sitemap.
+5. Purge affected cache.
+6. Recheck canonical cohorts.
+7. Leave safe one-hop redirects in place only when their destinations work.
 
-No migration code is bundled into the web application.
+Never roll back by republishing private or known-thin content.
 
-## Post-migration verification
+## Migration completion criteria
 
-- Sample migrated documents across low/high range counts and duplicate paragraphs.
-- Open corresponding posts at mobile, tablet, and desktop widths.
-- Confirm the same characters are yellow at every width.
-- Confirm stale/rejected rows do not render.
-- Confirm My Notes shows one card per target post, correct count, and one preview.
-- Confirm no target document contains selected text or post metadata.
-- Confirm no source document changed.
-- Compare written target/index counts to the final migration report.
-- Confirm signed-out and wrong-user access is denied.
+- One canonical URL per public resource.
+- All canonical URLs return 200 with complete initial HTML.
+- All invalid/private/deleted resources return 404/410 and are absent from sitemap.
+- No sitemap URL redirects or emits `noindex`.
+- Every public content URL has a natural internal anchor.
+- Legal/trust documents have stable reviewed URLs.
+- Client and server metadata/schema match.
+- Production route behavior matches the declared route manifest.
+- Search Console shows the new sitemap processed without systemic errors.
 
-## Rollback
+Related documents:
 
-Application rollback:
-
-- Revert the Y.2 application release to Y.1.
-- Y.1 continues using `userInk`; the new `userNotebook` collection is ignored.
-- Archived `userHighlights` remains untouched.
-
-Data rollback:
-
-- Do not delete source archives.
-- Target documents created by a migration run must carry admin-side run evidence, even though private selected text is not stored.
-- If target removal is approved, delete only documents enumerated in that run's manifest and reconcile user indexes.
-- Never mass-delete by a broad unverified query.
-
-Rollback is not automatic and is not part of normal app startup.
-
-## Retention recommendation
-
-- Keep `userInk` read-only/archived through at least the Y.2 stabilization window and any rollback period.
-- Keep rejected `userHighlights` rows archived; they are not proof of valid current ranges.
-- Do not expose either archive in My Notes after Y.2.
-- Decide long-term deletion only through a separate data-retention approval.
-
-## Migration acceptance gates
-
-- Dry run reviewed and approved.
-- Zero writes in dry-run verification.
-- Rules/index checks pass.
-- Accepted rows are exact, not heuristic.
-- Write process is idempotent and checkpointed.
-- Source collections remain unchanged.
-- One target highlight document maximum per user/post.
-- Final reconciliation has no unexplained count difference.
-
-Until these gates pass, Y.2 should start clean for new semantic highlights while all legacy data remains archived.
+- [implementation_plan.md](implementation_plan.md)
+- [engineering_risk.md](engineering_risk.md)
+- [smarttalk_seo_audit.md](smarttalk_seo_audit.md)
+- [legal_pages_audit.md](legal_pages_audit.md)

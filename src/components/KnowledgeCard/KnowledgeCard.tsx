@@ -1333,7 +1333,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         title={entry.title}
       />
 
-      <div className="p-4 pt-3 sm:p-5">
+      <div className="p-4 pt-4 sm:p-5">
         <CardTrust
           trustToneClass={trustToneClass}
           trustMetrics={trustMetrics}
@@ -1363,7 +1363,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           onExitNotebookMode={deactivateNotebook}
         />
 
-        <div className="mt-4 flex flex-col gap-2.5 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100/90 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <CardActions
             isHelpful={isHelpful}
             isMisleading={isMisleading}

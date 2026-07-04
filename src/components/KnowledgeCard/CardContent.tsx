@@ -227,13 +227,13 @@ export function CardContent({
           }}
           className="text-left transition-colors hover:text-emerald-700"
         >
-          <h3 className="text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl">
+          <h3 className="text-[1.55rem] font-extrabold leading-[1.14] tracking-[-0.018em] text-slate-950 sm:text-[2rem] sm:leading-[1.12]">
             {entry.title}
           </h3>
         </a>
 
         {contentSections.length > 0 && (
-          <div className="relative mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8">
+          <div className="readative-reading-body relative mt-5 space-y-0 text-[15.5px] leading-[1.72] text-slate-700 sm:mt-6 sm:text-[16.5px] sm:leading-[1.76]">
             {contentSections.map((section, index) => {
               const paragraphId = paragraphIds[index];
               const renderedParagraphLength = getRenderedParagraphText(section).length;
@@ -252,7 +252,7 @@ export function CardContent({
                 <div key={`${entry.id}-section-${index}`}>
                   {index > 0 && (
                     <div
-                      className="my-6 border-t border-slate-100"
+                      className="my-6 border-t border-slate-100/90"
                       aria-hidden="true"
                     />
                   )}
@@ -281,7 +281,7 @@ export function CardContent({
                           event.preventDefault();
                         }
                       }}
-                      className={`whitespace-pre-wrap ${
+                      className={`readative-reading-paragraph whitespace-pre-wrap ${
                         isFocusedPost && isNotebookMode && !isArmed
                           ? "select-none"
                           : "select-text"
@@ -306,9 +306,9 @@ export function CardContent({
       </div>
 
       {entry.hashtags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {entry.contentKind && (
-            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black capitalize text-slate-500">
+            <span className="rounded-full border border-slate-200/80 bg-slate-50/70 px-3 py-1 text-xs font-semibold capitalize text-slate-500">
               {entry.contentKind}
             </span>
           )}
@@ -320,7 +320,7 @@ export function CardContent({
                 event.preventDefault();
                 onSelectHashtag(tag);
               }}
-              className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+              className="rounded-full border border-slate-200/80 bg-slate-50/70 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
             >
               #{tag}
             </a>
@@ -338,7 +338,7 @@ export function CardContent({
                 event.preventDefault();
                 onOpenAuthorProfile(mention.authorId);
               }}
-              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+              className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
             >
               @{mention.username}
             </a>
@@ -347,8 +347,8 @@ export function CardContent({
       )}
 
       {topComment && (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+        <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
             Top comment
           </p>
           <div className="flex items-start gap-3">
@@ -372,12 +372,12 @@ export function CardContent({
                     event.preventDefault();
                     onOpenAuthorProfile(topComment.authorId);
                   }}
-                  className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
+                  className="text-xs font-semibold text-slate-800 transition-colors hover:text-emerald-700"
                 >
                   {topCommentDisplayName}
                 </a>
               ) : (
-                <span className="text-xs font-bold text-slate-800">
+                <span className="text-xs font-semibold text-slate-800">
                   {topCommentDisplayName}
                 </span>
               )}

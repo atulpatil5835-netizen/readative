@@ -19,6 +19,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const data = await loadSeoData();
+    if (data.source === "static") {
+      throw new Error(
+        `Dynamic SEO data unavailable: ${data.errors.join(" | ") || "unknown loader failure"}`,
+      );
+    }
     const entries = buildSitemapEntries(data);
     const xml = buildSitemapXml(entries);
 
@@ -28,6 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       data.posts.length.toString(),
     );
     res.setHeader("X-Readative-SEO-URL-Count", entries.length.toString());
+    res.setHeader(
+      "X-Readative-SEO-SmartTalk-Count",
+      data.smartTalks.length.toString(),
+    );
 
     if (req.method === "HEAD") {
       return res.status(200).end();
@@ -36,17 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).send(xml);
   } catch (error) {
     console.error("Sitemap generation error:", error);
-    return res.status(500).send(
-      buildSitemapXml([
-        {
-          loc: "https://www.readative.com/",
-          path: "/",
-          lastmod: new Date().toISOString(),
-          changefreq: "daily",
-          priority: "1.0",
-          type: "page",
-        },
-      ]),
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(503).send(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<error>Sitemap data is temporarily unavailable.</error>',
     );
   }
 }

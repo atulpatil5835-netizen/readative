@@ -63,15 +63,15 @@ export function CardHeader({
   const authorProfilePath = buildProfilePath(resolvedAuthorId);
 
   return (
-    <div className="p-4 sm:p-5">
-      <div className="flex items-start gap-3">
+    <div className="px-4 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-5">
+      <div className="flex items-start gap-3.5">
         <a
           href={authorProfilePath}
           onClick={(event) => {
             event.preventDefault();
             onOpenAuthorProfile(resolvedAuthorId);
           }}
-          className="shrink-0 rounded-full transition-transform hover:scale-[1.02]"
+          className="shrink-0 rounded-full transition-transform hover:scale-[1.01]"
           aria-label={`Open ${authorDisplayName}'s profile`}
         >
           <ProfileAvatar
@@ -91,7 +91,7 @@ export function CardHeader({
                 event.preventDefault();
                 onOpenAuthorProfile(resolvedAuthorId);
               }}
-              className="min-w-0 truncate text-left text-sm font-black text-slate-950 transition-colors hover:text-emerald-700 sm:text-base"
+              className="min-w-0 truncate text-left text-sm font-extrabold text-slate-900 transition-colors hover:text-emerald-700 sm:text-[15px]"
             >
               {authorDisplayName}
             </a>
@@ -104,15 +104,15 @@ export function CardHeader({
               />
             )}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-semibold leading-5 text-slate-500">
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-medium leading-5 text-slate-500">
             <span>@{authorUsername}</span>
             {authorReputation && (
               <span
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50/70 text-emerald-700"
                 title={reputationTitle}
                 aria-label={reputationTitle}
               >
-                <Award className="h-4 w-4" />
+                <Award className="h-3.5 w-3.5" />
               </span>
             )}
           </div>
@@ -122,7 +122,7 @@ export function CardHeader({
           <button
             type="button"
             onClick={() => setActionsOpen((current) => !current)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-400 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
             aria-label="Open post actions"
             aria-expanded={actionsOpen}
             aria-haspopup="menu"

@@ -261,7 +261,7 @@ export const KnowledgeImageCarousel = memo(function KnowledgeImageCarousel({
   if (images.length === 0) return null;
 
   return (
-    <div className="relative overflow-hidden bg-slate-50">
+    <div className="relative overflow-hidden border-y border-slate-100 bg-slate-50">
       <div
         ref={scrollerRef}
         onScroll={scheduleActiveIndexUpdate}

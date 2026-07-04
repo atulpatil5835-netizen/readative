@@ -2,14 +2,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   SITE_URL,
   type SeoSmartTalk,
-  escapeXml,
   loadSeoData,
 } from "./_seoData.js";
 import { SEO_CATEGORIES } from "../src/utils/seoTaxonomy.js";
-
-function escapeHtml(value: string) {
-  return escapeXml(value);
-}
+import {
+  SEO_DOCUMENT_STYLES,
+  escapeHtml,
+  renderAppDocument,
+  renderJsonLd,
+} from "./_document.js";
 
 function getQueryValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || "" : value || "";
@@ -21,17 +22,6 @@ function smartTalkPath(id: string) {
 
 function absoluteUrl(path: string) {
   return `${SITE_URL}${path}`;
-}
-
-function escapeJsonForHtml(value: unknown) {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026");
-}
-
-function renderJsonLd(schema: object | object[]) {
-  return `<script type="application/ld+json">${escapeJsonForHtml(schema)}</script>`;
 }
 
 function getCategoryLabel(categoryId: string | null) {
@@ -138,6 +128,7 @@ function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
     {
       "@context": "https://schema.org",
       "@type": "DiscussionForumPosting",
+      "@id": `${questionUrl}#discussion`,
       headline: question.title,
       text: question.description,
       url: questionUrl,
@@ -174,6 +165,23 @@ function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
         url: absoluteUrl("/smarttalks"),
       },
     },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": `${questionUrl}#faq`,
+      url: questionUrl,
+      mainEntity: {
+        "@type": "Question",
+        name: question.title,
+        text: question.description,
+        answerCount: question.answerCount,
+        suggestedAnswer: question.answers.map((answer) => ({
+          "@type": "Answer",
+          text: answer.text,
+          author: { "@type": "Person", name: answer.authorName },
+        })),
+      },
+    },
   ];
 }
 
@@ -190,6 +198,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const data = await loadSeoData();
+  if (data.source === "static") {
+    console.error("SmartTalk SEO data unavailable:", data.errors);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(503).send("SmartTalk is temporarily unavailable.");
+  }
   const questions = [...data.smartTalks].sort(
     (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
   );
@@ -227,60 +240,92 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (focusedQuestion) {
     const canonicalPath = smartTalkPath(focusedQuestion.id);
+    const canonicalUrl = `${SITE_URL}${canonicalPath}`;
     const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
     const pageDescription = focusedQuestion.description;
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(pageTitle)}</title>
-  <meta name="description" content="${escapeHtml(pageDescription)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-  <link rel="canonical" href="${SITE_URL}${canonicalPath}" />
-  <meta property="og:type" content="article" />
-  <meta property="og:title" content="${escapeHtml(pageTitle)}" />
-  <meta property="og:description" content="${escapeHtml(pageDescription)}" />
-  <meta property="og:url" content="${SITE_URL}${canonicalPath}" />
-  <meta property="og:image" content="${SITE_URL}/logo.png" />
-  <meta property="og:site_name" content="Readative" />
-  <meta property="og:locale" content="en_US" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
-  <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
-  <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-  ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion))}
-  <style>
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
-    main { max-width: 860px; margin: 0 auto; padding: 32px 18px 56px; }
-    article { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 18px; }
-    h1 { margin: 0 0 12px; font-size: clamp(1.7rem, 3vw, 2.4rem); line-height: 1.1; }
-    p, li { color: #475569; line-height: 1.6; }
-    a { color: #047857; font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-    .meta { margin-top: 8px; font-size: .85rem; color: #64748b; }
-  </style>
-</head>
-<body>
-<main>
-  <p><a href="/smarttalks">SmartTalk Discussions</a></p>
-  <article id="question-${escapeHtml(focusedQuestion.id)}">
-    <h1>${escapeHtml(focusedQuestion.title)}</h1>
-    <p>${escapeHtml(focusedQuestion.description)}</p>
-    <p class="meta">${renderQuestionMeta(focusedQuestion)}</p>
-    ${
-      focusedQuestion.answers.length > 0
-        ? `<ul>${focusedQuestion.answers
-            .map(
-              (answer) =>
-                `<li><strong>@${escapeHtml(answer.authorName)}:</strong> ${escapeHtml(answer.text)}</li>`,
-            )
-            .join("")}</ul>`
-        : ""
-    }
-  </article>
-</main>
-</body>
-</html>`;
+    const relatedQuestions = questions
+      .filter(
+        (question) =>
+          question.id !== focusedQuestion.id &&
+          (!focusedQuestion.category || question.category === focusedQuestion.category),
+      )
+      .slice(0, 5);
+    const relatedPosts = data.posts
+      .filter(
+        (post) =>
+          !focusedQuestion.category ||
+          post.category === focusedQuestion.category ||
+          post.hashtags.includes(focusedQuestion.category),
+      )
+      .slice(0, 5);
+    const head = `
+      <title>${escapeHtml(pageTitle)}</title>
+      <meta name="description" content="${escapeHtml(pageDescription)}" />
+      <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+      <link rel="canonical" href="${canonicalUrl}" />
+      <meta property="og:type" content="article" />
+      <meta property="og:title" content="${escapeHtml(pageTitle)}" />
+      <meta property="og:description" content="${escapeHtml(pageDescription)}" />
+      <meta property="og:url" content="${canonicalUrl}" />
+      <meta property="og:image" content="${SITE_URL}/logo.png" />
+      <meta property="og:image:alt" content="Readative SmartTalk" />
+      <meta property="og:image:width" content="512" />
+      <meta property="og:image:height" content="512" />
+      <meta property="og:site_name" content="Readative" />
+      <meta property="og:locale" content="en_US" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
+      <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
+      <meta name="twitter:image" content="${SITE_URL}/logo.png" />
+      <meta name="twitter:image:alt" content="Readative SmartTalk" />
+      ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion))}
+      ${SEO_DOCUMENT_STYLES}`;
+    const answerList = focusedQuestion.answers.length
+      ? `<ul class="seo-list">${focusedQuestion.answers
+          .map(
+            (answer) => `<li><strong>${escapeHtml(answer.authorName)}:</strong> ${escapeHtml(answer.text)}</li>`,
+          )
+          .join("")}</ul>`
+      : "<p>This discussion is awaiting its first community answer.</p>";
+    const relatedQuestionList = relatedQuestions.length
+      ? relatedQuestions
+          .map(
+            (question) => `<li><a href="${smartTalkPath(question.id)}">${escapeHtml(question.title)}</a></li>`,
+          )
+          .join("")
+      : '<li><a href="/smarttalks">Browse all questions</a></li>';
+    const relatedPostList = relatedPosts.length
+      ? relatedPosts
+          .map(
+            (post) => `<li><a href="/post/${encodeURIComponent(post.id)}">${escapeHtml(post.title)}</a></li>`,
+          )
+          .join("")
+      : '<li><a href="/posts">Browse all posts</a></li>';
+    const nextReading = relatedPosts[0]
+      ? `<a href="/post/${encodeURIComponent(relatedPosts[0].id)}">${escapeHtml(relatedPosts[0].title)}</a>`
+      : relatedQuestions[0]
+        ? `<a href="${smartTalkPath(relatedQuestions[0].id)}">${escapeHtml(relatedQuestions[0].title)}</a>`
+        : '<a href="/posts">Explore more knowledge</a>';
+    const main = `<div class="seo-document"><div class="seo-shell">
+      <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>
+      <main>
+        <article class="seo-hero" id="question-${escapeHtml(focusedQuestion.id)}"><div class="seo-hero-inner">
+          <p class="seo-kicker">SmartTalk discussion</p>
+          <h1>${escapeHtml(focusedQuestion.title)}</h1>
+          <div class="seo-meta">${renderQuestionMeta(focusedQuestion)}</div>
+        </div><section class="seo-card" style="border:0;border-top:1px solid #e2e8f0;border-radius:0;box-shadow:none;margin:0"><h2>Community answers</h2>${answerList}</section></article>
+        <section class="seo-card"><div class="seo-grid">
+          <section><h2>Related Questions</h2><ul class="seo-list">${relatedQuestionList}</ul></section>
+          <section><h2>Related Posts</h2><ul class="seo-list">${relatedPostList}</ul></section>
+        </div><div class="seo-meta">
+          ${focusedQuestion.category ? `<a href="/category/${encodeURIComponent(focusedQuestion.category)}">Related Category: ${escapeHtml(getCategoryLabel(focusedQuestion.category))}</a>` : ""}
+          ${focusedQuestion.authorId ? `<a href="/profile/${encodeURIComponent(focusedQuestion.authorId)}">Author: ${escapeHtml(focusedQuestion.authorName)}</a>` : ""}
+          <span>Next Reading: ${nextReading}</span>
+        </div></section>
+      </main>
+      <footer class="seo-footer"><a href="/about">About</a> · <a href="/contact">Contact</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/community">Community</a></footer>
+    </div></div>`;
+    const html = renderAppDocument({ head, main });
 
     res.setHeader("X-Readative-SEO-Source", data.source);
     res.setHeader(
@@ -296,64 +341,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).send(html);
   }
 
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SmartTalk Discussions | Readative</title>
-  <meta name="description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-  <link rel="canonical" href="${SITE_URL}/smarttalks" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="SmartTalk Discussions | Readative" />
-  <meta property="og:description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
-  <meta property="og:url" content="${SITE_URL}/smarttalks" />
-  <meta property="og:image" content="${SITE_URL}/logo.png" />
-  <meta property="og:site_name" content="Readative" />
-  <meta property="og:locale" content="en_US" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="SmartTalk Discussions | Readative" />
-  <meta name="twitter:description" content="Crawlable index of Readative SmartTalk questions, answer snippets, and topic discussions." />
-  <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-  ${renderJsonLd(buildSmartTalkIndexSchemas(questions))}
-  <style>
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
-    main { max-width: 920px; margin: 0 auto; padding: 32px 18px 56px; }
-    h1 { margin: 0 0 8px; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.05; }
-    article { margin-top: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 18px; }
-    h2 { margin: 0; font-size: 1.05rem; line-height: 1.45; }
-    p, li { color: #475569; line-height: 1.6; }
-    a { color: #047857; font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-    .meta { margin-top: 8px; font-size: .85rem; color: #64748b; }
-  </style>
-</head>
-<body>
-<main>
-  <h1>SmartTalk Discussions</h1>
-  <p>Readative SmartTalk has ${questions.length} crawlable knowledge discussions. Open the interactive SmartTalk feed at <a href="/smarttalk">/smarttalk</a>.</p>
-  ${questions
+  const pageDescription =
+    "Readative SmartTalk questions, practical community answers, and topic-focused learning discussions.";
+  const head = `
+    <title>SmartTalk Discussions | Readative</title>
+    <meta name="description" content="${pageDescription}" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="${SITE_URL}/smarttalks" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SmartTalk Discussions | Readative" />
+    <meta property="og:description" content="${pageDescription}" />
+    <meta property="og:url" content="${SITE_URL}/smarttalks" />
+    <meta property="og:image" content="${SITE_URL}/logo.png" />
+    <meta property="og:image:alt" content="Readative SmartTalk" />
+    <meta property="og:site_name" content="Readative" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SmartTalk Discussions | Readative" />
+    <meta name="twitter:description" content="${pageDescription}" />
+    <meta name="twitter:image" content="${SITE_URL}/logo.png" />
+    <meta name="twitter:image:alt" content="Readative SmartTalk" />
+    ${renderJsonLd(buildSmartTalkIndexSchemas(questions))}
+    ${SEO_DOCUMENT_STYLES}`;
+  const questionList = questions
+    .slice(0, 100)
     .map(
-      (question) => `<article id="question-${escapeHtml(question.id)}">
-    <h2><a href="${escapeHtml(smartTalkPath(question.id))}">${escapeHtml(question.title)}</a></h2>
-    <p>${escapeHtml(question.description)}</p>
-    <p class="meta">${renderQuestionMeta(question)}</p>
-    ${
-      question.answers.length > 0
-        ? `<ul>${question.answers
-            .map(
-              (answer) =>
-                `<li><strong>@${escapeHtml(answer.authorName)}:</strong> ${escapeHtml(answer.text)}</li>`,
-            )
-            .join("")}</ul>`
-        : ""
-    }
-  </article>`,
+      (question) => `<li id="question-${escapeHtml(question.id)}">
+        <a href="${smartTalkPath(question.id)}">${escapeHtml(question.title)}</a>
+        <span> — ${escapeHtml(getCategoryLabel(question.category) || "SmartTalk")} · ${question.answerCount} ${question.answerCount === 1 ? "answer" : "answers"}</span>
+      </li>`,
     )
-    .join("\n")}
-</main>
-</body>
-</html>`;
+    .join("");
+  const main = `<div class="seo-document"><div class="seo-shell">
+    <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>
+    <main>
+      <header class="seo-hero"><div class="seo-hero-inner"><p class="seo-kicker">Community knowledge</p><h1>SmartTalk Discussions</h1><p class="seo-lede">${pageDescription}</p><p class="seo-meta">${questions.length} public discussions</p></div></header>
+      <section class="seo-card"><h2>Latest questions</h2><ul class="seo-list">${questionList || '<li>No public discussions are available.</li>'}</ul></section>
+    </main>
+    <footer class="seo-footer"><a href="/about">About</a> · <a href="/contact">Contact</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/community">Community</a></footer>
+  </div></div>`;
+  const html = renderAppDocument({ head, main });
 
   res.setHeader("X-Readative-SEO-Source", data.source);
   res.setHeader(

@@ -5,11 +5,10 @@ import {
   type SeoPost,
   type SeoProfile,
   type SeoSmartTalk,
-  type SeoTag,
   escapeXml,
   loadSeoData,
 } from "./_seoData.js";
-import { SEO_CATEGORIES, SEO_TAGS, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
+import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
 
 function escapeHtml(value: string) {
   return escapeXml(value);
@@ -40,12 +39,10 @@ function buildDiscoverySchemas({
   posts,
   profiles,
   smartTalks,
-  tags,
 }: {
   posts: SeoPost[];
   profiles: SeoProfile[];
   smartTalks: SeoSmartTalk[];
-  tags: SeoTag[];
 }) {
   return [
     {
@@ -89,7 +86,7 @@ function buildDiscoverySchemas({
       name: "Readative Discovery Index",
       url: absoluteUrl(DISCOVERY_INDEX_PATH),
       description:
-        "Crawlable Readative index of published posts, categories, tags, profiles, and SmartTalk discussions.",
+        "Crawlable Readative index of published posts, categories, profiles, and SmartTalk discussions.",
       mainEntity: {
         "@type": "ItemList",
         name: "Readative crawlable content",
@@ -111,17 +108,6 @@ function buildDiscoverySchemas({
             position: posts.slice(0, 30).length + smartTalks.slice(0, 20).length + index + 1,
             name: profile.name,
             url: absoluteUrl(`/profile/${encodeURIComponent(profile.id)}`),
-          })),
-          ...tags.slice(0, 20).map((tag, index) => ({
-            "@type": "ListItem",
-            position:
-              posts.slice(0, 30).length +
-              smartTalks.slice(0, 20).length +
-              profiles.slice(0, 20).length +
-              index +
-              1,
-            name: `#${tag.id}`,
-            url: absoluteUrl(`/tag/${encodeURIComponent(tag.id)}`),
           })),
         ],
       },
@@ -180,17 +166,6 @@ function renderProfileLink(profile: SeoProfile) {
   );
 }
 
-function renderTagLink(tag: SeoTag) {
-  const tagDefinition = SEO_TAGS.find((definition) => definition.id === tag.id);
-  const categories = tagDefinition
-    ? tagDefinition.categoryIds
-        .map((categoryId) => `<a href="/category/${escapeHtml(categoryId)}">${escapeHtml(categoryId)}</a>`)
-        .join(" / ")
-    : "";
-
-  return `<li><a href="/tag/${escapeHtml(encodeURIComponent(tag.id))}">#${escapeHtml(tag.id)}</a> <span>${tag.postCount} posts${categories ? ` / ${categories}` : ""}</span></li>`;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader(
@@ -204,18 +179,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const data = await loadSeoData();
+  if (data.source === "static") {
+    console.error("Discovery SEO data unavailable:", data.errors);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(503).send("Discovery index is temporarily unavailable.");
+  }
   const recentPosts = [...data.posts].slice(0, 24);
-  const allPosts = [...data.posts].sort((left, right) =>
-    left.title.localeCompare(right.title),
-  );
+  const recentPostIds = new Set(recentPosts.map((post) => post.id));
+  const allPosts = [...data.posts]
+    .filter((post) => !recentPostIds.has(post.id))
+    .sort((left, right) => left.title.localeCompare(right.title));
   const pageTitle = "Readative Posts and Discovery Index";
   const pageDescription =
-    "Crawlable Readative index of published posts, categories, tags, profiles, SmartTalk questions, and important discovery pages.";
+    "Crawlable Readative index of published posts, categories, profiles, SmartTalk questions, and important discovery pages.";
   const discoverySchemas = buildDiscoverySchemas({
     posts: data.posts,
     profiles: data.profiles,
     smartTalks: data.smartTalks,
-    tags: data.tags,
   });
 
   const html = `<!doctype html>
@@ -257,13 +237,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <main>
   <header>
     <h1>Readative Discovery Index</h1>
-  <p>${data.posts.length} published posts, ${data.smartTalks.length} SmartTalk discussions, ${data.tags.length} tags, and ${data.profiles.length} profiles are linked here for search crawlers and readers.</p>
+  <p>${data.posts.length} published posts, ${data.smartTalks.length} SmartTalk discussions, and ${data.profiles.length} contributor profiles are linked here for search crawlers and readers.</p>
   </header>
   ${renderSection("Important Pages", [
     renderLink("/", "Readative Home", "Knowledge feed"),
     renderLink("/explore", "Explore", "Topics, posts, discussions, and contributors"),
-    renderLink("/smarttalk", "SmartTalk", "Community Q&A"),
-    renderLink("/smarttalks", "SmartTalk Index", "Crawlable questions and answers"),
+    renderLink("/smarttalks", "SmartTalk", "Community questions and answers"),
+    renderLink("/about", "About Readative", "Mission and platform information"),
+    renderLink("/contact", "Contact Readative", "Support, privacy, policy, and corrections"),
+    renderLink("/privacy", "Privacy Policy"),
+    renderLink("/terms", "Terms of Use"),
+    renderLink("/community", "Community Guidelines"),
+    renderLink("/disclaimer", "Disclaimer"),
     renderLink("/sitemap.xml", "XML Sitemap", "Complete machine-readable URL list"),
   ])}
   ${renderSection(
@@ -281,10 +266,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     SEO_TOPICS.map((topic) =>
       renderLink(topic.path, topic.label, topic.description),
     ),
-  )}
-  ${renderSection(
-    "Tags",
-    data.tags.map(renderTagLink),
   )}
   ${renderSection(
     "Recent Posts",

@@ -31,10 +31,10 @@
 
 @layer components {
   .readative-card-surface {
-    border: 1px solid rgba(203, 213, 225, 0.78);
-    border-radius: 8px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 20px;
     background: #ffffff;
-    box-shadow: 0 14px 38px rgba(15, 23, 42, 0.075);
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.055);
   }
 
   .readative-card-surface-hover {
@@ -45,7 +45,53 @@
   }
 
   .readative-card-surface-hover:hover {
-    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.105);
+    border-color: rgba(203, 213, 225, 0.95);
+    box-shadow: 0 22px 54px rgba(15, 23, 42, 0.075);
+  }
+
+  .readative-reading-body {
+    text-wrap: pretty;
+  }
+
+  .readative-reading-paragraph {
+    color: #334155;
+    letter-spacing: -0.003em;
+  }
+
+  .readative-reading-body :where(strong, b) {
+    font-weight: 650;
+    color: #0f172a;
+  }
+
+  .readative-reading-body :where(em, i) {
+    color: #1e293b;
+  }
+
+  .readative-reading-body :where(code) {
+    border: 1px solid rgba(203, 213, 225, 0.72);
+    border-radius: 0.45rem;
+    background: rgba(248, 250, 252, 0.92);
+    padding: 0.08rem 0.32rem;
+    color: #334155;
+    font-size: 0.92em;
+  }
+
+  .readative-reading-body :where(pre, blockquote, ul, ol) {
+    margin-block: 1rem;
+  }
+
+  .readative-reading-body :where(blockquote) {
+    border-left: 3px solid rgba(16, 185, 129, 0.28);
+    padding-left: 1rem;
+    color: #475569;
+  }
+
+  .readative-reading-body :where(ul, ol) {
+    padding-left: 1.35rem;
+  }
+
+  .readative-reading-body :where(li + li) {
+    margin-top: 0.35rem;
   }
 
   .readative-panel-surface {

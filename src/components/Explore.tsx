@@ -239,7 +239,7 @@ function buildExploreSchemas({
       })),
       ...activeDiscussions.slice(0, 5).map((question) => ({
         name: summarizeSchemaText(question.content, 90),
-        url: "/smarttalk",
+        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
         description: `${question.answers.length} SmartTalk answer${
           question.answers.length === 1 ? "" : "s"
         }`,
@@ -273,7 +273,7 @@ function buildExploreSchemas({
       buildDiscussionForumPostingSchema({
         headline: summarizeSchemaText(question.content, 90),
         text: question.content,
-        url: "/smarttalk",
+        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
         authorName: question.author,
         datePublished: new Date(question.createdAt).toISOString(),
         answerCount: question.answers.length,

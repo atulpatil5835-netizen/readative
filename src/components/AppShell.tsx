@@ -1,5 +1,4 @@
 import { TriangleAlert } from "lucide-react";
-import type { InfoSection } from "./AppPanels";
 import {
   KnowledgeFeedSkeleton,
   ProfileSkeleton,
@@ -69,22 +68,18 @@ export function BannerNotice({
   );
 }
 
-const FOOTER_LINKS: Array<{ label: string; section: InfoSection }> = [
-  { label: "About", section: "about" },
-  { label: "Contact", section: "contact" },
-  { label: "Privacy", section: "privacy" },
-  { label: "Terms", section: "terms" },
-  { label: "Community", section: "guidelines" },
-  { label: "Disclaimer", section: "disclaimer" },
+const FOOTER_LINKS = [
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
+  { label: "Community", href: "/community" },
+  { label: "Disclaimer", href: "/disclaimer" },
 ];
 
-export function AppFooter({
-  onOpenInfo,
-}: {
-  onOpenInfo: (section: InfoSection) => void;
-}) {
+export function AppFooter() {
   return (
-    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10">
+    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10 min-[1400px]:max-w-[1400px]">
       <div className="border-t border-slate-200/80 pt-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -98,14 +93,13 @@ export function AppFooter({
 
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {FOOTER_LINKS.map((link) => (
-              <button
-                key={link.section}
-                type="button"
-                onClick={() => onOpenInfo(link.section)}
+              <a
+                key={link.href}
+                href={link.href}
                 className="readative-footer-link text-xs font-semibold text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
               >
                 {link.label}
-              </button>
+              </a>
             ))}
           </div>
         </div>
@@ -162,7 +156,7 @@ export function NotFoundRoute({
             Go to home feed
           </a>
           <a
-            href="/smarttalk"
+            href="/smarttalks"
             onClick={(event) => {
               event.preventDefault();
               onOpenSmartTalk();

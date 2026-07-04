@@ -1,4 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/post.ts": {
+      "includeFiles": "dist/index.html"
+    },
+    "api/smarttalks.ts": {
+      "includeFiles": "dist/index.html"
+    }
+  },
   "headers": [
     {
       "source": "/(logo|logo-mark)\\.(png|webp)",
@@ -47,6 +56,7 @@
     }
   ],
   "redirects": [
+    { "source": "/community-guidelines", "destination": "/community", "permanent": true },
     { "source": "/tags/Inspiration", "destination": "/tag/inspiration", "permanent": true },
     { "source": "/tags/LifeTruths", "destination": "/tag/lifetruths", "permanent": true },
     { "source": "/tags/thoughtoftheday", "destination": "/tag/thoughtoftheday", "permanent": true },
@@ -60,6 +70,12 @@
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/smarttalks", "destination": "/api/smarttalks" },
     { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id" },
+    { "source": "/about", "destination": "/api/legal?slug=about" },
+    { "source": "/contact", "destination": "/api/legal?slug=contact" },
+    { "source": "/privacy", "destination": "/api/legal?slug=privacy" },
+    { "source": "/terms", "destination": "/api/legal?slug=terms" },
+    { "source": "/disclaimer", "destination": "/api/legal?slug=disclaimer" },
+    { "source": "/community", "destination": "/api/legal?slug=community" },
     { "source": "/__/auth/:path*", "destination": "https://readative-803b0.firebaseapp.com/__/auth/:path*" },
     { "source": "/api/posts/:id/like", "destination": "/api/posts?id=:id&action=like" },
     { "source": "/api/posts/:id/rate", "destination": "/api/posts?id=:id&action=rate" },
@@ -68,10 +84,11 @@
     { "source": "/knowledge", "destination": "/index.html" },
     { "source": "/knowledge/:path*", "destination": "/index.html" },
     { "source": "/post", "destination": "/index.html" },
-    { "source": "/post/:path*", "destination": "/index.html" },
+    { "source": "/post/:id", "destination": "/api/post?id=:id" },
     { "source": "/profile", "destination": "/index.html" },
     { "source": "/profile/:path*", "destination": "/index.html" },
-    { "source": "/smarttalk", "destination": "/index.html" },
+    { "source": "/smarttalk", "destination": "/api/smarttalk" },
+    { "source": "/smarttalk/:id", "destination": "/api/smarttalk?id=:id" },
     { "source": "/explore", "destination": "/index.html" },
     { "source": "/explore/:path*", "destination": "/index.html" },
     { "source": "/category", "destination": "/index.html" },

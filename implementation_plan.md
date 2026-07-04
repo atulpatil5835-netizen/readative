@@ -1,246 +1,304 @@
-# Release Z.1 - Implementation Plan
+# Production SEO and Trust Implementation Plan
 
-Status: planning only. Do not implement until architecture approval is received.
+Plan date: 2026-07-04
+Status: Proposed only; awaiting architecture approval
 
-## Objective
+## Release principles
 
-Transform the desktop experience into a premium knowledge workspace while preserving the current mobile and tablet layouts exactly.
+- No implementation begins until this audit is approved.
+- Preserve existing product behavior while changing document delivery and URL contracts.
+- Make one canonical route represent one public resource.
+- Make public eligibility identical across page rendering, sitemap, discovery, and schema.
+- Prefer the current Vite/Vercel stack; do not introduce a framework or dependency unless a later architecture gate proves it necessary.
+- Deploy the smallest reversible release and verify live responses before continuing.
+- Do not mix legal copy changes, route migrations, post rendering, and sitemap cleanup in one deployment.
 
-The implementation must not copy a social-media layout. Reading remains primary.
-
-## Scope boundaries
-
-Allowed after approval:
-
-- Desktop-only adaptive shell at widths above 1400px.
-- Sticky left and right rails.
-- Center reading column constrained to 760-820px.
-- Presentational rail modules using already-loaded/local data.
-- Small route-owned selector helpers if needed.
-
-Not allowed:
-
-- Firestore schema changes.
-- New Firestore listeners.
-- Repeated queries for rail data.
-- Polling or intervals.
-- New dependencies.
-- Feed ranking changes.
-- SmartTalk logic changes.
-- Profile logic changes.
-- Explore logic changes beyond route-local presentation.
-- Routing changes.
-- Notebook/Highlight changes.
-- Downloader, SEO, Authentication, Notifications behavior changes.
-
-## Recommended architecture
-
-Use a shared presentational `DesktopWorkspaceShell` plus route-owned rail data.
+## Dependency order
 
 ```text
-DesktopWorkspaceShell
-  leftRail: ReactNode
-  center: ReactNode
-  rightRail: ReactNode
+Public eligibility contract
+        ↓
+Phase 1.1 Legal and trust pages
+        ↓
+Phase 1.2 SmartTalk canonical consolidation
+        ↓
+Phase 1.3 Knowledge post documents
+        ↓
+Phase 1.4 Internal linking and taxonomy
+        ↓
+Phase 1.5 Google index optimization
+        ↓
+Phase 1.6 Live production validation
 ```
 
-Behavior:
+## Pre-implementation architecture gate
 
-- Hidden below 1400px.
-- Below 1400px, render the current route content exactly as today.
-- At/above 1400px, render:
-  - left rail: 220-260px;
-  - center: 760-820px;
-  - right rail: 260-320px.
-- Keep the browser window as the only primary scroll container.
-- Rails use sticky positioning with a top offset below the fixed header.
+Approve these decisions first:
 
-## Recommended file ownership after approval
+1. Canonical SmartTalk family: recommended `/smarttalks` and `/smarttalks/{id}`.
+2. Categories are broad pillars; topics are narrower collections; tags remain `noindex` until quality criteria are met.
+3. Post IDs remain the canonical identifiers for this release.
+4. Public author pages require intentional public eligibility and qualifying content.
+5. Dedicated legal/trust pages become the authoritative source; modal text becomes summary/navigation only.
+6. Server-delivered initial HTML is required for indexable dynamic content.
+7. `/posts` and `/smarttalks` must be explicitly classified as canonical user hubs or `noindex, follow` support indexes.
+8. AMP is either normalized to the canonical `www` host and maintained, or removed with a deliberate migration.
 
-Minimal likely files:
+No code should be written until these decisions are accepted.
 
-- `src/App.tsx`
-  - Keep route lazy loading.
-  - Avoid global data loading.
-  - Optionally provide a desktop shell wrapper only if it can remain presentational.
+## Phase 1.1 — Professional legal and trust pages
 
-- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
-  - Own feed-derived rail selectors.
-  - Pass loaded data into desktop rail modules.
-  - Do not add reads/listeners.
+### Objective
 
-- `src/components/KnowledgeFeed/FeedRenderer.tsx`
-  - Place the desktop workspace around existing feed content.
-  - Keep `KnowledgeCardList` unchanged.
-  - Keep current mobile/tablet markup path intact.
+Create stable, crawlable, legally reviewed trust documents without redesigning the product.
 
-- New small presentational components, if approved:
-  - `src/components/DesktopWorkspaceShell.tsx`
-  - `src/components/KnowledgeFeed/DesktopFeedRails.tsx`
+### Scope
 
-Avoid touching:
+- `/about`
+- `/contact`
+- `/privacy`
+- `/terms`
+- `/community-guidelines`
+- `/disclaimer`
+- `/editorial-policy`
+- `/corrections-policy`
+- `/cookie-policy` when required by actual cookie/advertising use
 
-- `src/components/KnowledgeCardList.tsx` unless a measured bug appears.
-- `src/components/KnowledgeCard/*`.
-- `src/components/SmartTalk.tsx`.
-- `src/components/Profile.tsx`.
-- `src/components/Explore.tsx` logic.
-- `src/context/NotebookContext.tsx`.
-- Firestore utility modules.
+### Work
 
-## Proposed implementation phases
+1. Establish a single source for approved policy copy.
+2. Add dedicated routes with direct-load support and semantic HTML.
+3. Add self-canonical metadata and appropriate WebPage/AboutPage/ContactPage schema.
+4. Replace footer and header trust buttons with anchors.
+5. Keep the current info panel only as a temporary summary that links to full documents.
+6. Add approved pages to sitemap generation with real modification dates.
+7. Clearly identify the Readative operator and policy contact.
 
-### Phase 0 - Approval gate
+### Release gate
 
-No code changes before approval.
+- Legal review completed.
+- Every page works with JavaScript disabled and on refresh.
+- Footer anchors are present in initial or reliably server-delivered HTML.
+- No duplicate authoritative policy copy remains in JSX.
+- No product UI redesign.
 
-Required approval item:
+### Rollback
 
-- Confirm the recommended route-owned desktop shell architecture.
+Restore footer buttons/panel entry points while leaving route code disabled. Do not remove already-public policy URLs without redirects once indexed.
 
-### Phase 1 - Layout shell
+## Phase 1.2 — SmartTalk SEO
 
-Create a tiny presentational shell:
+### Objective
 
-- Uses CSS/Tailwind only.
-- Activates at `min-width: 1400px`.
-- Keeps existing single-column markup for smaller widths.
-- Uses a max workspace width that can fit:
-  - left 240px;
-  - center 780-800px;
-  - right 280px;
-  - gaps 24-32px.
+Unify product, crawler, sitemap, schema, and share URLs for each question.
 
-Implementation rule:
+### Work
 
-- Do not move the virtualized list into an independent scroll container.
-- Do not change card width on tablet/mobile.
+1. Create a shared SmartTalk public-eligibility predicate:
+   - exclude private/hidden/draft/deleted/archived content;
+   - exclude moderated/hidden answers;
+   - define minimum content quality for indexing.
+2. Support the approved canonical question path in the client and on direct refresh.
+3. Generate unique focused-question title, description, canonical, OG/Twitter, and DiscussionForumPosting data.
+4. Update question anchors in SmartTalk, Explore, Knowledge Journey, Profile, and Notifications.
+5. Consolidate the duplicate hub intentionally.
+6. Add redirects only after canonical direct routes pass.
+7. Update sitemap and discovery URLs in the same release as redirects.
+8. Return 404/410 plus `noindex` for missing, deleted, or non-public questions.
 
-### Phase 2 - Feed rail data selectors
+### Release gate
 
-Inside `KnowledgeFeed`, derive small memoized rail view models from existing state:
+- One URL per public question across all surfaces.
+- Initial HTML contains question content and matching metadata.
+- No private SmartTalk data is present in the SEO dataset.
+- Old URL cohort redirects exactly once to the canonical target.
+- SmartTalk business logic is unchanged.
 
-- current visible/focused entry;
-- loaded `visibleEntries` / `filteredEntries`;
-- loaded `journeyQuestions`;
-- active category/topic;
-- selected hashtag;
-- local identity.
+### Rollback
 
-Selectors should return small display models:
+Keep old handlers available, revert link generation, and temporarily preserve both route parsers. Never remove redirects before restoring old canonical/sitemap values.
 
-```text
-{ id, label, title, description, href/action }
-```
+## Phase 1.3 — Knowledge post SEO
 
-Do not store duplicate full entries in rail state.
+### Objective
 
-### Phase 3 - Left rail modules
+Make `/post/{id}` a complete public document in the initial response while preserving the existing interactive reading experience.
 
-Recommended first-release left rail:
+### Architecture spike
 
-- Quick Navigation
-- Continue Reading
-- Reading Progress
-- Trending Categories / Tags from loaded entries
+Before production work, prototype one post using the existing stack and choose between:
 
-Rules:
+- a Vercel server document that injects post metadata and crawlable article content while booting the existing SPA; or
+- deploy-time prerendered post documents with the existing client bundle.
 
-- Use only local loaded data.
-- Limit to small item counts.
-- No Firestore imports.
-- No timers.
-- No social metrics panel.
+Selection criteria:
 
-### Phase 4 - Right rail modules
+- no new framework;
+- no duplicate user-facing article after hydration;
+- direct per-document Firestore read rather than a full collection scan;
+- real 404/410 status;
+- cache and invalidation strategy;
+- exact metadata/schema parity with the hydrated client;
+- no feed, ranking, Notebook, Downloader, or virtualization changes.
 
-Recommended first-release right rail:
+### Work after spike approval
 
-- Knowledge Journey for current/focused entry.
-- Related Posts from loaded entries.
-- Related SmartTalk from existing `journeyQuestions`.
-- Same Author from loaded entries.
-- Continue Learning via existing category/topic metadata.
+1. Extract shared post normalization and public-eligibility logic.
+2. Server-deliver title, description, canonical, robots, OG/Twitter, and Article schema.
+3. Server-deliver readable article content and author/category/tag anchors.
+4. Link Article author to the canonical public profile entity.
+5. Add category-aware breadcrumbs.
+6. Use a valid remote content image when available and a correct fallback otherwise.
+7. Return 404/410 for missing, private, deleted, or archived posts.
+8. Keep `/post/{documentId}` stable; preserve `/knowledge/{id}` permanent redirects.
 
-Rules:
+### Release gate
 
-- Do not render full `KnowledgeCard`.
-- Use compact rows.
-- Avoid updating on every scroll frame.
+- Representative post source HTML is unique without JavaScript.
+- Social preview metadata is post-specific.
+- Hydrated UI is behaviorally unchanged.
+- Direct loads, reloads, and shares work.
+- No full-collection read is introduced per post request.
 
-### Phase 5 - Route handling
+### Rollback
 
-Initial desktop behavior:
+Remove the dynamic/prerender route and restore the SPA rewrite while keeping post URLs unchanged.
 
-- Knowledge Feed gets full left/center/right workspace because it owns reusable loaded data.
-- Explore, SmartTalk, and Profile keep current content behavior and can remain centered inside the desktop shell unless route-local rails are implemented with existing route data only.
+## Phase 1.4 — Internal linking and taxonomy
 
-If route-local rails are added in Z.1, they must be presentation-only:
+### Objective
 
-- Explore: derived from its own loaded `entries`, `questions`, `profiles`, and topic stats.
-- SmartTalk: derived from already-loaded `questions`.
-- Profile: derived from already-loaded `profile`, `sharedEntries`, and `smartTalkSummary`.
+Make the visible product graph and canonical crawl graph identical.
 
-Do not preload route data globally.
+### Work
 
-### Phase 6 - Responsive preservation
+1. Define category and topic intent in code and copy.
+2. Canonicalize category aliases to canonical slugs.
+3. Replace redirecting `/knowledge?topic=...` SEO links with approved topic/category destinations.
+4. Use real canonical anchors for related posts, questions, authors, categories, and topics.
+5. Link legal/trust pages from the footer.
+6. Link the canonical content hubs from appropriate navigation surfaces.
+7. Ensure public authors are linked only when a valid public destination exists.
+8. Add visible breadcrumbs where they help readers; keep schema parity.
+9. Prevent duplicate recommendations from creating excessive repeated links.
 
-Required invariants:
+### Release gate
 
-- Mobile layout remains pixel-identical.
-- Tablet layout remains pixel-identical.
-- Desktop center column remains 760-820px.
-- Existing mobile bottom navigation remains unchanged.
-- Existing route overlays remain unchanged.
+- Every sitemapped content URL has a natural inbound link.
+- No internal anchor points to a redirecting URL.
+- No question anchor points to a noncanonical query URL.
+- Category aliases redirect to canonical slugs.
+- Mobile and tablet behavior remains functionally unchanged unless separately approved.
 
-Implementation check:
+### Rollback
 
-- All desktop-only classes must be gated at 1400px+.
-- Existing `sm`, `md`, and regular classes must not be rewritten unless necessary.
+Revert link generators independently; retain redirects that protect already-published URLs.
 
-### Phase 7 - Validation
+## Phase 1.5 — Google index optimization
 
-Required commands after implementation approval:
+### Objective
 
-```bash
-npm run build
-npx tsc --noEmit
-git diff --check
-```
+Make the sitemap, robots directives, status codes, and quality thresholds describe the same public corpus.
 
-Required QA:
+### Work
 
-- Desktop >1400px:
-  - three-column adaptive shell;
-  - center width 760-820px;
-  - sticky rails;
-  - feed virtualization still works;
-  - no console errors.
-- Tablet:
-  - current layout unchanged.
-- Mobile:
-  - current layout unchanged.
-- Route QA:
-  - Home feed.
-  - Focused post.
-  - Explore.
-  - SmartTalk.
-  - Profile.
-  - Profile My Notes remains lazy.
+1. Remove all `noindex` URLs from the sitemap.
+2. Exclude empty categories/topics and thin/non-public authors/questions.
+3. Use real modification timestamps only.
+4. Decide whether tags become substantial indexable pages; otherwise keep them out of sitemap.
+5. Classify `/posts` and `/smarttalks` as canonical hubs or `noindex, follow` support documents.
+6. Paginate or split unbounded discovery documents.
+7. Add sitemap count-collapse detection and last-known-good behavior.
+8. Split into a sitemap index by content type when operationally useful and before protocol limits.
+9. Normalize `/index.html`, trailing slashes, aliases, and AMP host behavior.
+10. Extend verification to live response status, initial HTML, canonical, robots, schema, and sitemap parity.
 
-## Acceptance criteria
+### Release gate
 
-Z.1 is implementation-ready only if:
+- Sitemap contains only canonical 200 indexable URLs.
+- No false `lastmod` generation.
+- Missing/private routes never return indexable 200 documents.
+- Dataset collapse is observable and blocks an unhealthy release.
+- Live cache headers and CDN behavior are verified.
 
-- no new dependency is added;
-- no rail component imports Firestore;
-- no new listener/query exists for rails;
-- mobile/tablet rendering is unchanged;
-- center reading width stays within 760-820px on desktop;
-- rails are sticky and calm;
-- virtualization remains window-scroll based;
-- build, strict TypeScript, and diff check pass.
+### Rollback
 
-## Stop condition
+Restore the last known good sitemap artifact and previous endpoint routing. Do not restore known private/thin URLs merely to recover counts.
 
-Stop here until architecture approval is received.
+## Phase 1.6 — Final validation
+
+### Repository validation
+
+Run only after implementation is approved and complete:
+
+- `npm run build`
+- `npx tsc --noEmit`
+- `git diff --check`
+- SEO verification suite
+- route and schema contract tests
+
+### Live validation
+
+For representative cohorts, verify:
+
+- GET and HEAD status;
+- redirects and final URL;
+- initial HTML content;
+- exactly one canonical;
+- robots directive;
+- title/description;
+- OG/Twitter;
+- schema parse and entity URLs;
+- sitemap membership;
+- response caching;
+- no console errors after hydration.
+
+### External validation
+
+- Rich Results/Schema validator where applicable.
+- Social preview debuggers.
+- Google Search Console URL Inspection.
+- Sitemap submission and processed-URL count.
+- Monitor indexed, duplicate, soft-404, discovered-not-indexed, and crawled-not-indexed cohorts.
+
+### Production gate
+
+Production ready only when:
+
+- canonical and sitemap parity is 100% for the sampled corpus;
+- no private or email-fallback author data is exposed;
+- valid routes return 200 and invalid routes return 404/410;
+- legal/trust pages are reviewed and directly reachable;
+- rollback artifacts are prepared;
+- no prohibited product subsystem changed.
+
+## Expected impact
+
+| Area | Expected impact |
+| --- | --- |
+| Bundle | Target 0 KB for server/document work; route page code should remain lazy |
+| Firestore | Fewer wasteful full scans after endpoint consolidation; direct reads for dynamic documents |
+| Crawl efficiency | Major improvement from canonical/sitemap parity and thin-page removal |
+| Render behavior | No additional feed/card renders; SEO document work occurs outside feed virtualization |
+| Memory | Reduced server response pressure after discovery pagination/splitting |
+| Regression risk | High if route migration is combined; medium-to-low when staged with redirects and live gates |
+
+## Out of scope
+
+- Firestore schema redesign
+- Feed ranking
+- Notebook/Highlight logic
+- SmartTalk business logic
+- Authentication
+- Downloader
+- UI redesign
+- Framework migration without a separate approved decision
+
+Related documents:
+
+- [production_seo_audit.md](production_seo_audit.md)
+- [legal_pages_audit.md](legal_pages_audit.md)
+- [smarttalk_seo_audit.md](smarttalk_seo_audit.md)
+- [google_indexing_audit.md](google_indexing_audit.md)
+- [engineering_risk.md](engineering_risk.md)
+- [migration_plan.md](migration_plan.md)

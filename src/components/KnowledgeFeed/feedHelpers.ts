@@ -314,7 +314,7 @@ export function buildKnowledgeSchemas({
   });
   const breadcrumbItems = [
     { name: "Home", url: "/" },
-    ...(category && !entry ? [{ name: category.label, url: category.path }] : []),
+    ...(category ? [{ name: category.label, url: category.path }] : []),
     ...(selectedHashtag && !entry
       ? [{ name: `#${selectedHashtag}`, url: `/tag/${selectedHashtag}` }]
       : []),
@@ -348,6 +348,9 @@ export function buildKnowledgeSchemas({
       headline: entry.title,
       description: createExcerpt(entry.content),
       authorName: `@${entry.author}`,
+      authorUrl: entry.authorId
+        ? buildAbsoluteRouteUrl("profile", { profileAuthorId: entry.authorId })
+        : undefined,
       datePublished: new Date(entry.createdAt).toISOString(),
       dateModified: entry.updatedAt ? new Date(entry.updatedAt).toISOString() : undefined,
       keywords: entry.hashtags,

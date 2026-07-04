@@ -28,8 +28,8 @@ function renderRichTextNodes({
   text,
   mentions = [],
   onOpenProfile,
-  linkClassName = "font-semibold text-emerald-700 underline underline-offset-2",
-  mentionClassName = "font-semibold text-emerald-700 underline underline-offset-2",
+  linkClassName = "font-semibold text-emerald-700 underline decoration-emerald-200 underline-offset-[3px] transition-colors hover:text-emerald-800 hover:decoration-emerald-500",
+  mentionClassName = "font-semibold text-emerald-700 underline decoration-emerald-200 underline-offset-[3px] transition-colors hover:text-emerald-800 hover:decoration-emerald-500",
   allowLinks = true,
   allowMentions = true,
   keyPrefix = "rich",
@@ -84,7 +84,7 @@ function renderRichTextNodes({
       nodes.push(
         <span
           key={`${keyPrefix}-triple-${index++}`}
-          className="font-semibold text-emerald-600"
+          className="font-semibold text-slate-900"
         >
           {renderRichTextNodes({
             text: match[3],
@@ -102,7 +102,7 @@ function renderRichTextNodes({
       nodes.push(
         <span
           key={`${keyPrefix}-double-${index++}`}
-          className="font-semibold text-rose-600"
+          className="font-semibold text-slate-900"
         >
           {renderRichTextNodes({
             text: match[4],
@@ -118,7 +118,7 @@ function renderRichTextNodes({
       );
     } else if (match[5]) {
       nodes.push(
-        <strong key={`${keyPrefix}-single-${index++}`} className="font-bold">
+        <strong key={`${keyPrefix}-single-${index++}`} className="font-semibold text-slate-950">
           {renderRichTextNodes({
             text: match[5],
             mentions,

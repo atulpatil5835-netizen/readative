@@ -1,78 +1,103 @@
-# Release Y.2.2 Performance Report
+# Release P1 — Performance Report
 
-Status: automated validation passed; authenticated runtime QA pending sign-in.
+Status: implemented and validated.
+Date: 2026-07-04
+
+## Validation commands
+
+- `npx tsc --noEmit` — passed.
+- `npm run build` — passed.
+- `git diff --check` — passed after report updates.
 
 ## Bundle impact
 
-No new dependency was added.
+No dependencies were added.
 
-Build output remains split:
+Final relevant production assets:
 
-- `ProfileMyNotes` is still lazy-loaded.
-- `src/highlights/repository.ts` is still dynamically imported by notebook cache actions.
-- No drawing, canvas, SVG editor, Konva, Fabric, RoughJS, or html2canvas dependency was introduced.
+- CSS: gzip 14.21 kB.
+- Main app chunk: gzip 23.57 kB.
+- SmartTalk chunk: gzip 10.26 kB.
+- KnowledgeFeed chunk: gzip 23.14 kB.
+- Explore chunk: gzip 8.87 kB.
+- AppPanels chunk: gzip 3.63 kB.
 
-Observed build: `npm run build` passed.
+Compared with the captured pre-release baseline:
 
-## Firestore reads before vs after
+- SmartTalk: 9.62 kB → 10.26 kB gzip, +0.64 kB.
+- KnowledgeFeed: 23.11 kB → 23.14 kB gzip, +0.03 kB.
+- Main app: 23.69 kB → 23.57 kB gzip, -0.12 kB.
+- CSS: 14.26 kB → 14.21 kB gzip, -0.05 kB.
+- AppPanels: 5.63 kB → 3.63 kB gzip after removing duplicate legal panel content.
 
-| Surface | Before Y.2.2 | After Y.2.2 |
-| --- | --- | --- |
-| Highlight creation | 1 transaction read + 1 write, but UI rendered before durability. | Same transaction read/write, but UI renders only after successful commit. |
-| Focused post refresh | 1 post highlight doc read if focused and signed in. | 1 post highlight doc read for the rendered visible card if cache is cold. |
-| Non-focused visible feed card | 0 reads, but no restored highlight display. | 1 read per rendered/virtualized visible card on cold cache; in-flight/cache dedupe prevents repeat reads for the same post. |
-| Entire feed | Not hydrated. | Still not hydrated; only rendered virtual window hydrates. |
-| My Notes first open | Up to 12 notebook docs + up to 12 `knowledge` docs. | Same first load. |
-| My Notes reopen while Profile/context cache valid | Repeated first-page reads every mount. | 0 Firestore reads; reuses cached first page. |
-| Count badge | Aggregation on provider identity load and refresh after mark/delete. | Aggregation once when count unknown; local increment/decrement when cache is known. |
+Net app-bundle regression is below the 2 kB gzip ceiling.
 
-## Firestore writes before vs after
+## Server-rendering impact
 
-| Action | Before | After |
-| --- | --- | --- |
-| Create highlight | One transaction write after optimistic render. | One transaction write before render. |
-| Failed create | Phantom mark could appear until rollback. | No new mark is rendered. |
-| Delete notes post | One document delete. | Same one document delete; cache invalidates locally. |
+New server-rendered documents are produced by existing Vercel-compatible API functions and built app shell reuse.
+
+Added function surfaces:
+
+- `api/legal.ts`
+- `api/post.ts`
+- `api/smarttalk.ts`
+- shared `api/_document.ts`
+
+Hardened function surfaces:
+
+- `api/smarttalks.ts`
+- `api/sitemap.xml.ts`
+- `api/discovery.ts`
+- `api/_seoData.ts`
+
+No polling, timers, intervals, listeners, or client-side background loops were added.
+
+## Data-loading impact
+
+The sitemap and discovery data loaders now apply stricter public-eligibility filtering and fail closed on dynamic sitemap data errors.
+
+Post detail SEO uses direct document reads and small category-limited related-content queries rather than scanning all posts for every request.
 
 No Firestore schema change was made.
 
-## Render count before vs after
+## Hydration impact
 
-Approximate React behavior:
+Server-injected app-page SEO tags are marked for React Helmet ownership. This prevents hydration from stacking duplicate canonicals, descriptions, OG URLs, Twitter Cards, or JSON-LD tags.
 
-| Scenario | Before | After |
-| --- | --- | --- |
-| Successful highlight create | Optimistic mark render, then save-status render. | Saving-status render, then confirmed mark render. |
-| Failed highlight create | Optimistic mark render, rollback render, failure-status render. | Failure-status render only; no phantom mark render. |
-| Visible card hydration | Focused card only. | Rendered virtual-window cards hydrate; cold load sets state once, cached load reuses provider data. |
-| My Notes reopen | Skeleton/loading render plus loaded render each time. | Cached state is used immediately while cache is valid. |
-| Count refresh | Provider value updates after aggregation refresh. | Provider value reuses cached total; save/delete updates locally when known. |
+Browser QA confirmed hydrated SmartTalk and post routes retain:
 
-The post-hydration cache intentionally does not bump the global cache version after ordinary Firestore reads, avoiding a fan-out rerender across all mounted cards.
+- one canonical
+- one meta description
+- one OG URL
+- one Twitter Card
+- one JSON-LD payload
 
-## Listener/polling audit
+## Runtime and console QA
 
-Patched notebook files do not introduce:
+Desktop, tablet, and mobile route QA passed on a local production-style server:
 
-- `onSnapshot`
-- polling
-- intervals
-- `selectionchange`
-- SVG/canvas drawing surface
-- Ink preview/surface
-
-Existing unrelated listeners in feed/profile/notifications/SmartTalk were not touched.
+- 24 route/viewport checks
+- no horizontal overflow
+- no app-origin console errors
+- no duplicate canonical after hydration
 
 ## Regression risk
 
-| Risk | Level | Mitigation |
-| --- | --- | --- |
-| More Firestore reads for visible non-focused cards | Medium | Bounded by existing virtualization and provider cache/in-flight dedupe. |
-| Save feels slightly less instant | Low | Prevents phantom highlights and preserves calm UI. |
-| My Notes cache stale after changes | Low | Invalidates on new highlight, delete, logout/user change. |
-| Count drift | Low | Local increment/decrement only when cached total exists; otherwise falls back to aggregation. |
-| Authenticated Firestore rules issue | High until tested | Requires signed-in browser QA against deployed rules. |
+Risk: low to medium.
+
+Primary watch areas:
+
+- Vercel rewrite precedence for legal and post routes.
+- Dynamic SEO data availability for sitemap generation.
+- SmartTalk legacy links from external surfaces.
+
+Mitigations:
+
+- Existing SPA route parsing still resolves legacy SmartTalk query URLs.
+- `/smarttalk` and `/smarttalk?id=...` now have server redirects.
+- `/category/{slug}?id=...` remains client-resolved to avoid breaking category ownership.
+- Sitemap returns 503 when dynamic data is unavailable, preventing silent thin sitemap indexing.
 
 ## Production readiness
 
-Code is build-ready, but production readiness is conditional until authenticated QA verifies real Firestore persistence after refresh/logout/login/other browser/delete.
+Ready for production within the P1 SEO foundation scope.

@@ -68,6 +68,7 @@ import {
   buildBreadcrumbSchema,
   buildCollectionPageSchema,
   buildDiscussionForumPostingSchema,
+  buildFAQPageSchema,
   buildItemListSchema,
   buildOrganizationSchema,
   buildWebSiteSchema,
@@ -243,14 +244,73 @@ function getSmartTalkCategoryLabel(category: string | null | undefined) {
   return getCategoryBySlug(category)?.label || category;
 }
 
-function buildSmartTalkSchemas(questions: Question[]) {
-  const pageUrl = "/smarttalk";
+function buildSmartTalkSchemas(
+  questions: Question[],
+  focusedQuestion: Question | null,
+  selectedCategory: string | null,
+) {
+  const pageUrl = focusedQuestion
+    ? buildPublicPath("smarttalk", { focusedEntryId: focusedQuestion.id })
+    : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
+  const pageLabel = selectedCategory
+    ? getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"
+    : "SmartTalk";
+
+  if (focusedQuestion) {
+    const primaryAnswer =
+      focusedQuestion.answers.find((answer) => answer.bestAnswer) ||
+      focusedQuestion.answers[0];
+
+    return [
+      buildOrganizationSchema(),
+      buildWebSiteSchema(),
+      buildBreadcrumbSchema([
+        { name: "Home", url: "/" },
+        { name: "SmartTalk", url: "/smarttalks" },
+        { name: summarizeSmartTalkText(focusedQuestion.content, 90), url: pageUrl },
+      ]),
+      buildDiscussionForumPostingSchema({
+        headline: summarizeSmartTalkText(focusedQuestion.content, 90),
+        text: focusedQuestion.content,
+        url: pageUrl,
+        authorName: focusedQuestion.author,
+        authorUrl: focusedQuestion.authorId
+          ? `/profile/${encodeURIComponent(focusedQuestion.authorId)}`
+          : undefined,
+        datePublished: new Date(focusedQuestion.createdAt).toISOString(),
+        answerCount: focusedQuestion.answers.length,
+        keywords: [
+          getSmartTalkCategoryLabel(focusedQuestion.category) || "SmartTalk",
+          focusedQuestion.difficulty || "",
+        ].filter((value): value is string => Boolean(value)),
+        answers: focusedQuestion.answers.map((answer) => ({
+          text: answer.content,
+          authorName: answer.author,
+          authorUrl: answer.authorId
+            ? `/profile/${encodeURIComponent(answer.authorId)}`
+            : undefined,
+        })),
+      }),
+      buildFAQPageSchema({
+        url: pageUrl,
+        questions: [{
+          question: focusedQuestion.content,
+          answer: primaryAnswer?.content,
+          suggestedAnswers: focusedQuestion.answers.map((answer) => ({
+            text: answer.content,
+            authorName: answer.author,
+          })),
+        }],
+      }),
+    ];
+  }
+
   const itemList = buildItemListSchema({
     name: "SmartTalk Discussion List",
     url: pageUrl,
     items: questions.slice(0, 10).map((question) => ({
       name: summarizeSmartTalkText(question.content, 90),
-      url: pageUrl,
+      url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
       description: `${question.answers.length} answer${
         question.answers.length === 1 ? "" : "s"
       }`,
@@ -261,23 +321,29 @@ function buildSmartTalkSchemas(questions: Question[]) {
     buildOrganizationSchema(),
     buildWebSiteSchema(),
     buildCollectionPageSchema({
-      name: "SmartTalk",
+      name: pageLabel,
       url: pageUrl,
       description:
         "SmartTalk is Readative's discussion space for knowledge questions, practical answers, and topic-focused learning conversations.",
-      about: SEO_CATEGORIES.map((category) => category.label),
+      about: selectedCategory
+        ? pageLabel
+        : SEO_CATEGORIES.map((category) => category.label),
       itemList,
     }),
     buildBreadcrumbSchema([
       { name: "Home", url: "/" },
-      { name: "SmartTalk", url: pageUrl },
+      ...(selectedCategory ? [{ name: "SmartTalk", url: "/smarttalks" }] : []),
+      { name: pageLabel, url: pageUrl },
     ]),
     ...questions.slice(0, 10).map((question) =>
       buildDiscussionForumPostingSchema({
         headline: summarizeSmartTalkText(question.content, 90),
         text: question.content,
-        url: pageUrl,
+        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
         authorName: question.author,
+        authorUrl: question.authorId
+          ? `/profile/${encodeURIComponent(question.authorId)}`
+          : undefined,
         datePublished: new Date(question.createdAt).toISOString(),
         answerCount: question.answers.length,
         keywords: [
@@ -1184,13 +1250,43 @@ export function SmartTalk({
     );
   };
 
+  const relatedFocusedQuestions = focusedQuestion
+    ? questions
+        .filter(
+          (question) =>
+            question.id !== focusedQuestion.id &&
+            (!focusedQuestion.category || question.category === focusedQuestion.category),
+        )
+        .slice(0, 4)
+    : [];
+  const smartTalkPageUrl = focusedQuestion
+    ? buildPublicPath("smarttalk", { focusedEntryId: focusedQuestion.id })
+    : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
+  const smartTalkPageTitle = focusedQuestion
+    ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | SmartTalk | Readative`
+    : selectedCategory
+      ? `${getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"} Questions | Readative`
+      : "SmartTalk - Q&A Community | Readative";
+  const smartTalkPageDescription = focusedQuestion
+    ? summarizeSmartTalkText(focusedQuestion.content, 160)
+    : selectedCategory
+      ? `Explore ${getSmartTalkCategoryLabel(selectedCategory) || selectedCategory} questions and practical community answers on Readative SmartTalk.`
+      : "Ask learning-focused questions and get thoughtful community answers on Readative.";
+
   return (
     <div className="space-y-6 pb-20">
       <SEO
-        title="SmartTalk - Q&A Community | Readative"
-        description="Ask learning-focused questions and get thoughtful community answers on Readative."
-        robots={!isLoading && questions.length === 0 ? "noindex" : "index"}
-        schema={buildSmartTalkSchemas(questions)}
+        title={smartTalkPageTitle}
+        description={smartTalkPageDescription}
+        url={smartTalkPageUrl}
+        type={focusedQuestion ? "article" : "website"}
+        robots={
+          (!isLoading && questions.length === 0) ||
+          (focusedQuestionId && !isQuestionLoading && !focusedQuestion)
+            ? "noindex"
+            : "index"
+        }
+        schema={buildSmartTalkSchemas(questions, focusedQuestion, selectedCategory)}
         keywords={[
           "Q&A",
           "learning questions",
@@ -1414,6 +1510,68 @@ export function SmartTalk({
               </div>
             );
           })()}
+          {focusedQuestion && (
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">
+                Keep exploring
+              </p>
+              <h2 className="mt-2 text-lg font-black tracking-tight text-slate-950">
+                Related Questions
+              </h2>
+              <div className="mt-3 grid gap-2">
+                {relatedFocusedQuestions.length > 0 ? (
+                  relatedFocusedQuestions.map((question) => (
+                    <a
+                      key={question.id}
+                      href={buildPublicPath("smarttalk", { focusedEntryId: question.id })}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToRoute("smarttalk", { focusedEntryId: question.id });
+                      }}
+                      className="rounded-lg border border-slate-100 px-3 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+                    >
+                      {summarizeSmartTalkText(question.content, 120)}
+                    </a>
+                  ))
+                ) : (
+                  <a href="/smarttalks" className="text-sm font-bold text-indigo-700">
+                    Browse all SmartTalk questions
+                  </a>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
+                {focusedQuestion.category && (
+                  <a
+                    href={`/category/${encodeURIComponent(focusedQuestion.category)}`}
+                    className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700"
+                  >
+                    Category: {getSmartTalkCategoryLabel(focusedQuestion.category)}
+                  </a>
+                )}
+                {focusedQuestion.authorId && (
+                  <a
+                    href={`/profile/${encodeURIComponent(focusedQuestion.authorId)}`}
+                    className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700"
+                  >
+                    Author: {focusedQuestion.author}
+                  </a>
+                )}
+                <a href="/posts" className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">
+                  Related Posts
+                </a>
+                {relatedFocusedQuestions[0] && (
+                  <a
+                    href={buildPublicPath("smarttalk", {
+                      focusedEntryId: relatedFocusedQuestions[0].id,
+                    })}
+                    className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700"
+                  >
+                    Next Reading
+                  </a>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       ) : (
         <>
