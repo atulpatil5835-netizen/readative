@@ -9,7 +9,6 @@ import {
 import { type ContributorReputation } from "../../utils/trustSystem";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { type TrustMetrics } from "../../utils/trustSystem";
-import type { InkColor, InkWidth } from "../../ink/types";
 
 export interface CommentMentionState {
   query: string;
@@ -45,7 +44,6 @@ export interface CardHeaderProps {
   onDownload: () => void;
   setShowEditModal: (show: boolean) => void;
   onDeleteEntry: () => void;
-  hasInk?: boolean;
 }
 
 export interface CardMediaProps {
@@ -61,12 +59,8 @@ export interface CardTrustProps {
   localSaveCount: number;
   entry: KnowledgeEntry;
   entryVisibility: "public" | "private";
-  isInkMode?: boolean;
-  inkColor: InkColor;
-  inkWidth: InkWidth;
-  onToggleInkMode?: () => void;
-  onSetInkColor: (color: InkColor) => void;
-  onSetInkWidth: (width: InkWidth) => void;
+  isNotebookMode?: boolean;
+  onToggleNotebookMode?: () => void;
 }
 
 export interface CardContentProps {
@@ -82,12 +76,9 @@ export interface CardContentProps {
   topCommentUsername: string;
   currentUserId: string | null;
   isFocusedPost: boolean;
-  isInkMode: boolean;
-  shouldRenderInk: boolean;
-  inkColor: InkColor;
-  inkWidth: InkWidth;
-  onPostHasInk: (postId: string) => void;
-  onInkStatus: (message: string) => void;
+  isNotebookMode: boolean;
+  onPostFirstHighlight: () => void;
+  onExitNotebookMode: () => void;
 }
 
 export interface CardActionsProps {

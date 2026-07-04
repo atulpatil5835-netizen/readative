@@ -1,313 +1,418 @@
-# Readative Release Y — Ink System Architecture
+# Readative Release Y.2 — Notebook Highlight V2 Architecture
 
-Date: 2026-07-01
+Date: 2026-07-03
 
-Status: Architecture proposal only; awaiting approval
+Status: Architecture audit and proposal only; no implementation has started
 
-Priority: Performance first
+## Scope and audit basis
 
-## Scope Guard
+This document audits the live `main` branch at Release Y.1 (`56cb0bc`) and the last pre-Ink Highlight implementation at Release X.2 (`7793a6b`). The distinction matters: the current runtime no longer contains a semantic Highlight system. It contains freehand vector Ink, while the former `userHighlights` data remains archived in Firestore and the former implementation remains in Git history.
 
-This document designs the future Ink System. Release Y architecture approval does not change production code, the current Highlight experience, Firestore data, security rules, indexes, routes, or UI.
+No production source, dependency, route, Firestore data, rule, index, or generated asset was changed during this audit.
 
-The eventual system must preserve all existing user capabilities while replacing yellow text highlights with private blue-pen-style vector annotations. It must not add stickers, a shape library, brushes, handwriting recognition, screenshots, bitmap storage, a fullscreen editor, a floating toolbar, or a permanent scroll-blocking drawing mode.
+## Executive finding
 
-## Current Architecture to Evolve
+Release Y.1 is optimized as a drawing feature, but drawing is the wrong abstraction for Release Y.2. It introduces a 537-line gesture surface, SVG projection, geometry encoding, resize observation, per-stroke writes, pen preferences, and vector previews. Those systems do not contribute to semantic text highlighting.
 
-The existing feature has useful seams and should not be rebuilt wholesale.
+Y.2 should replace the drawing pipeline with a focused-post, paragraph-scoped native selection pipeline:
 
-| Current seam | Current behavior | Reuse decision |
-| --- | --- | --- |
-| `HighlightsProvider` in `src/App.tsx` | Subscribes to every `userHighlights` document for the active user | Reuse the feature boundary, but replace the app-wide realtime listener with on-demand Ink reads |
-| `KnowledgeCard` | Derives highlights for one post and owns per-card mode state | Reuse its action/content prop seam; change mode ownership to one active post ID |
-| `CardTrust` | Hosts the Highlight button | Reuse the exact control location for the Ink crayon |
-| `CardContent` | Owns text interaction and paragraph wrappers | Reuse the content boundary and paragraph DOM anchors; replace text selection with a lazy Ink surface |
-| `highlightHelpers.tsx` | Maps paragraph indexes and character offsets to yellow `<mark>` elements | Reuse only its lessons and legacy-range adapter; it is not a vector renderer |
-| `ProfileHighlights` | Groups snippets by post | Reuse the private-profile section slot; replace the content with post-level My Notes cards |
-| `/post/:id` and `focusedEntryId` | Reuses the standard card while focusing one post | Make this the only full Ink surface; do not create an editor route |
-| `KnowledgeEntry.updatedAt` | Changes when post content is edited | Use as a quick revision hint, backed by a content hash in Ink metadata |
+1. Highlight-specific chrome is absent during normal reading.
+2. The existing post actions menu is the non-persistent entry point for Highlight Mode.
+3. Highlight Mode shows only tiny, paragraph-owned controls in the existing left card gutter.
+4. Tapping a margin control arms exactly one paragraph.
+5. Native browser selection produces a semantic range.
+6. The range is stored as paragraph identity plus character offsets in one user/post document.
+7. Yellow marks are rendered inline with paint-only styling; no overlay or geometry participates.
 
-The current global listener, duplicated title/author fields, selected snippets, yellow DOM marks, and `Record<postId, boolean>` mode map are the parts that should not survive the final cutover.
+The existing card DOM, paragraph splitting, grey separators, text metrics, card height, feed rank, routes, and virtualization algorithm remain unchanged.
 
-## Recommended Product Model
+## Current architecture map
 
-Ink has two distinct states. This distinction is the key to preserving scrolling.
-
-1. **OFF** — Ink interaction is off. No gesture capture exists. If the focused post has stored Ink, it may enter VIEWING after its route-scoped manifest read.
-2. **VIEWING** — existing vectors render read-only on the focused post; scrolling, tapping, selection, and zoom remain browser-owned.
-3. **ARMED** — Ink is enabled for exactly one focused post, but the browser still owns normal scrolling, tapping, and pinch zoom.
-4. **CANDIDATE** — one primary contact is stationary and a short hold timer is running. Scrolling is still native.
-5. **DRAWING** — only after the hold succeeds does the app temporarily capture movement and draw one stroke.
-6. **COMMITTING** — release simplifies and saves the stroke optimistically, then returns immediately to ARMED.
-
-There is no Done button. ARMED is not a drawing lock; it is permission to recognize a deliberate hold. Navigation, closing the focused post, signing out, or tapping the active crayon returns the system to OFF.
-
-On an ordinary feed card, tapping the crayon should reuse `onOpenEntry` to open the existing `/post/:id` focus route and arm that post. This gives Ink one clear coordinate space without creating a fullscreen editor or mounting overlays throughout the feed.
-
-## Scroll-versus-Draw Architecture
-
-### Options considered
-
-| Option | Scrolling | Drawing freedom | Risk | Decision |
-| --- | --- | --- | --- | --- |
-| `touch-action: none` while Ink is armed | Blocked unless scrolling is reimplemented in JavaScript | Full | High jank and accessibility risk | Reject |
-| `touch-action: pan-y` | Native vertical scroll | Vertical portions of circles/arrows may be canceled by the browser | Medium/high | Reject as the primary model |
-| Dedicated draw mode after tapping Ink | Blocked until mode is exited | Full | Violates automatic return to scrolling | Reject |
-| Two separate gestures: hold to arm, second touch to draw | Native | Full | Safe but does not match Touch → Hold → Draw | Reject |
-| Timed first-move handoff | Native until a stationary hold succeeds | Full after the handoff | Medium; requires device testing | **Recommend** |
-
-### Recommended handoff
-
-- Initial touch hold: 280 ms, subject to usability testing.
-- Pre-hold movement tolerance: 8 CSS pixels. Movement beyond it cancels the candidate and leaves the gesture entirely to native scrolling.
-- Start only on non-interactive post content. Links, buttons, media controls, form elements, browser selection, and multi-touch never start Ink.
-- Use passive observation while waiting. Do not register a non-passive `touchmove` handler for normal reading.
-- If the timer wins before movement, attach a narrowly scoped `{ passive: false }` handler for that active touch. Prevent the first post-hold move, capture the stroke, and remove the handler on release/cancel.
-- Disable native selection/callout only inside the armed content surface and only while required. Do not disable page zoom globally.
-- A second contact, `touchcancel`, route change, visibility change, lost pointer capture, or scroll beginning before the timer cancels the stroke without saving.
-- Release commits only strokes that exceed a small distance/point threshold. A hold-and-release without drawing is a no-op.
-- Pen and mouse use the same state machine with a shorter initial dwell target; they do not get a separate toolbar or brush model.
-
-This uses the Touch Events rule that canceling the first active `touchmove` can suppress scrolling for that contact. Pointer Events remain useful for unified coordinates, coalesced samples, and mouse/pen input, but Pointer Events alone cannot take panning away after it has started. The implementation must feature-detect and test the exact handoff on Safari iOS, Chrome Android, Samsung Internet, desktop Chrome/Edge, and touch-enabled Windows before production approval.
-
-## Compact Settings
-
-### Options considered
-
-| Option | Benefit | Cost | Decision |
-| --- | --- | --- | --- |
-| Always-visible color/width controls | Discoverable | Permanent clutter | Reject |
-| Anchored popover | Compact | It is a floating panel and can cover text | Reject |
-| Bottom sheet | Large touch targets | Interrupts reading | Reject |
-| Repeated tap to cycle every value | Smallest | Hidden and slow to use | Reject |
-| Temporary inline settings rail | Visible only on request; never covers content | Small, temporary layout shift | **Recommend** |
-
-Tap the crayon to toggle Ink. Press and hold the crayon itself to expand a single compact rail inside the existing card chrome, never over the article. The rail contains five color swatches and three fixed line samples. It collapses immediately after a choice, on outside interaction, or on route change.
-
-Defaults and bounded values:
-
-- Color: Blue (`blue`) by default; optional `black`, `red`, `green`, and `orange`.
-- Width: Medium (`medium`) by default; optional `thin` and `thick`.
-- Store enum codes, not arbitrary colors or numeric widths.
-- Store the preference locally. Do not add a Firestore preference read or write.
-
-The exact color values and CSS widths remain design tokens, allowing visual tuning without migrating stored annotations.
-
-## Rendering Decision
-
-| Renderer | Strengths | Weaknesses | Fit |
-| --- | --- | --- | --- |
-| SVG overlay | Native vector paths, resolution independent, direct preview reuse, easy responsive viewBox, no dependency | Too many individual path nodes can become expensive | Best overall |
-| Canvas overlay | Excellent raw raster throughput and one DOM node | High-DPI redraws, manual hit testing, separate SVG preview path, more lifecycle code | Useful only if profiling disproves SVG |
-| Hybrid canvas + SVG | Fast live stroke plus vector committed output | Two renderers, synchronization cost, larger lazy chunk | Premature for this scale |
-| DOM elements per mark | Simple for underlines | Poor for freehand/circles/arrows; excessive layout and DOM | Reject |
-
-### Recommendation: native SVG
-
-Use one absolutely positioned SVG per active content surface, not per post card and not per paragraph. The SVG is lazy-mounted only on the focused post when Ink is armed or when that focused post has existing annotations.
-
-Performance rules:
-
-- Keep one active `<path>` outside React state and update its `d` attribute at most once per animation frame.
-- Consume coalesced pointer samples when available.
-- Simplify on release with a small in-house polyline simplifier; do not add a drawing library.
-- Quantize coordinates before persistence.
-- Render committed strokes as combined path strings grouped by anchor block, color, and width. Keep individual stroke identity in data, not necessarily in the DOM.
-- Use `vector-effect="non-scaling-stroke"` so Thin/Medium/Thick stay visually stable across responsive scaling.
-- Use `pointer-events="none"` for committed SVG. The transient capture layer exists only during CANDIDATE/DRAWING.
-- One route-scoped `ResizeObserver`, throttled to animation frames, recomputes projection after width/orientation changes. No observer exists in the feed.
-- Do not mount an off-screen canvas, hidden preview DOM, image generator, or screenshot pipeline.
-
-SVG is not selected because it beats Canvas at every possible stroke count. It is selected because hundreds of simplified, grouped vectors are within the expected scale and it gives the smallest coherent system for live rendering, responsive replay, and My Notes previews. Canvas remains a measured fallback only if the acceptance tests fail.
-
-## Coordinate and Anchor Model
-
-Pixel coordinates alone are unsafe because Readative posts reflow. Paragraph indexes alone are also unsafe because the current content is split on blank lines and indexes change when an author inserts a paragraph.
-
-Use a dual anchor for every stroke:
-
-1. **Geometric anchor** — a simplified polyline in a 0–4095 block-local coordinate space, original block bounds/aspect, and sparse text pins.
-2. **Semantic anchor** — canonical full-content offsets, paragraph ordinal as a hint, block fingerprint, content revision, and hashed quote context.
-
-No selected text is stored. The quote context contains lengths and SHA-256 hashes for the exact nearby range, prefix, and suffix. On an edited post, the resolver can scan candidate ranges and compare hashes without persisting readable snippets.
-
-Sparse text pins attach selected polyline point indexes to nearby character positions plus `dx`/`dy` offsets in `em` units. They allow piecewise reprojection when line wrapping changes without attaching metadata to every point.
-
-### Resolution order
-
-1. If the content revision and layout signature match, replay the block-local polyline directly.
-2. If content matches but width, font metrics, or orientation changed, resolve text pins and piecewise-warp the path; fall back to block-normalized geometry only when pins are insufficient.
-3. If content changed, try the original offsets, then block fingerprint, then hashed exact/prefix/suffix context.
-4. If anchors resolve uniquely, replay against the new DOM without rewriting source data immediately.
-5. If resolution is ambiguous or insufficient, fail closed: preserve the stroke in storage and preview, but do not draw it at a potentially incorrect place.
-
-This cannot guarantee pixel-identical freehand across arbitrary text rewrites; no reflowing web architecture can. The safe guarantee is that Ink will not silently attach a mark to unrelated text.
-
-## Firestore Storage Options
-
-| Model | Reads | Writes | Scale/safety | Decision |
-| --- | --- | --- | --- | --- |
-| All strokes in one user/post document | One | One document update per save | Eventually approaches Firestore's 1 MiB document limit; rewrites grow | Reject |
-| One document per stroke | Hundreds | Simple and conflict-safe | Hundreds of reads to open a heavily annotated post | Reject |
-| Store paths on `knowledge` posts | Low | Contends with public post writes | Mixes private user data with shared content and duplicates ownership | Reject |
-| Summary + bounded stroke chunks | One summary plus a few chunk reads | Two batched writes per flush | Bounded documents, private, scalable, preview efficient | **Recommend** |
-
-Firestore documents have a hard 1 MiB limit, so the architecture must use a much lower internal chunk ceiling rather than treating that maximum as a target.
-
-### Recommended future schema
-
-```text
-/userInk/{uid}
-  /posts/{postId}                       # private summary/manifest
-    schemaVersion: 1
-    createdAt: Timestamp
-    lastAnnotatedAt: Timestamp
-    strokeCount: number
-    chunkCount: number
-    contentRevision: string
-    preview: {
-      viewBox: [number, number, number, number]
-      vectors: [{ geometry: string, c: 0..4, w: 0..2 }]
-    }
-    migrationVersion?: number
-
-    /chunks/{sessionId_sequence}        # private bounded vectors
-      schemaVersion: 1
-      createdAt: Timestamp
-      updatedAt: Timestamp
-      strokeCount: number
-      pointCount: number
-      strokes: [{
-        id: string
-        at: number
-        c: 0..4
-        w: 0..2
-        geometry: string
-        anchor: compact map
-      }]
+```mermaid
+flowchart TD
+    A["App / active route"] --> B["InkProvider"]
+    B --> C["Global post-id index and active post"]
+    C --> D["Virtualized KnowledgeCard"]
+    D --> E["CardTrust pen and settings"]
+    D --> F["CardContent"]
+    F --> G["Lazy InkSurface"]
+    G --> H["Touch and pointer gesture state"]
+    G --> I["Geometry codec and SVG overlay"]
+    G --> J["userInk user/post document"]
+    B --> K["Profile My Notes count"]
+    K --> L["Lazy ProfileMyNotes"]
+    L --> M["SVG InkPreview"]
 ```
 
-The document paths already identify the user and post. Do not duplicate `userId`, `postId`, title, author, body, excerpt, selected text, image, or screenshot fields.
+### Former semantic Highlight architecture
 
-Chunk policy:
+The pre-Y.1 Highlight implementation is not live, but it is the closest semantic predecessor and its archived data may be migratable.
 
-- One active chunk per browser session/post, so two devices or tabs never overwrite the same chunk.
-- Seal a chunk at 40 strokes or 32 KiB of encoded payload, whichever comes first.
-- Hard reject a client chunk above 64 KiB before write.
-- Encode simplified, quantized point deltas as a compact string or Firestore bytes value; it remains vector source data, not a bitmap.
-- Cap preview data at 8 KiB and a small representative vector count. The preview is derived from stored vectors and is not authoritative source data.
-- Exempt `geometry`, stroke arrays, anchor maps, and preview vector fields from indexing. Only `lastAnnotatedAt` needs ordering for My Notes; no composite index should be required for the user-scoped query.
+| Area | Former behavior | Audit result |
+| --- | --- | --- |
+| Global state | `HighlightsProvider` stored every highlight for the signed-in user and a `Record<postId, boolean>` mode map | Allowed multiple cards to remain armed and caused global updates |
+| Firestore | One top-level `userHighlights` document per selected range; one user-wide `onSnapshot` query | Unbounded listener payload and violates Y.2's one-document-per-post rule |
+| Selection | `onMouseUp` and `onTouchEnd` read `window.getSelection()` | Semantic and responsive, but touch finalization and cross-paragraph ranges were under-specified |
+| Range | `paragraphIndex`, `startOffset`, `endOffset`, and duplicated `selectedText` | Responsive, but numeric paragraph identity drifts after edits |
+| Rendering | Recursive `highlightReactTree` wrapped matching text with `<mark>` | Correct direction, but its padding and border could change line wrapping and card height |
+| Card work | Every mounted card filtered the complete global highlight array by `postId` | `O(visible cards × user highlights)` work on every provider update |
+| Removal | Clicking a mark opened `window.confirm`, then deleted one Firestore document | Functional but sentence-oriented rather than post-oriented |
+| Profile | `ProfileHighlights` grouped by post but rendered every selected sentence | Did not satisfy the post-card-only My Notes requirement |
 
-### Read behavior
+The old architecture should not be restored wholesale. Only its semantic range principle and DOM text-offset lessons should be reused.
 
-- Base feed: zero Ink reads and zero Ink listeners.
-- Focused post: after the post paints, read one manifest. If it exists, lazy-load the Ink chunk and fetch its bounded chunks. Do not subscribe.
-- First Ink activation before the idle read: the same manifest request is reused, never duplicated.
-- My Notes: only when the private tab opens, query `/userInk/{uid}/posts` ordered by `lastAnnotatedAt desc`, limit 12, using a cursor for later pages.
-- My Notes post metadata: resolve from existing in-memory/cache data first; fetch only missing `knowledge` documents in a bounded document-ID query. This avoids duplicating post data, at the cost of additional reads only inside My Notes.
-- Do not hydrate full posts for preview generation. Preview vectors already live in the Ink manifest.
+### Live Y.1 Ink ownership
 
-### Write behavior
+| File | Current responsibility | Y.2 disposition |
+| --- | --- | --- |
+| `src/context/InkContext.tsx` | Active Ink post, global annotated-post ID set, color and width preferences, lazy index load | Replace drawing state with route-scoped Highlight Mode; retain only a compatibility index seam required by protected `Profile.tsx` |
+| `src/ink/types.ts` | Stroke, anchor, geometry, color, and width schema | Remove from active runtime |
+| `src/ink/blockKey.ts` | Hashes normalized paragraph source and duplicate occurrence | Generalize the small deterministic paragraph-ID idea |
+| `src/ink/geometry.ts` | Simplifies, quantizes, encodes, decodes, and projects stroke points | Remove |
+| `src/ink/InkSurface.tsx` | Loads Ink, arbitrates gestures, builds strokes, saves, observes layout, renders SVG | Remove |
+| `src/ink/InkPreview.tsx` | Renders up to 24 strokes in a notebook-like SVG preview | Replace with one small yellow text preview |
+| `src/ink/repository.ts` | Reads index/post docs, appends strokes, pages My Notes, deletes notes | Replace with semantic highlight repository; preserve bounded paging and canonical post hydration |
+| `CardTrust.tsx` | Persistent pen button plus long-press color/width popover | Remove all drawing controls |
+| `CardContent.tsx` | Paragraph DOM, block anchors, lazy Ink surface host | Preserve paragraph and separator DOM; replace content-sized surface with paragraph selection |
+| `KnowledgeCard.tsx` | Connects context, focus, button, overlay, header indicator, status | Connect route-scoped Highlight Mode without changing card layout |
+| `CardHeader.tsx` | Shows an Ink crayon indicator for annotated posts | Remove the persistent indicator; use its existing actions menu only as the mode entry seam |
+| `ProfileMyNotes.tsx` | Pages one Ink document per post, hydrates posts, draws SVG previews | Reuse card/page shell; render title, author, date, one yellow preview, and count |
 
-- Save optimistically at release.
-- Update the session chunk and manifest in one Firestore write batch.
-- Use unique stroke IDs and session-owned chunk IDs for idempotency and multi-tab safety.
-- Use atomic counters for stroke/chunk counts. A last-writer preview race may affect only the thumbnail and self-heals when all vectors are next loaded; it must never lose source strokes.
-- Optionally coalesce strokes released within a short 500 ms window into one flush, but always flush on route change or `visibilitychange`.
-- Firestore's existing persistent local cache can queue offline writes. The UI should distinguish local saved/pending/failed state without blocking reading.
+## Firestore audit
 
-### Privacy and rules requirement
+### Archived Highlight storage
 
-Ink is private. Future security rules must require authenticated ownership at every summary and chunk path: `request.auth != null && request.auth.uid == uid`. Validate allowed fields, schema version, enum ranges, bounded list/string sizes, and immutable ownership. My Notes remains own-profile only.
+Path: top-level `userHighlights/{autoId}`
 
-Rules and index exemptions are production Firestore changes and are explicitly outside this architecture-only release.
+Fields included `userId`, `postId`, `selectedText`, `paragraphIndex`, `startOffset`, `endOffset`, duplicated post title/author, and `createdAt`. One selection created one document. The provider listened to all matching documents for the user.
 
-## My Notes Architecture
+The Y.1 migration archived these documents in place. Current source does not query them.
 
-Rename the private Profile tab from Highlights to My Notes at final cutover. Its unit is an annotated post, not a stroke.
+### Live Ink storage
 
-Each paginated card contains:
+Paths:
 
-- Live post title from `knowledge/{postId}`.
-- Live author from the same canonical post document/profile resolution.
-- `lastAnnotatedAt` from the private Ink manifest.
-- A tiny inline SVG whose paths are generated by decoding `preview.vectors`.
-- Continue Reading, routed through the existing `/post/:id` path.
+- `userInk/{uid}`: schema version, `postIds`, and update time.
+- `userInk/{uid}/posts/{postId}`: schema version, creation/update time, and a `strokes` array.
 
-The tab count becomes annotated-post count, not total-stroke count. No card contains a text snippet. No preview loads a post body, image, canvas snapshot, or screenshot.
+Current access cost:
 
-If a post is deleted or no longer visible, the system must not expose stale duplicated content. Show an unavailable state using the stored vector preview and allow the user to delete their private Ink data; Continue Reading is disabled.
+| Event | Reads | Writes | Highlight/Ink listener |
+| --- | ---: | ---: | --- |
+| Signed-in identity becomes active | 1 index document | 0 | None |
+| Feed card render | 0 | 0 | None |
+| Focus/activate Ink on one post | 1 post document | 0 | None |
+| First completed stroke | 0 after load | 2 batched writes: post + user index | None |
+| Later completed stroke | 0 after load | 1 post-document write | None |
+| My Notes first/load-more page | Up to 12 Ink docs plus one bounded post query | 0 | None |
+| Delete a post's Ink | 0 | 2 batched writes: post + user index | None |
 
-To preserve the current removal capability, My Notes keeps a confirmed “Delete notes from this post” secondary action. Individual stroke editing is not required for Release Y.
+Every completed stroke adds a write. No write occurs during pointer movement. `arrayUnion` avoids resending the local array as application data, but the stored document grows with every stroke.
 
-## Lazy-loading and Ownership Boundaries
+No Firestore rules or index configuration is present in this repository, so ownership enforcement and deployed rule coverage cannot be verified locally. Rule validation is a release prerequisite, not an assumption.
 
-The final architecture should have these boundaries:
+## SVG and overlay rendering audit
 
-- `InkController`: one active post ID and OFF/VIEWING/ARMED/CANDIDATE/DRAWING/COMMITTING state. Route-scoped, not an app-wide annotation collection.
-- `InkSurface`: gesture arbitration, sampling, and live SVG. Loaded only after Ink activation or an existing manifest on the focused route.
-- `InkProjection`: anchors, hashes, coordinate transforms, and SVG path generation.
-- `InkRepository`: on-demand Firestore reads/writes, chunking, batches, and migration adapter.
-- `MyNotes`: paginated manifests, canonical post metadata hydration, previews, and delete-post-notes action.
-- `LegacyHighlightAdapter`: read-only compatibility during migration; never part of the steady-state bundle unless legacy data is detected.
+The focused Ink surface mounts only when the focused post is active or known to have Ink. It renders one absolute, content-sized SVG with `pointer-events: none`. Committed strokes are grouped into at most 15 `<path>` elements (five colors by three widths), plus one active path.
 
-The crayon shell and active-state token may remain in the existing card chunk. Gesture, codec, repository, projection, migration, and My Notes preview code must be dynamic imports.
+Positive properties:
 
-## Performance Budgets
+- Feed cards do not mount Ink SVGs.
+- The SVG is absolute and does not directly change content height.
+- Live path mutation is limited to animation-frame cadence.
+- React state changes once per completed stroke rather than once per point.
 
-These are implementation gates, not measured results.
+Costs and bottlenecks:
 
-| Surface | Budget |
-| --- | --- |
-| Initial application JS | 0–1 KiB gzip increase; no drawing dependency in the initial graph |
-| Lazy Ink interaction chunk | Target 6–10 KiB gzip; hard gate 12 KiB gzip |
-| Lazy My Notes-specific UI | Target 2–4 KiB gzip beyond shared Ink codec |
-| Feed Firestore | 0 reads, 0 listeners caused by Ink |
-| Feed DOM | 0 SVG overlays and 0 hidden Ink surfaces |
-| Active drawing | One DOM path update per animation frame; no React render per pointer sample |
-| Typical focused load | 1 manifest + 1–4 chunk documents |
-| 200-stroke focused load | Approximately 1 manifest + 5 chunk documents under the 40-stroke ceiling |
-| My Notes first page | 12 manifests + 0–12 canonical post reads, with cache-first hydration |
-| Stored typical stroke | Target 0.4–1.2 KiB after simplification, quantization, and anchor metadata |
+- `renderedGroups` performs layout reads (`getBoundingClientRect`) during render.
+- It scans blocks for each stroke, decodes geometry, allocates point arrays, and rebuilds large path strings after each stroke or resize.
+- Every pointer sample reads the host rectangle.
+- Each live frame rebuilds a path string from all accumulated raw points, so work grows through the gesture.
+- The SVG covers the entire text region, increasing paint area even when only a small stroke changes.
+- `ResizeObserver` invalidates the complete projection when the content host changes size.
+- My Notes renders one SVG per loaded note card. Load More accumulates every page in memory and DOM; the page is not virtualized.
 
-If native SVG cannot meet the drawing/frame budget at 500 strokes on the agreed low-end device, only then prototype a live-canvas/committed-SVG hybrid behind the same interfaces.
+Y.2 requires no SVG or content overlay. Inline yellow background paint is the only highlight rendering.
 
-## Behavior Under Change
+## Pointer and gesture audit
 
-| Change | Required response |
-| --- | --- |
-| Title or author changes | My Notes shows current canonical values on next load; Ink data is unchanged |
-| Content edit with stable nearby text | Hash/offset resolver reanchors and reprojects |
-| Content rewrite or ambiguous anchor | Preserve but hide unresolved strokes; never guess |
-| Paragraph inserted before a mark | Block ordinal is only a hint; hashes and offsets relocate it |
-| Screen width/device/orientation changes | Recompute sparse text pins and block transform; no Firestore read/write |
-| Font metrics change | Re-resolve `em`-based pins after layout settles |
-| Post deleted/private | Preserve private Ink until user deletes it; do not expose duplicated post data |
-| Multiple tabs/devices | Unique session chunks prevent source overwrites; manifests use atomic counters |
-| Offline release | Optimistic local Ink remains visible and queued; failures are recoverable |
+The live `InkSurface` has separate touch and non-touch pointer paths:
 
-## Architectural Decision
+- Touch hold: 280 ms.
+- Mouse/pen hold: 140 ms.
+- Pre-hold movement tolerance: 8 CSS pixels.
+- Minimum committed stroke distance: 6 CSS pixels.
+- Raw gesture cap: 1,024 points; persisted cap: 256 points.
+- A non-passive `touchmove` listener is attached only after a successful hold.
 
-Approve the following target as one decision set:
+Conflict risks:
 
-1. Ink exists only on the existing focused post route.
-2. ARMED never blocks normal reading; DRAWING exists only for one held contact.
-3. Native SVG is the renderer, with Canvas retained only as a benchmarked fallback.
-4. Vectors use geometric plus semantic hashed anchors and fail closed after unsafe edits.
-5. Firestore uses private user/post manifests plus bounded session chunks.
-6. My Notes reads manifests only when opened and hydrates canonical post metadata without duplicating it.
-7. The base feed has no Ink reads, listeners, overlays, hidden DOM, or drawing bundle.
-8. Migration is additive and reversible; the current Highlight system remains live until explicit cutover approval.
+- A browser may commit a touch to scrolling before the late non-passive listener can take control.
+- `preventDefault()` after the hold creates an unavoidable scroll-versus-draw boundary.
+- Mouse/pen events are attached to the host without pointer capture; release outside the host can be missed.
+- Text selection is disabled in active Ink Mode, opposing the Y.2 goal.
+- Links and mentions share the content region and require explicit click-versus-selection handling.
+- Context menu/callout suppression can interfere with native touch selection.
+- Gesture listeners, timers, live refs, cancellation paths, and layout reads exist solely because the feature is drawing vectors.
 
-## References
+Y.2 must use the browser Selection/Range APIs and must not call `preventDefault()` on paragraph drag, install drawing listeners, capture pointers, or change `touch-action`. Desktop drag selection is expected. Mobile browsers may require their normal long-press and selection handles; custom one-drag touch selection would reintroduce scroll arbitration and is rejected unless separately approved.
 
-- [Firestore usage and document limits](https://firebase.google.com/docs/firestore/quotas)
-- [Firestore cursor pagination](https://firebase.google.com/docs/firestore/query-data/query-cursors)
-- [Firestore owner-scoped security rule conditions](https://firebase.google.com/docs/firestore/security/rules-conditions)
-- [W3C Pointer Events and `touch-action`](https://www.w3.org/TR/pointerevents/)
-- [W3C Touch Events first-`touchmove` cancellation behavior](https://www.w3.org/TR/touch-events/)
-- [W3C selector model for text position and quote anchoring](https://www.w3.org/TR/selectors-states/)
+## Feed virtualization audit
 
-## Approval Boundary
+`KnowledgeCardList` is a custom variable-height virtual list:
 
-No part of this proposal is authorized for production implementation or Firestore deployment until the user approves the architecture.
+- Initial estimated card heights are derived from image count/layout and text metadata.
+- Only the viewport plus 900 px overscan is mounted.
+- Rows are absolutely positioned inside a total-height container.
+- Each mounted row is measured with `ResizeObserver`.
+- A height change above the viewport triggers compensating `window.scrollBy` to prevent a jump.
+- Rows use `contain: layout paint`.
+- Firestore pagination loads 10 posts initially and 5 subsequently; virtualization is separate from pagination.
+
+Current Ink mostly avoids feed cost by limiting SVG rendering to the focused card. It still makes every mounted `KnowledgeCard` consume the global Ink context, so active mode, preferences, or the annotated-post set can invalidate all visible consumers. The temporary in-card Ink status message also changes card height and forces virtual-row remeasurement.
+
+Y.2 virtualization contract:
+
+- No Highlight renderer, range document read, margin control, or yellow mark mounts on ordinary feed cards.
+- Only the focused post can mount the lazy semantic highlight module.
+- No in-card success/status panel may be added.
+- Margin controls are out-of-flow in the existing gutter.
+- `<mark>` styling must have zero padding, margin, border, font, letter-spacing, and line-height effect.
+- The measured height before mode, during mode, after selection, and after mode exit must be identical.
+
+## Card and paragraph rendering audit
+
+`KnowledgeCard` is lazy-loaded and memoized. It calculates `contentSections` by splitting `entry.content` on one or more blank lines, trimming each section, and dropping empty sections.
+
+`CardContent` renders:
+
+```text
+content host: mt-6, space-y-0
+  section wrapper 0
+    paragraph
+  section wrapper 1+
+    divider: my-6 border-t border-slate-100
+    paragraph
+```
+
+Paragraph classes are `whitespace-pre-wrap` plus a selection class. The divider is the existing grey notebook separator. Its DOM position and classes are a hard invariant.
+
+Rich text is a React tree of text fragments, links, mentions, emphasis spans, and strong text. Therefore offsets must be computed against rendered text nodes, not raw Markdown source indexes. A DOM `TreeWalker` is appropriate for selection capture, and the renderer must apply ranges recursively without altering the rich-text elements.
+
+The old mark style used horizontal padding and a border; that can change wrapping. Y.2 must use paint-only styling such as a yellow background/gradient with `color: inherit`, `padding: 0`, `margin: 0`, and inherited line height.
+
+## Existing indicators audit
+
+Current user-facing Ink indicators are:
+
+- A persistent pen button in `CardTrust`.
+- A long-press pen settings popover.
+- A crayon glyph in `CardHeader` when a post ID appears in the user index.
+- A My Notes tab count sourced from the same index.
+- Blue/black/red/green/orange SVG strokes on a focused post.
+
+The first three create visible drawing-product language. Y.2 removes the persistent pen/settings control and header crayon. The already-present three-dot post menu becomes the non-persistent command surface. The My Notes count remains because it is navigation metadata, not in-reading clutter.
+
+## Current My Notes audit
+
+`Profile.tsx` already owns an own-profile-only `notes` section and lazy-loads `ProfileMyNotes`. The profile shell and route remain unchanged.
+
+`ProfileMyNotes` currently:
+
+- Queries 12 `userInk/{uid}/posts` documents ordered by `lastAnnotatedAt`.
+- Loads the matching canonical `knowledge` documents in one bounded `documentId in` query.
+- Appends further pages without virtualization.
+- Shows one card per post.
+- Shows title, author, last-annotated date, an SVG vector preview, Continue Reading, and delete-all-Ink.
+- Keeps unavailable-post cards and permits deletion.
+
+It already has the correct post-level cardinality and lazy section boundary. Y.2 should reuse those properties, replace SVG with one derived yellow text preview, display the semantic range count, and retain canonical post hydration so title/author/date are not duplicated into highlight documents.
+
+## Performance and complexity findings
+
+| Finding | Severity | Evidence and impact |
+| --- | --- | --- |
+| Drawing architecture for a reading interaction | High | Geometry, pen settings, SVG, and gesture arbitration are unnecessary for semantic text ranges |
+| Layout reads during SVG render | High | Can force synchronous layout and repeats per stroke/block after resize or commit |
+| Full path rebuild while drawing | Medium/High | Repeated string and point-array work grows over the gesture |
+| One Firestore write per stroke | Medium | Natural for drawing, excessive relative to one semantic selection |
+| Growing vector document | High at outliers | Up to 600 strokes and 450,000 client-capped geometry characters plus object overhead |
+| My Notes accumulation | Medium/High | Every loaded document retains all strokes; every loaded card retains a preview SVG |
+| Global context invalidation | Medium | Visible cards consume active ID, post IDs, color, and width from one value |
+| Late touch handoff | High UX risk | Competes with browser scrolling and differs across mobile engines |
+| In-card mode/status message | High for Y.2 invariant | Temporarily increases virtual row and card height |
+| Former global Highlight listener | High if restored | Loads/listens to all sentence documents and fans updates through all cards |
+| Former padded `<mark>` | High for Y.2 invariant | Can change line wrapping, separator position, and card height |
+
+The existing Y.1 performance report measured +0.72 kB gzip in the startup chunk relative to pre-Ink, plus approximately 4.89 kB gzip for the focused Ink path and 4.10 kB gzip for My Notes. Removing geometry/SVG/pen preferences should make Y.2 net-negative against Y.1, but the `< 1 KB gzip` requirement remains a measured release gate rather than an estimate.
+
+## Proposed Y.2 architecture
+
+```mermaid
+flowchart TD
+    A["Existing route focus"] --> B["Notebook mode state"]
+    B --> C["Focused KnowledgeCard only"]
+    C --> D["Existing post menu command"]
+    C --> E["Existing CardContent paragraph DOM"]
+    E --> F["Paragraph margin control"]
+    F --> G["Arm one paragraph"]
+    G --> H["Native Selection and Range"]
+    H --> I["paragraphId plus offsets"]
+    I --> J["One user/post highlight document"]
+    J --> K["Inline paint-only mark renderer"]
+    J --> L["Lazy post-level My Notes cards"]
+```
+
+### State model
+
+| State | Persistent UI | Text behavior |
+| --- | --- | --- |
+| Normal | No margin controls or highlight-specific card indicator | Stored yellow marks may render on the focused post; ordinary selection remains browser-owned |
+| Mode on, no paragraph armed | Tiny controls appear only in the left gutter beside paragraphs | No range is captured |
+| Paragraph armed | Only the chosen paragraph is an active capture boundary | Native selection is accepted only inside that paragraph |
+| Saving | No spinner or layout insertion | Selected range is optimistically yellow; one write is pending |
+| Error | No card-height change | Optimistic range rolls back; a non-layout status is announced |
+
+“Nothing visible” is interpreted as no persistent interaction chrome in normal reading. Previously saved yellow text remains visible on the focused post because it is reading content, not an interaction indicator. If approval intends saved highlights to be hidden outside Highlight Mode, that must be stated explicitly because it changes the usefulness and read behavior of the feature.
+
+### Mode lifecycle
+
+Mode state is in memory only and keyed to the focused post ID. It is cleared when:
+
+- `focusedPostId` becomes `null`.
+- `focusedPostId` changes.
+- The active application tab changes away from Knowledge.
+- The focused post is closed.
+- Navigation opens another post without explicitly invoking Highlight Mode.
+- The component/provider unmounts on refresh.
+- Identity changes or signs out.
+
+The existing route state is consumed; `routes.ts` and route behavior do not change.
+
+### Margin control contract
+
+- One tiny control is rendered per paragraph only while mode is on, because the tap must identify which paragraph becomes selectable.
+- It is a sibling of the `<p>`, never a child of the paragraph or divider.
+- It is anchored to that paragraph's wrapper and placed in the existing left card padding.
+- It is not fixed, sticky, viewport-relative, content-sized, or positioned over text.
+- The visible mark is intentionally tiny; the hit target may be taller than the visible mark but must stay out of the text column.
+- The paragraph/divider wrapper must retain identical dimensions with the control mounted or absent.
+- Keyboard focus and an accessible label identify the paragraph without adding visible text.
+
+### Selection contract
+
+- Tapping a margin control sets `armedParagraphId` and focuses the paragraph boundary.
+- A committed selection must be non-collapsed and wholly contained in the armed paragraph.
+- Cross-paragraph, reversed-invalid, out-of-range, interactive-control, or empty-whitespace selections are rejected without a write.
+- Character offsets are measured across rendered DOM text nodes with `TreeWalker`.
+- Pointer/touch defaults are not prevented. No `touch-action`, pointer capture, drawing timer, canvas, SVG, or coordinate hit testing is introduced.
+- Link navigation is suppressed only when the completed native selection is non-collapsed; ordinary clicks remain links.
+- Exactly one save attempt follows one completed valid selection. `selectionchange` may update local readiness but must not write.
+- Browser selection is cleared only after the semantic range has been captured successfully.
+
+### Paragraph identity
+
+Each paragraph receives a deterministic ID generated from normalized source text plus a duplicate-occurrence number. Offsets are against the rendered paragraph text.
+
+This survives responsive reflow, font changes, and card width changes because no pixel positions are stored. If post content changes and the paragraph ID no longer resolves, the range fails closed and is not drawn against unrelated text. Reads never perform automatic heuristic relocation or cleanup writes.
+
+### Proposed document model
+
+Paths:
+
+- `userNotebook/{uid}`: a small per-user index used only for the existing protected My Notes tab count.
+- `userNotebook/{uid}/posts/{postId}`: the only highlight document for that user/post pair.
+
+Illustrative schema:
+
+```ts
+interface NotebookHighlightRange {
+  id: string;
+  paragraphId: string;
+  startOffset: number;
+  endOffset: number;
+  color: "yellow";
+  createdAt: number;
+}
+
+interface NotebookPostDocument {
+  schemaVersion: 2;
+  createdAt: number;
+  updatedAt: number;
+  highlights: NotebookHighlightRange[];
+}
+```
+
+Post title, author, body, rendered HTML, selected sentence, pixels, SVG, paths, canvas data, and screenshots are not stored. Canonical post metadata is loaded from `knowledge` for My Notes.
+
+Ranges are validated and capped well below Firestore's document ceiling. Exact duplicates are ignored. A transaction merges concurrent state and normalizes overlapping/adjacent ranges deterministically before persistence so rendering never creates nested marks. All fields and array sizes are validated again when read.
+
+### Proposed Firestore behavior
+
+| Event | Reads | Writes | Listener |
+| --- | ---: | ---: | --- |
+| Signed-in identity | 1 lightweight post-ID index read | 0 | None |
+| Ordinary feed | 0 per post | 0 | None |
+| Focus known highlighted post or activate mode | 1 user/post document | 0 | None |
+| Complete first valid highlight on a post | 1 transactional current-document read | 2 committed writes: post + user index | None |
+| Complete later valid highlight | 1 transactional current-document read | 1 committed post-document write | None |
+| Pointer/selection movement | 0 | 0 | None |
+| My Notes page | Up to 12 notebook docs plus one bounded canonical-post query | 0 | None |
+| Delete all highlights for a post | 0 | 2 batched writes: post + user index | None |
+
+No additional Firestore listener is introduced. The current Ink and archived Highlight collections remain untouched by normal Y.2 runtime code.
+
+### Inline rendering
+
+The renderer sorts and normalizes valid ranges for one paragraph, walks the existing rich-text React tree, and wraps only matching text fragments in `<mark data-highlight-id>`. Mark CSS is paint-only and inherits all text metrics. No parent dimensions, gaps, separators, or card classes change.
+
+Ordinary feed cards do not load or render marks. The lazy renderer exists only for the focused card, preserving the virtualization path.
+
+### My Notes target
+
+Each document naturally produces one card per post. Each card contains only:
+
+- Canonical title.
+- Canonical author.
+- Canonical post date.
+- One small yellow text preview derived from the first valid range and current post content.
+- Highlight count.
+
+It does not list every sentence. The unavailable-post state and delete-all-notes action can remain. SVG preview, pen icon language, and vector geometry are removed.
+
+### Lazy-loading and bundle boundary
+
+- Mode context remains dependency-free and contains only small scalar/Set state.
+- Repository code is dynamically imported only for signed-in index load, focused post use, or My Notes.
+- The semantic range renderer/selection controller is lazy and focused-post-only.
+- My Notes remains lazy behind the existing profile section.
+- No dependency is added. Existing `html-to-image` remains isolated to the protected downloader and is not imported by Highlight V2.
+- The clean Y.1 startup asset is the bundle baseline; Y.2 must add less than 1.00 kB gzip and is expected to reduce it.
+
+## Protected boundaries
+
+Release Y.2 does not change:
+
+- Feed ranking, personalization, pagination, or virtualization algorithms.
+- Downloader/export behavior or dependencies.
+- SmartTalk.
+- SEO.
+- Authentication or identity semantics.
+- Profile layout, profile data, or profile routing.
+- Explore.
+- Notifications.
+- Route definitions or navigation semantics.
+- Global performance architecture.
+
+`Profile.tsx` is protected. Its existing lazy My Notes seam and `inkPostIds.size` count dependency create a compatibility constraint. The approved implementation should keep a tiny internal compatibility export that maps that count to Y.2 highlighted-post IDs, allowing `Profile.tsx` itself to remain unchanged. This internal alias must not leak Ink language into the UI or storage schema.
+
+## Architecture acceptance conditions
+
+Architecture is ready for approval only with these interpretations:
+
+1. “Nothing visible” means no persistent interaction chrome; stored yellow marks remain readable on a focused post.
+2. The existing three-dot menu is the mode entry point, avoiding a persistent Highlight button.
+3. Touch uses native browser selection behavior; no custom drawing-like drag recognizer is permitted.
+4. One small margin control per paragraph is necessary to identify the paragraph being armed.
+5. Legacy semantic highlights may be validated and migrated; freehand Ink cannot be safely converted and remains archived.
+6. No implementation starts until these documents are approved.

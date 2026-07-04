@@ -1,84 +1,68 @@
-# Readative Release Y.1 — Ink System Task
+# Release Z.1 - Desktop Experience V2 Task Status
 
-Date: 2026-07-01
+Status: Phase 1 desktop UX architecture audit complete.
 
-## Implementation
+Production code modified: no.
 
-- [x] Replaced `HighlightsProvider` with route-aware `InkProvider`.
-- [x] Enforced one active Ink post and automatic route-exit deactivation.
-- [x] Removed text-selection Highlight handlers.
-- [x] Removed yellow Highlight rendering and offsets.
-- [x] Removed selected-text Profile snippets.
-- [x] Removed the old Highlight save/delete subscription and Firestore logic.
-- [x] Deleted obsolete Highlight context, renderer, Profile, and helper files.
-- [x] Added Blue/Black/Red/Green/Orange color enums.
-- [x] Added Thin/Medium/Thick width enums.
-- [x] Added long-press compact pen settings.
-- [x] Added reading-first touch and pointer arbitration.
-- [x] Added one-rAF live SVG path updates.
-- [x] Added compact vector simplification, quantization, encoding, validation, and caps.
-- [x] Added hash-based block/revision anchoring with fail-closed rendering.
-- [x] Added one private user/post document and one user index.
-- [x] Saved once after each completed stroke, never during drawing.
-- [x] Added one small feed pen indicator without feed SVG rendering.
-- [x] Replaced Profile Highlights with lazy My Notes.
-- [x] Added post title, author, date, vector preview, Continue Reading, pagination, unavailable state, and delete-notes behavior.
-- [x] Archived legacy Highlight data in place and started Ink fresh.
-- [x] Added no dependency and no production canvas/screenshot/image workflow.
+## Requested deliverables
 
-## Obsolete Code Audit
+Created/updated only the requested architecture-phase files:
 
-- [x] Deleted `src/context/HighlightsContext.tsx`.
-- [x] Deleted `src/components/ProfileHighlights.tsx`.
-- [x] Deleted `src/components/KnowledgeCard/highlightHelpers.tsx`.
-- [x] Removed all source references to `userHighlights`.
-- [x] Removed all source references to selected text and legacy offsets.
-- [x] Removed all production-facing Highlight labels.
-- [x] Strict unused-locals/parameters TypeScript check passed.
+- `desktop_architecture.md`
+- `implementation_plan.md`
+- `engineering_risk.md`
+- `performance_plan.md`
+- `task.md`
 
-## Validation
+## Audit checklist
 
-- [x] `npx tsc --noEmit --pretty false`.
-- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`.
-- [x] Ink geometry codec/simplifier runtime check.
-- [x] `npm run build`.
-- [x] `git diff --check` with line-ending warnings only.
-- [x] Exact clean-HEAD bundle baseline build.
-- [x] Desktop Home.
-- [x] Desktop focused Post.
-- [x] Desktop Explore.
-- [x] Desktop SmartTalk.
-- [x] Desktop Profile.
-- [x] Tablet 768×1024 named routes.
-- [x] Mobile 390×844 named routes.
-- [x] Guest Ink sign-in gate.
-- [x] Guest My Notes sign-in gate.
-- [x] Feed/focused route overlay count check.
-- [x] Canvas/hidden-canvas count check.
-- [x] Console warning/error check.
-- [x] Horizontal overflow check.
-- [x] Mobile scroll movement check.
+Completed:
 
-## Authenticated QA Remaining
+- AppShell audit
+- Header audit
+- Feed container audit
+- KnowledgeFeed audit
+- Explore audit
+- SmartTalk audit
+- Profile audit
+- Desktop breakpoint audit
+- Max-width container audit
+- Scroll container audit
+- Sticky/fixed element audit
+- Responsive CSS audit
+- Virtualization audit
+- Existing side panel audit
+- Cached/local data reuse audit
+- Firestore/listener boundary audit
+- Render/repaint/memory risk audit
 
-- [ ] Persist a real stroke to Firestore from a signed-in browser.
-- [ ] Verify touch-hold-draw-release on physical mobile hardware while signed in.
-- [ ] Verify the five colors and three widths through the long-press popover.
-- [ ] Verify a populated My Notes page and Continue Reading.
-- [ ] Verify cross-device indicator/index consistency.
-- [ ] Verify offline queued save and reconnect.
-- [ ] Benchmark 200–600 real stored strokes on the target low-end device.
+## Key finding
 
-These remain because the in-app browser session was signed out. No account access or test Firestore data was created without authorization.
+The current desktop layout is a centered `max-w-3xl` reading column inside a wider viewport. Reading width is already close to the target, but desktop whitespace is unused and there is no persistent knowledge-workspace shell.
 
-## Output Documents
+The recommended architecture is a desktop-only, route-owned adaptive shell above 1400px:
 
-- [x] `walkthrough.md`
-- [x] `migration_report.md`
-- [x] `performance_report.md`
-- [x] `task.md`
-- [x] `final_report.md`
+- left rail: 220-260px;
+- center reading column: 760-820px;
+- right rail: 260-320px;
+- sticky rails;
+- no new Firestore listeners;
+- no new dependencies;
+- no changes to mobile/tablet layout.
 
-## Release Status
+## Recommended implementation posture
 
-Implementation is complete and obsolete Highlight code is removed. Static/build and signed-out responsive QA pass. Production approval remains conditional on the authenticated QA checklist above.
+After approval:
+
+1. Add a small presentational desktop shell.
+2. Keep the existing mobile/tablet route rendering path.
+3. Keep feed virtualization untouched.
+4. Let KnowledgeFeed supply rail view models from already-loaded data.
+5. Do not preload Explore, SmartTalk, Profile, or My Notes for rails.
+6. Validate with build, TypeScript, diff check, and desktop/tablet/mobile QA.
+
+## Stop condition
+
+STOP.
+
+Waiting for architecture approval before implementation.

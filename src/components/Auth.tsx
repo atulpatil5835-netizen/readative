@@ -37,7 +37,7 @@ export function GoogleSignInPrompt({
       icon: Bookmark,
     },
     {
-      label: "Mark Posts with Ink",
+      label: "Highlight Reading Notes",
       detail: "Build toward richer visibility tools as they arrive.",
       icon: Sparkles,
     },

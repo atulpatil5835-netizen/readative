@@ -75,6 +75,42 @@
     min-height: 2.5rem;
   }
 
+  .readative-notebook-highlight {
+    margin: 0;
+    border: 0;
+    border-radius: 0.18em;
+    padding: 0;
+    background-color: rgba(250, 204, 21, 0.38);
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .readative-notebook-margin-control {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .readative-notebook-margin-control > span {
+    display: block;
+    width: 3px;
+    height: 12px;
+    border-radius: 999px;
+    background-color: #facc15;
+    opacity: 0.72;
+  }
+
+  .readative-notebook-margin-control[aria-pressed="true"] > span {
+    width: 4px;
+    background-color: #d97706;
+    opacity: 0.9;
+  }
+
   .readative-footer-link {
     display: inline-flex;
     min-height: 2.25rem;

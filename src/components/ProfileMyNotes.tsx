@@ -1,44 +1,63 @@
 import { useEffect, useState } from "react";
-import { BookOpenText, PenLine, Trash2 } from "lucide-react";
+import { BookOpenText, Highlighter, Trash2 } from "lucide-react";
 import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
 import type { KnowledgeEntry } from "../types";
-import type { InkPostDocument } from "../ink/types";
-import { InkPreview } from "../ink/InkPreview";
-import {
-  deleteInkPost,
-  loadMyNotes,
-  loadNotePosts,
-} from "../ink/repository";
-import { useInk } from "../context/InkContext";
+import type { NotebookHighlight } from "../highlights/types";
+import { getNotebookPreview } from "../highlights/paragraphs";
+import { useNotebook } from "../context/NotebookContext";
 import { navigateToRoute } from "../utils/routes";
 
 interface NoteRow {
   postId: string;
-  note: InkPostDocument;
+  highlights: NotebookHighlight[];
 }
 
 export default function ProfileMyNotes({ userId }: { userId: string }) {
-  const { unmarkPostHasInk } = useInk();
-  const [notes, setNotes] = useState<NoteRow[]>([]);
-  const [posts, setPosts] = useState<Map<string, KnowledgeEntry>>(() => new Map());
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    notesCacheVersion,
+    readCachedMyNotesFirstPage,
+    loadMyNotesFirstPage,
+    loadMyNotesPage,
+    deleteNotebookPostHighlights,
+  } = useNotebook();
+  const cachedFirstPage = readCachedMyNotesFirstPage();
+  const [notes, setNotes] = useState<NoteRow[]>(
+    () => cachedFirstPage?.items || [],
+  );
+  const [posts, setPosts] = useState<Map<string, KnowledgeEntry>>(
+    () => cachedFirstPage?.posts || new Map(),
+  );
+  const [isLoading, setIsLoading] = useState(!cachedFirstPage);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [cursor, setCursor] =
-    useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+    useState<QueryDocumentSnapshot<DocumentData> | null>(
+      () => cachedFirstPage?.cursor || null,
+    );
+  const [hasMore, setHasMore] = useState(cachedFirstPage?.hasMore || false);
   const [error, setError] = useState<string | null>(null);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const cachedPage = readCachedMyNotesFirstPage();
+    if (cachedPage) {
+      setNotes(cachedPage.items);
+      setPosts(cachedPage.posts);
+      setCursor(cachedPage.cursor);
+      setHasMore(cachedPage.hasMore);
+      setIsLoading(false);
+      setError(null);
+      return () => {
+        cancelled = true;
+      };
+    }
     setIsLoading(true);
     setError(null);
-    void loadMyNotes(userId)
-      .then(async (page) => {
-        const nextPosts = await loadNotePosts(page.items.map((item) => item.postId));
+    void loadMyNotesFirstPage()
+      .then((page) => {
         if (cancelled) return;
         setNotes(page.items);
-        setPosts(nextPosts);
+        setPosts(page.posts);
         setCursor(page.cursor);
         setHasMore(page.hasMore);
       })
@@ -52,19 +71,23 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [
+    loadMyNotesFirstPage,
+    notesCacheVersion,
+    readCachedMyNotesFirstPage,
+    userId,
+  ]);
 
   const handleLoadMore = async () => {
     if (!cursor || isLoadingMore) return;
     setIsLoadingMore(true);
     try {
-      const page = await loadMyNotes(userId, cursor);
-      const nextPosts = await loadNotePosts(page.items.map((item) => item.postId));
+      const page = await loadMyNotesPage(cursor);
       setNotes((current) => {
         const known = new Set(current.map((item) => item.postId));
         return [...current, ...page.items.filter((item) => !known.has(item.postId))];
       });
-      setPosts((current) => new Map([...current, ...nextPosts]));
+      setPosts((current) => new Map([...current, ...page.posts]));
       setCursor(page.cursor);
       setHasMore(page.hasMore && page.items.length > 0);
     } catch (loadError) {
@@ -76,20 +99,19 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
   };
 
   const handleDelete = async (postId: string) => {
-    if (!window.confirm("Delete all Ink from this post?")) return;
+    if (!window.confirm("Delete all highlights from this post?")) return;
     setDeletingPostId(postId);
     try {
-      await deleteInkPost(userId, postId);
+      await deleteNotebookPostHighlights(postId);
       setNotes((current) => current.filter((item) => item.postId !== postId));
       setPosts((current) => {
         const next = new Map(current);
         next.delete(postId);
         return next;
       });
-      unmarkPostHasInk(postId);
     } catch (deleteError) {
-      console.error("Failed to delete Ink:", deleteError);
-      setError("Ink could not be deleted right now.");
+      console.error("Failed to delete highlights:", deleteError);
+      setError("Highlights could not be deleted right now.");
     } finally {
       setDeletingPostId(null);
     }
@@ -101,7 +123,7 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
         {[0, 1].map((item) => (
           <div
             key={item}
-            className="h-48 animate-pulse rounded-2xl border border-slate-200 bg-white"
+            className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-white"
           />
         ))}
       </div>
@@ -111,10 +133,10 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
   if (notes.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-10 text-center">
-        <PenLine className="mx-auto h-7 w-7 text-blue-500" />
-        <p className="mt-3 text-sm font-bold text-slate-600">No Ink yet.</p>
+        <Highlighter className="mx-auto h-7 w-7 text-amber-500" />
+        <p className="mt-3 text-sm font-bold text-slate-600">No highlights yet.</p>
         <p className="mt-1 text-xs text-slate-400">
-          Open a post, tap the pen, then hold and draw.
+          Open a post and use its Notebook Highlight icon.
         </p>
         {error && <p className="mt-3 text-xs font-semibold text-rose-600">{error}</p>}
       </div>
@@ -128,9 +150,12 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
           {error}
         </p>
       )}
-      {notes.map(({ postId, note }) => {
+      {notes.map(({ postId, highlights }) => {
         const post = posts.get(postId);
-        const isAvailable = Boolean(post);
+        const preview = post ? getNotebookPreview(post.content, highlights) : null;
+        const highlightLabel = `${highlights.length} ${
+          highlights.length === 1 ? "highlight" : "highlights"
+        }`;
         return (
           <article
             key={postId}
@@ -145,24 +170,34 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
                   {post ? `by @${post.author}` : "The original post is no longer available"}
                 </p>
                 <p className="mt-1 text-[11px] font-semibold text-slate-400">
-                  Last annotated {new Date(note.lastAnnotatedAt).toLocaleDateString()}
+                  {post ? new Date(post.createdAt).toLocaleDateString() : "Date unavailable"}
+                  <span aria-hidden="true"> · </span>
+                  {highlightLabel}
                 </p>
               </div>
-              <PenLine className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
+              <Highlighter className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-xl border border-slate-100">
-              <InkPreview strokes={note.strokes} />
+            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+              {preview ? (
+                <p className="line-clamp-2 text-sm leading-6 text-slate-700">
+                  <mark className="readative-notebook-highlight">{preview}</mark>
+                </p>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  Highlight preview is unavailable for the current post text.
+                </p>
+              )}
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3">
               <button
                 type="button"
-                disabled={!isAvailable}
+                disabled={!post}
                 onClick={() =>
                   navigateToRoute("knowledge", { focusedEntryId: postId })
                 }
-                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <BookOpenText className="h-3.5 w-3.5" />
                 Continue Reading
@@ -171,7 +206,7 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
                 type="button"
                 disabled={deletingPostId === postId}
                 onClick={() => void handleDelete(postId)}
-                aria-label={`Delete Ink from ${post?.title || "unavailable post"}`}
+                aria-label={`Delete highlights from ${post?.title || "unavailable post"}`}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />
@@ -185,7 +220,7 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
           type="button"
           disabled={isLoadingMore}
           onClick={() => void handleLoadMore()}
-          className="mx-auto block rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-700 disabled:opacity-50"
+          className="mx-auto block rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 transition-colors hover:border-amber-200 hover:text-amber-700 disabled:opacity-50"
         >
           {isLoadingMore ? "Loading…" : "Load more notes"}
         </button>

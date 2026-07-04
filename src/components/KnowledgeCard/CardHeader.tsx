@@ -24,7 +24,6 @@ export function CardHeader({
   onDownload,
   setShowEditModal,
   onDeleteEntry,
-  hasInk,
 }: CardHeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -114,11 +113,6 @@ export function CardHeader({
                 aria-label={reputationTitle}
               >
                 <Award className="h-4 w-4" />
-              </span>
-            )}
-            {hasInk && (
-              <span title="You have Ink in this post" aria-label="Annotated with Ink">
-                🖍
               </span>
             )}
           </div>

@@ -41,7 +41,7 @@ import {
   type ContributorReputation,
 } from "../../utils/trustSystem";
 import { getSaveMetrics, toggleKnowledgeSave } from "../../utils/bookmarks";
-import { useInk } from "../../context/InkContext";
+import { useNotebook } from "../../context/NotebookContext";
 
 // Subcomponents
 import { CardHeader } from "./CardHeader";
@@ -61,6 +61,15 @@ import {
   copyShareTextToClipboard,
   observeEntryVisibilityOnce,
 } from "./cardHelpers";
+
+function clearNotebookSelection() {
+  if (typeof window === "undefined") return;
+  try {
+    window.getSelection()?.removeAllRanges();
+  } catch {
+    // Browser selection is external state; Notebook activation must remain passive.
+  }
+}
 
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
@@ -124,44 +133,28 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 }: KnowledgeCardProps) {
   const {
     activePostId,
-    inkPostIds,
-    color: inkColor,
-    width: inkWidth,
-    activateInk,
-    deactivateInk,
-    markPostHasInk,
-    setColor: setInkColor,
-    setWidth: setInkWidth,
-  } = useInk();
-  const hasInk = inkPostIds.has(entry.id);
-  const isInkMode = focused && activePostId === entry.id;
+    activateNotebook,
+    deactivateNotebook,
+    markPostHasHighlights,
+  } = useNotebook();
+  const isNotebookMode = activePostId === entry.id;
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportPages, setExportPages] = useState<ExportPage[]>([]);
 
-  const handleToggleInkMode = () => {
+  const handleToggleNotebookMode = () => {
     if (!currentIdentity) {
       onIdentityRequired({ type: "ink", entryId: entry.id });
       return;
     }
 
-    if (isInkMode) {
-      deactivateInk();
-      setInteractionMessage(null);
+    if (isNotebookMode) {
+      deactivateNotebook();
       return;
     }
 
-    if (!focused) {
-      recordKnowledgeFeedActivity({ type: "open", entry });
-      onOpenEntry(entry.id);
-    }
-    activateInk(entry.id);
-    setInteractionMessage("Ink Mode On — hold, draw, release.");
-      setTimeout(() => {
-        setInteractionMessage((current) =>
-          current === "Ink Mode On — hold, draw, release." ? null : current
-        );
-      }, 3000);
+    clearNotebookSelection();
+    activateNotebook(entry.id);
   };
 
   const [showComments, setShowComments] = useState(false);
@@ -409,9 +402,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       setActionIdentity(nextIdentity);
 
       if (detail.type === "ink") {
-        onOpenEntry(entry.id);
-        activateInk(entry.id);
-        setInteractionMessage("Ink Mode On — hold, draw, release.");
+        clearNotebookSelection();
+        activateNotebook(entry.id);
         return;
       }
 
@@ -438,7 +430,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     window.addEventListener("knowledge-action", handler);
     return () => window.removeEventListener("knowledge-action", handler);
-  }, [activateInk, commentText, entry.id, localHelpfulIds, localMisleadingIds, onOpenEntry]);
+  }, [
+    activateNotebook,
+    commentText,
+    entry.id,
+    localHelpfulIds,
+    localMisleadingIds,
+    onOpenEntry,
+  ]);
 
   const updateCommentMentionState = (value: string, cursorPosition: number) => {
     const beforeCursor = value.slice(0, cursorPosition);
@@ -1326,7 +1325,6 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         onDownload={handleDownload}
         setShowEditModal={setShowEditModal}
         onDeleteEntry={handleDeleteEntry}
-        hasInk={hasInk}
       />
 
       <CardMedia
@@ -1343,12 +1341,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           localSaveCount={localSaveCount}
           entry={entry}
           entryVisibility={entryVisibility}
-          isInkMode={isInkMode}
-          inkColor={inkColor}
-          inkWidth={inkWidth}
-          onToggleInkMode={handleToggleInkMode}
-          onSetInkColor={setInkColor}
-          onSetInkWidth={setInkWidth}
+          isNotebookMode={isNotebookMode}
+          onToggleNotebookMode={handleToggleNotebookMode}
         />
 
         <CardContent
@@ -1363,13 +1357,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           topCommentDisplayName={topCommentDisplayName}
           topCommentUsername={topCommentUsername}
           currentUserId={currentIdentity?.authorId || null}
-          isFocusedPost={focused}
-          isInkMode={isInkMode}
-          shouldRenderInk={focused && (hasInk || isInkMode)}
-          inkColor={inkColor}
-          inkWidth={inkWidth}
-          onPostHasInk={markPostHasInk}
-          onInkStatus={setInteractionMessage}
+          isFocusedPost={focused || isNotebookMode}
+          isNotebookMode={isNotebookMode}
+          onPostFirstHighlight={markPostHasHighlights}
+          onExitNotebookMode={deactivateNotebook}
         />
 
         <div className="mt-4 flex flex-col gap-2.5 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">

@@ -1,73 +1,95 @@
-# Readative Release X.2 Root Cause
+# Release Y.2.3 Root Cause - Notebook Auto-Scroll
 
-Date: 2026-06-28
+Status: root cause identified and fixed in source.
 
-## Incident
+## Bug
 
-White rounded fragments appeared along the left edge of loaded rows in Explore's Most Helpful Posts and Active Discussions lists.
-
-## Exact DOM Node
-
-The painted node was the live row anchor in each list:
-
-```html
-<section class="space-y-3">
-  <div class="space-y-2">
-    <a class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 ...">
-      ...loaded content...
-    </a>
-  </div>
-</section>
-```
-
-It was not a child placeholder. Browser inspection found the row `<a>` was the only node in either list combining a white background with rounded corners.
-
-## Exact React Source
-
-The same row markup had been implemented independently in three places in `src/components/Explore.tsx`:
-
-- Most Helpful Posts: `DiscoveryPostList`.
-- Active Discussions: the `activeDiscussions` branch inside `Explore`.
-- Search question results: the questions branch inside `UnifiedSearchResults`.
-
-There was no shared row component before X.2. Release X.2 consolidates these branches into the local `DiscoveryListRow` component.
-
-## Exact CSS Class
-
-The affected discussion anchors used:
+Scenario:
 
 ```text
-w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/50
+Highlight Post A
+-> scroll to Post B
+-> enable Notebook Highlight
+-> page auto-scrolls
 ```
 
-The shared base class now begins with `block w-full`. `block` is part of the source component's layout contract, not a stylesheet override.
+Notebook activation must never move the page.
 
-## Why The Artifact Appeared
+## Root cause
 
-An `<a>` is inline by default. `w-full` does not make a normal inline anchor establish a full-width box. The browser therefore painted `bg-white`, `border`, `rounded-2xl`, `px-3`, and `shadow-sm` across the anchor's inline fragments.
+The scroll was route-driven, not Firestore-driven and not caused by the highlight renderer.
 
-Before X.2, an Active Discussions row produced three client rectangles at desktop and tablet widths:
+Before Y.2.3, `KnowledgeCard.handleToggleNotebookMode()` did this when the visible card was not already route-focused:
 
-- 13 px leading fragment.
-- 736 px content fragment.
-- 13 px trailing fragment painted back at the left edge.
+```text
+Notebook button click
+-> onOpenEntry(entry.id)
+-> App navigates to /post/{entry.id}
+-> focusedEntryId changes
+-> KnowledgeFeed focused-entry effect runs
+-> target.scrollIntoView({ behavior: "smooth", block: "center" })
+-> viewport jumps
+```
 
-At 390 px mobile width the same sequence was 13 px, 351 px, and 13 px. The narrow white rounded fragments were the visible artifacts.
+Files involved:
 
-## Why It Remained After Loading
+- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `src/App.tsx`
+- `src/context/NotebookContext.tsx`
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
 
-The artifact was part of the real loaded anchor, so completing the data request could not remove it. After loading, the page had zero `.animate-pulse` nodes and zero `aria-busy="true"` regions. Neither affected section contained an image or avatar, and both anchor pseudo-elements had `content: none`.
+The direct scroll call remains valid for explicit post navigation, but Notebook activation must not create that navigation.
 
-## Why X.1 Was Insufficient
+## Audited scroll/focus sources
 
-X.1 correctly identified the inline-fragment painting mechanism but added block layout only to `DiscoveryPostList`. Active Discussions used a separate copy of the same anchor pattern, and unified question search contained a third copy. Those copies remained inline, so the defect survived outside the post-list branch.
+Searched for:
 
-## Permanent Resolution
+- `scrollIntoView`
+- `focus()`
+- Selection API
+- Range API
+- `window.scrollTo`
+- element `scrollTo`
+- `requestAnimationFrame` scroll
+- layout restoration
+- virtualization callbacks
+- `IntersectionObserver` callbacks
 
-`DiscoveryListRow` now owns the anchor element and its block-level base class. Most Helpful Posts, Active Discussions, and unified question results all render through this one component while retaining their original hrefs, click handlers, content, and hover colors.
+Relevant findings:
 
-After the fix, both primary Explore rows produce exactly one client rectangle matching the parent width on desktop, tablet, and mobile. No element is hidden, no CSS override was added, and no `!important` rule is used.
+| Source | Finding |
+| --- | --- |
+| `KnowledgeFeed` focused route scroll | Real root cause after Notebook activation changed the route. |
+| `KnowledgeFeed` saved scroll restoration | Only runs when no focused entry exists; not caused by Notebook activation. |
+| `KnowledgeCardList` virtualization `scrollBy` | Only compensates measured height changes above viewport; Notebook margin does not change card height. |
+| `CardContent` Selection/Range | Used only after a paragraph is armed and text is selected; not activation-time scrolling. |
+| `CardContent` `requestAnimationFrame` | Schedules selection capture after mouse/touch/key release; no scroll. |
+| Programmatic focus in comments/composer/header | Unrelated to Notebook activation. |
+| `IntersectionObserver` | Visibility/activity callbacks only; no Notebook activation scroll. |
 
-## Regression Risk
+## Fix
 
-Low. The change is local to existing Explore discovery row markup and preserves routing, data access, event handling, copy, and visible design.
+Notebook activation is now passive:
+
+```text
+Notebook button click
+-> clear any stale browser selection
+-> activate Notebook state for the visible card
+-> do not route
+-> do not call focus()
+-> do not call scrollIntoView()
+```
+
+Provider state was adjusted so Notebook can be active on a visible knowledge-feed card when there is no route-focused post. It still exits when leaving the knowledge surface, opening another focused post, or closing a previously focused post back to the feed.
+
+## Regression risk
+
+Low to medium.
+
+Low because the fix removes an activation-time route change instead of changing highlight storage, rendering, or Firestore.
+
+Medium only around Notebook lifecycle semantics: allowing passive activation on the current visible card required `NotebookProvider` to distinguish "knowledge feed with no focused post" from "left the knowledge surface." A guard preserves auto-exit when closing an actually focused post.
+
+## Production readiness
+
+Automated build/type checks passed. Browser scroll checks showed zero scroll delta across desktop, tablet, and mobile in the available signed-out browser session. Full authenticated "Highlight Post A -> scroll to Post B -> enable Notebook" validation remains pending because the in-app browser is signed out.

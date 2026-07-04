@@ -1,286 +1,237 @@
-# Readative Release Y — Highlight-to-Ink Migration Plan
+# Readative Release Y.2 — Migration Plan
 
-Date: 2026-07-01
+Date: 2026-07-03
 
-Status: Proposed migration only; no Firestore or production changes authorized
+Status: Proposed only; no Firestore data has been read or modified
 
-## Migration Goal
+## Migration objective
 
-Move users from text-range yellow Highlights to blue-pen vector Ink without losing valid marks, duplicating new writes, copying text snippets into the new schema, changing `knowledge` post documents, or removing the rollback path prematurely.
+Introduce one semantic Highlight V2 document per user/post without deleting or guessing from historical data.
 
-## Current Data and Behavior
+There are two legacy sources with different safety properties:
 
-Current `userHighlights` documents contain:
+1. Archived `userHighlights` semantic ranges from before Release Y.1.
+2. Live/current `userInk` freehand vectors created by Release Y.1.
 
-- `userId`
-- `postId`
-- `selectedText`
-- `paragraphIndex`
-- `startOffset`
-- `endOffset`
-- `postTitle`
-- `authorName`
-- `createdAt`
+They must not be treated as equivalent.
 
-Current runtime behavior:
+## Decision summary
 
-- `HighlightsProvider` opens a user-wide realtime query on sign-in.
-- Each `KnowledgeCard` filters the full user list for its post.
-- Highlight mode is tracked as a post-ID boolean map.
-- `CardContent` creates ranges from mouse/touch text selection.
-- Yellow DOM `<mark>` elements render the ranges.
-- Profile groups individual snippets into post cards and permits deletion.
-
-This architecture works and remains the fallback until migration verification is complete.
-
-## Target Mapping
-
-| Legacy concept | Ink replacement | Migration rule |
+| Source | Automatic conversion | Decision |
 | --- | --- | --- |
-| One Highlight document | One synthetic underline stroke | Deterministic stroke ID derived from legacy document ID |
-| `selectedText` | No target field | Use in memory for validation only; never copy |
-| `paragraphIndex` | Block ordinal hint | Copy as numeric hint, not identity |
-| `startOffset` / `endOffset` | Canonical text position and sparse pins | Validate against current content before conversion |
-| `postTitle` / `authorName` | No target field | My Notes hydrates current canonical post metadata |
-| `createdAt` | Stroke `at`; summary created/last time | Preserve original time |
-| Yellow `<mark>` | Blue synthetic free-underline vector | Generate vector geometry; no bitmap/screenshot |
-| Highlight list count | Annotated-post count | Count Ink manifests, not strokes |
-| Delete one highlight | Delete notes for the post in initial Ink scope | Preserve at least the existing deletion capability |
-| `?tab=highlights` | `?tab=notes` | Keep the old route as an alias |
+| `userHighlights` semantic rows | Possible only after exact validation against current post text | Migrate validated rows in an offline/admin process; archive rejected rows |
+| `userInk` vector strokes | Cannot be mapped reliably to semantic text ranges | Do not convert; archive in place |
 
-## Migration Rules
+Normal Y.2 application startup does not scan, migrate, copy, or delete either legacy collection.
 
-1. Migration is additive. It never updates `knowledge` documents.
-2. No legacy document is deleted during conversion or cutover.
-3. New Ink documents never contain selected text, post title, author, body, image, or screenshot.
-4. Conversion IDs are deterministic so retries cannot duplicate a stroke.
-5. A user is cut over only after their migrated set passes count and resolution checks.
-6. Unresolved or unavailable legacy ranges remain in `userHighlights` and remain recoverable.
-7. The old system stays deployable through the observation window.
-8. Cleanup is a separate future approval, never an automatic migration step.
+## Target paths
 
-## Proposed Phases
+- `userNotebook/{uid}`: schema version, highlighted `postIds`, and update time for the existing My Notes count compatibility seam.
+- `userNotebook/{uid}/posts/{postId}`: one semantic Highlight V2 document for that user/post.
 
-### M0 — Inventory Before Any Write
+The post subdocument is the only highlight document for that user/post. It stores ranges only; canonical post metadata remains in `knowledge/{postId}`.
 
-Read-only audit after implementation approval:
+## Why vector Ink cannot be converted
 
-- Total users with legacy highlights.
-- Total documents and distinct user/post pairs.
-- Highlights per user and per post: median, p95, maximum.
-- Missing/deleted post references.
-- Invalid paragraph indexes or offsets.
-- Duplicate legacy ranges.
-- Documents with missing timestamps/title/author fields.
-- Estimated vector/chunk output size.
+Ink strokes contain normalized geometry, block hash/ordinal, source dimensions, color, width, and a content revision. They do not identify characters.
 
-Produce a migration report with counts only. Do not include selected text in logs or reports.
+Converting a path to a semantic range would require guessing:
 
-Stop if the maximum/invalid distributions invalidate chunk or anchor assumptions.
+- Whether a stroke was an underline, circle, arrow, handwriting, or unrelated mark.
+- Which rendered line or characters it intended.
+- How it should map after responsive reflow.
+- Whether the target post has changed.
 
-### M1 — Add Ink Without Routing Users to It
+Bounding-box intersection with text would still be heuristic and could highlight unrelated words. That violates semantic correctness. Therefore:
 
-Prerequisites:
+- `userInk` remains untouched.
+- Y.2 does not read `userInk` during normal use.
+- No SVG/path/geometry is copied into `userNotebook`.
+- No deletion occurs as part of Y.2.
+- Rollback to Y.1 remains possible while the archive exists.
 
-- Approved Ink rules/index exemptions.
-- Tested repository and schema version.
-- Feature flag defaults OFF.
-- Current Highlight reads/writes unchanged.
+## Why legacy semantic Highlight may be converted
 
-No user is migrated in this phase. It proves additive deployment and rollback safety.
+Archived `userHighlights` rows already contain:
 
-### M2 — Internal New-Ink Cohort
+- User ID.
+- Post ID.
+- Paragraph index.
+- Start/end rendered-text offsets.
+- Selected text.
+- Capture timestamp.
 
-- Selected internal accounts create only Ink while the flag is enabled.
-- They do not dual-write legacy Highlight documents.
-- Existing legacy highlights for those accounts remain readable through the old UI or a flagged compatibility view.
-- Validate storage size, Firestore reads/writes, offline behavior, and My Notes.
+This is enough to validate, not enough to trust blindly. A post may have been edited, a paragraph may have moved, or the old range may have been malformed.
 
-No legacy source document is changed.
+## Migration prerequisites
 
-### M3 — Legacy Conversion Prototype
+Before any data operation:
 
-For one opted-in internal user/post pair:
+- Architecture approval.
+- Final Y.2 schema approval.
+- Backup/export or confirmed retention policy for both legacy collections.
+- Reviewed owner-only Firestore rules for `userNotebook`.
+- Required query index available for `updatedAt` paging.
+- Admin credentials used outside the browser application.
+- A dry-run mode that performs zero writes.
+- A durable report path and run ID.
+- A maintenance/ordering decision that prevents live Y.2 writes from being overwritten.
 
-1. Read the legacy documents on demand.
-2. Read the canonical `knowledge/{postId}` document.
-3. Reconstruct current paragraphs using the same blank-line split as the legacy renderer.
-4. Validate paragraph index, offsets, and selected-text match in memory.
-5. Resolve the DOM range at a canonical content width.
-6. Generate one or more free-underline polyline segments from the range rectangles.
-7. Build numeric/hash-only semantic anchors and sparse text pins.
-8. Write vectors to a deterministic migration chunk such as `legacy-v1-000`.
-9. Write/update the Ink manifest and bounded vector preview.
-10. Read the Ink data back, decode it, and compare source/converted identifiers and counts.
+## Semantic migration algorithm
 
-The resulting preview is generated from the stored vector geometry. No image, canvas snapshot, or screenshot is generated or stored.
+### 1. Read and group
 
-If DOM reconstruction is unavailable, do not fabricate a mark from text length alone. Leave the item unresolved and keep it legacy-only.
+- Stream legacy `userHighlights` rows in bounded pages.
+- Validate basic types and lengths.
+- Group by `(userId, postId)`.
+- Deduplicate exact legacy document IDs and exact semantic ranges.
+- Never load all users into memory at once.
 
-### M4 — Idempotency and Audit Trial
+### 2. Load canonical post
 
-Run the same conversion twice for a controlled cohort.
+- Read `knowledge/{postId}` once per group.
+- Reject the group if the post is missing or inaccessible to the migration job.
+- Do not reconstruct title/author from the legacy row.
 
-Required invariants:
+### 3. Reconstruct paragraph model
 
-- Second run writes no duplicate source stroke.
-- Deterministic chunk contents remain stable.
-- Every converted stroke records an opaque legacy source ID/hash, never selected text.
-- `converted + duplicate + unresolved + unavailable = source total` for every user/post pair.
-- Ink manifest stroke counts match decoded chunks.
-- Preview vector count/bytes stay within limits.
-- Reverting the flag restores unchanged Highlight behavior.
+- Split current `content` with the exact production blank-line expression.
+- Trim and remove empty sections exactly as `KnowledgeCard` does.
+- Generate each current paragraph ID from normalized source plus duplicate occurrence.
+- Generate display text with the same pure transformation represented by `renderRichText`.
 
-### M5 — Cohort Cutover
+The migration tool must share or test against the production pure paragraph/display-text logic. It must not use a browser screenshot or DOM geometry.
 
-For one user at a time:
+### 4. Validate each row
 
-1. Freeze that user's new legacy Highlight writes by assigning them to Ink.
-2. Convert all valid legacy items.
-3. Complete the per-user audit.
-4. If the audit passes, show Ink and My Notes for that user.
-5. Keep legacy documents and the old read path intact but dormant.
-6. If the audit fails, keep that user on Highlight and do not partially expose My Notes as complete.
+Accept only when all conditions pass:
 
-Do not switch the entire user base based only on a global count. The correctness boundary is the individual user.
+- `paragraphIndex` is an integer within current paragraph bounds.
+- `startOffset` and `endOffset` are integers with `0 <= start < end`.
+- `endOffset` is within the current rendered paragraph text length.
+- The current rendered slice matches legacy `selectedText` after only a documented trim/line-ending normalization.
+- The resulting paragraph ID and all target field lengths pass V2 validation.
 
-### M6 — General Cutover
+Reject when any check fails. Do not search other paragraphs, fuzzy-match text, or shift offsets automatically.
 
-Only after gesture, performance, security, durability, and cohort migration gates pass:
+### 5. Build one target document
 
-- Rename the card control from Highlight to Ink.
-- Rename private Profile Highlights to My Notes.
-- Stop all new `userHighlights` writes.
-- Remove the app-wide legacy realtime listener from the default startup path.
-- Keep the lazy legacy adapter for unresolved users/items.
-- Keep `?tab=highlights` as an alias to My Notes.
-- Keep current Highlight data untouched through the observation window.
+For accepted rows in one user/post group:
 
-### M7 — Deferred Legacy Cleanup
+- Map to `{id, paragraphId, startOffset, endOffset, color: "yellow", createdAt}`.
+- Preserve a valid legacy timestamp; otherwise use a documented migration timestamp.
+- Sort deterministically.
+- Normalize exact duplicates and overlaps according to the approved V2 rule.
+- Apply range-count and serialized-size caps.
+- Set document `createdAt` to the earliest accepted range and `updatedAt` to the latest accepted range.
 
-Not part of Release Y implementation unless separately approved.
+No `selectedText`, title, author, HTML, pixels, or migration geometry is copied.
 
-Before any deletion:
+### 6. Merge safely
 
-- Prove no active user remains on legacy Highlight.
-- Prove no unresolved item lacks an approved disposition.
-- Export a final count-only audit and rollback snapshot/retention plan.
-- Confirm the retention window has elapsed.
-- Confirm support/incident metrics show no migration regression.
-- Obtain explicit approval for data and code cleanup.
+Preferred rollout: finish the validated migration before enabling public Y.2 writes.
 
-Deleting the `userHighlights` collection or old renderer without this phase is prohibited.
+If target documents can already exist:
 
-## Deterministic Conversion Design
+- Use a transaction.
+- Read the current V2 document.
+- Merge by stable range ID/semantic signature.
+- Preserve user-created V2 ranges.
+- Normalize and validate the merged result.
+- Write only if the result differs.
 
-### IDs
+Never replace a live target document with a stale migration snapshot.
 
-- Stroke ID: stable hash of `schemaVersion + legacyDocumentId`.
-- Migration chunk IDs: stable ordered buckets per user/post, capped by both count and bytes.
-- Freeze legacy writes for the migrating user before final deterministic bucketing.
-- Manifest stores `migrationVersion`, aggregate counts, and last attempt status; it does not store an unbounded list of legacy IDs.
+### 7. Update the user index
 
-### Geometry
+For every user with at least one successfully written post document:
 
-For each valid legacy text range:
+- Add the post ID once to `userNotebook/{uid}.postIds`.
+- Set schema version/update time.
+- Do not add groups with zero accepted ranges.
 
-- Resolve each current line rectangle.
-- Generate a slightly imperfect underline polyline under that line to match the Ink aesthetic.
-- Quantize into the same 0–4095 geometry format as native strokes.
-- Store Blue and Medium enum values unless product approval chooses Thin for migrated marks.
-- Add sparse character pins at segment endpoints and semantic position/hash anchors.
-- Preserve the original timestamp.
+Batch within Firestore operation limits and keep checkpoints so a retry is idempotent.
 
-This is a vector transformation, not text selection storage and not screenshot generation.
+## Dry-run report
 
-### Invalid data
+The dry run must report:
 
-Classify without deleting:
+- Run ID, code/schema version, start/end time.
+- Total legacy rows scanned.
+- Users and posts encountered.
+- Accepted rows.
+- Exact duplicates removed.
+- Overlaps normalized.
+- Rejected missing posts.
+- Rejected invalid paragraph indexes.
+- Rejected invalid offsets.
+- Rejected text mismatches.
+- Rejected malformed fields.
+- Rejected cap/size groups.
+- Target documents that would be created, merged, or unchanged.
+- Estimated reads and writes.
+- A small redacted sample for manual validation.
 
-- `duplicate`: identical legacy range already represented by a deterministic target.
-- `unresolved`: post exists but range no longer maps safely.
-- `unavailable`: post is missing or inaccessible.
-- `invalid`: malformed offsets/schema.
-- `converted`: persisted and verified vector.
+The report must not expose private selected sentences in logs beyond an explicitly protected validation artifact.
 
-The migration report contains counts and opaque IDs only.
+## Write-run safety
 
-## My Notes Transition
+- Require an explicit non-default `--write`/equivalent switch.
+- Require project/environment confirmation.
+- Persist checkpoints by stable source cursor.
+- Make every target range ID deterministic from the source document ID or stable semantic signature.
+- Make index updates idempotent.
+- Limit batch size and retry transient failures with bounded backoff.
+- Stop on schema mismatch, permission error, unexpected target shape, or error-rate threshold.
+- Produce a final reconciliation report.
 
-During cohort migration:
+No migration code is bundled into the web application.
 
-- Non-migrated users continue to see Highlights.
-- Fully migrated users see My Notes.
-- A partially migrated user does not see a falsely complete My Notes tab.
-- The My Notes tab uses Ink manifests as its post list.
-- Legacy-only unresolved items remain available through a lazy compatibility path until disposition is approved.
-- The tab badge counts annotated posts, not old highlight documents or new strokes.
-- Continue Reading uses the existing `/post/:id` route.
-- Deleting notes must not delete the canonical post or another user's data.
+## Post-migration verification
 
-## Query and Listener Transition
+- Sample migrated documents across low/high range counts and duplicate paragraphs.
+- Open corresponding posts at mobile, tablet, and desktop widths.
+- Confirm the same characters are yellow at every width.
+- Confirm stale/rejected rows do not render.
+- Confirm My Notes shows one card per target post, correct count, and one preview.
+- Confirm no target document contains selected text or post metadata.
+- Confirm no source document changed.
+- Compare written target/index counts to the final migration report.
+- Confirm signed-out and wrong-user access is denied.
 
-Current:
+## Rollback
 
-- One app-level realtime query for all of the user's `userHighlights` documents.
+Application rollback:
 
-Intermediate:
+- Revert the Y.2 application release to Y.1.
+- Y.1 continues using `userInk`; the new `userNotebook` collection is ignored.
+- Archived `userHighlights` remains untouched.
 
-- Legacy query only for the active migrating user and only when My Notes/legacy compatibility or the focused post requires it.
-- Ink manifest/chunk `get` operations only; no Ink listener.
+Data rollback:
 
-Final:
+- Do not delete source archives.
+- Target documents created by a migration run must carry admin-side run evidence, even though private selected text is not stored.
+- If target removal is approved, delete only documents enumerated in that run's manifest and reconcile user indexes.
+- Never mass-delete by a broad unverified query.
 
-- Base app/feed has no annotation query.
-- Focused post reads one manifest and bounded chunks.
-- My Notes reads a 12-manifest page and canonical metadata only when opened.
-- Legacy adapter dynamic-imports only when migration metadata says it is needed.
+Rollback is not automatic and is not part of normal app startup.
 
-## Rollback Plan
+## Retention recommendation
 
-### Before cutover
+- Keep `userInk` read-only/archived through at least the Y.2 stabilization window and any rollback period.
+- Keep rejected `userHighlights` rows archived; they are not proof of valid current ranges.
+- Do not expose either archive in My Notes after Y.2.
+- Decide long-term deletion only through a separate data-retention approval.
 
-Disable the Ink flag. Current Highlight behavior and documents are untouched.
+## Migration acceptance gates
 
-### During cohort cutover
+- Dry run reviewed and approved.
+- Zero writes in dry-run verification.
+- Rules/index checks pass.
+- Accepted rows are exact, not heuristic.
+- Write process is idempotent and checkpointed.
+- Source collections remain unchanged.
+- One target highlight document maximum per user/post.
+- Final reconciliation has no unexplained count difference.
 
-Return only the affected user to Highlight. Do not delete their Ink. Since no new gesture is dual-written, marks created only in Ink remain private additive data and can be restored after repair.
-
-### After general cutover
-
-Re-enable the legacy UI/read path and freeze new Ink entry if necessary. Preserve both collections. Do not attempt emergency reverse conversion from arbitrary Ink to text highlights; that transformation is lossy.
-
-### Rollback proof
-
-Before general release, rehearse:
-
-- Flag off while Ink is ARMED.
-- Flag off during a pending offline write.
-- User moved back to Highlight after successful conversion.
-- Route alias behavior.
-- Old Highlight list and deletion behavior against untouched legacy data.
-
-## Migration Stop Conditions
-
-Stop a user or cohort migration if:
-
-- A source ID maps to multiple target strokes unexpectedly.
-- A converted count cannot reconcile with source classifications.
-- Selected text/title/author appears in an Ink payload or migration log.
-- An invalid range is guessed into a location.
-- A rerun creates duplicates.
-- A failed write is reported as converted.
-- Source legacy data is modified or deleted.
-- The user's rollback Highlight view no longer matches its pre-migration data.
-
-## Firestore Impact of Migration
-
-- New additive manifests and vector chunks only after approval.
-- Canonical `knowledge` and `userProfiles` documents remain unchanged.
-- Legacy `userHighlights` documents remain unchanged through observation.
-- Conversion performs bounded reads/writes per user/post and must be rate limited.
-- No screenshots, images, canvas snapshots, or duplicate post data are created.
-
-## Approval Boundary
-
-This plan authorizes no migration run. Firestore inventory, schema deployment, conversion, cutover, and cleanup each require their implementation-phase approval and gates.
+Until these gates pass, Y.2 should start clean for new semantic highlights while all legacy data remains archived.

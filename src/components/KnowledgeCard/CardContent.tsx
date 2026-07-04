@@ -1,11 +1,37 @@
-import { lazy, Suspense, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProfileAvatar } from "../ProfileAvatar";
 import { renderRichText } from "../../utils/renderRichText";
 import { CardContentProps } from "./cardTypes";
 import { buildProfilePath, buildTagPath } from "./cardHelpers";
-import { buildInkBlockKey } from "../../ink/blockKey";
+import {
+  buildNotebookParagraphIds,
+  getRenderedParagraphText,
+} from "../../highlights/paragraphs";
+import { highlightNotebookReactTree } from "../../highlights/highlightReactTree";
+import {
+  NOTEBOOK_HIGHLIGHT_COLOR,
+  isSameNotebookRange,
+  type NotebookHighlight,
+} from "../../highlights/types";
+import { useNotebook } from "../../context/NotebookContext";
 
-const InkSurface = lazy(() => import("../../ink/InkSurface"));
+function getNodeElement(node: Node) {
+  return node.nodeType === Node.ELEMENT_NODE
+    ? (node as Element)
+    : node.parentElement;
+}
+
+function getTextOffset(root: HTMLElement, node: Node, offset: number) {
+  if (node !== root && !root.contains(node)) return null;
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  try {
+    range.setEnd(node, offset);
+    return range.toString().length;
+  } catch {
+    return null;
+  }
+}
 
 export function CardContent({
   entry,
@@ -20,23 +46,175 @@ export function CardContent({
   topCommentUsername,
   currentUserId,
   isFocusedPost,
-  isInkMode,
-  shouldRenderInk,
-  inkColor,
-  inkWidth,
-  onPostHasInk,
-  onInkStatus,
+  isNotebookMode,
+  onExitNotebookMode,
 }: CardContentProps) {
-  const inkHostRef = useRef<HTMLDivElement | null>(null);
-  const blockKeys = useMemo(() => {
-    const occurrences = new Map<string, number>();
-    return contentSections.map((section) => {
-      const normalized = section.replace(/\s+/g, " ").trim();
-      const occurrence = occurrences.get(normalized) || 0;
-      occurrences.set(normalized, occurrence + 1);
-      return buildInkBlockKey(section, occurrence);
-    });
-  }, [contentSections]);
+  const [highlights, setHighlights] = useState<NotebookHighlight[]>([]);
+  const [armedParagraphId, setArmedParagraphId] = useState<string | null>(null);
+  const [isNotebookReady, setIsNotebookReady] = useState(false);
+  const [notebookStatus, setNotebookStatus] = useState("");
+  const paragraphIds = useMemo(
+    () => buildNotebookParagraphIds(contentSections),
+    [contentSections],
+  );
+  const {
+    cacheVersion,
+    readNotebookPostHighlights,
+    loadNotebookPostHighlights,
+    saveNotebookPostHighlight,
+  } = useNotebook();
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setHighlights([]);
+      setIsNotebookReady(false);
+      setArmedParagraphId(null);
+      return;
+    }
+    let cancelled = false;
+    const cachedHighlights = readNotebookPostHighlights(entry.id);
+    if (cachedHighlights) {
+      setHighlights(cachedHighlights);
+      setIsNotebookReady(true);
+    } else {
+      setIsNotebookReady(false);
+    }
+    void loadNotebookPostHighlights(entry.id)
+      .then((loadedHighlights) => {
+        if (!cancelled) {
+          setHighlights(loadedHighlights);
+          setIsNotebookReady(true);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load Notebook Highlights:", error);
+        if (!cancelled) {
+          setNotebookStatus("Highlights could not be loaded right now.");
+          setIsNotebookReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    cacheVersion,
+    currentUserId,
+    entry.id,
+    loadNotebookPostHighlights,
+    readNotebookPostHighlights,
+  ]);
+
+  useEffect(() => {
+    if (!isNotebookMode) setArmedParagraphId(null);
+  }, [isNotebookMode]);
+
+  useEffect(
+    () => () => {
+      if (isNotebookMode) onExitNotebookMode();
+    },
+    [isNotebookMode, onExitNotebookMode],
+  );
+
+  const captureSelection = useCallback(() => {
+    if (
+      !currentUserId ||
+      !isFocusedPost ||
+      !isNotebookMode ||
+      !armedParagraphId ||
+      !isNotebookReady
+    ) {
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const startParagraph = getNodeElement(range.startContainer)?.closest<HTMLElement>(
+      "[data-notebook-paragraph-id]",
+    );
+    const endParagraph = getNodeElement(range.endContainer)?.closest<HTMLElement>(
+      "[data-notebook-paragraph-id]",
+    );
+    if (
+      !startParagraph ||
+      startParagraph !== endParagraph ||
+      startParagraph.dataset.notebookParagraphId !== armedParagraphId
+    ) {
+      selection.removeAllRanges();
+      return;
+    }
+    const rawStart = getTextOffset(
+      startParagraph,
+      range.startContainer,
+      range.startOffset,
+    );
+    const rawEnd = getTextOffset(
+      startParagraph,
+      range.endContainer,
+      range.endOffset,
+    );
+    if (rawStart === null || rawEnd === null || rawStart >= rawEnd) {
+      selection.removeAllRanges();
+      return;
+    }
+    const paragraphText = startParagraph.textContent || "";
+    let startOffset = rawStart;
+    let endOffset = rawEnd;
+    while (startOffset < endOffset && /\s/.test(paragraphText[startOffset] || "")) {
+      startOffset += 1;
+    }
+    while (endOffset > startOffset && /\s/.test(paragraphText[endOffset - 1] || "")) {
+      endOffset -= 1;
+    }
+    if (startOffset >= endOffset) {
+      selection.removeAllRanges();
+      return;
+    }
+    const highlight: NotebookHighlight = {
+      postId: entry.id,
+      paragraphId: armedParagraphId,
+      startOffset,
+      endOffset,
+      color: NOTEBOOK_HIGHLIGHT_COLOR,
+      createdAt: Date.now(),
+    };
+    if (highlights.some((item) => isSameNotebookRange(item, highlight))) {
+      selection.removeAllRanges();
+      setArmedParagraphId(null);
+      onExitNotebookMode();
+      return;
+    }
+    selection.removeAllRanges();
+    setArmedParagraphId(null);
+    setIsNotebookReady(false);
+    setNotebookStatus("Saving highlight...");
+    onExitNotebookMode();
+
+    void saveNotebookPostHighlight(entry.id, highlight)
+      .then((result) => {
+        setHighlights(result.highlights);
+        setNotebookStatus(result.saved ? "Highlight saved." : "Highlight already saved.");
+        setIsNotebookReady(true);
+      })
+      .catch((error) => {
+        console.error("Failed to save Notebook Highlight:", error);
+        setNotebookStatus("Highlight was not saved.");
+        setIsNotebookReady(true);
+      });
+  }, [
+    armedParagraphId,
+    currentUserId,
+    entry.id,
+    highlights,
+    isFocusedPost,
+    isNotebookMode,
+    isNotebookReady,
+    onExitNotebookMode,
+    saveNotebookPostHighlight,
+  ]);
+
+  const scheduleSelectionCapture = useCallback(() => {
+    window.requestAnimationFrame(captureSelection);
+  }, [captureSelection]);
 
   return (
     <div>
@@ -55,50 +233,74 @@ export function CardContent({
         </a>
 
         {contentSections.length > 0 && (
-          <div
-            ref={inkHostRef}
-            className="relative mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8"
-          >
-            {contentSections.map((section, index) => (
-                <div
-                  key={`${entry.id}-section-${index}`}
-                  data-ink-block-key={blockKeys[index]}
-                  data-ink-block-ordinal={index}
-                >
+          <div className="relative mt-6 space-y-0 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8">
+            {contentSections.map((section, index) => {
+              const paragraphId = paragraphIds[index];
+              const renderedParagraphLength = getRenderedParagraphText(section).length;
+              const paragraphHighlights = highlights.filter(
+                (highlight) =>
+                  highlight.paragraphId === paragraphId &&
+                  highlight.endOffset <= renderedParagraphLength,
+              );
+              const richText = renderRichText({
+                text: section,
+                mentions,
+                onOpenProfile: onOpenAuthorProfile,
+              });
+              const isArmed = armedParagraphId === paragraphId;
+              return (
+                <div key={`${entry.id}-section-${index}`}>
                   {index > 0 && (
                     <div
                       className="my-6 border-t border-slate-100"
                       aria-hidden="true"
                     />
                   )}
-                  <p
-                    className={`whitespace-pre-wrap ${
-                      isFocusedPost && isInkMode ? "select-none" : "select-text"
-                    }`}
-                  >
-                    {renderRichText({
-                      text: section,
-                      mentions,
-                      onOpenProfile: onOpenAuthorProfile,
-                    })}
-                  </p>
+                  <div className="relative">
+                    {isFocusedPost && isNotebookMode && (
+                      <button
+                        type="button"
+                        disabled={!isNotebookReady}
+                        onClick={() => setArmedParagraphId(paragraphId)}
+                        aria-label={`Select paragraph ${index + 1} for highlighting`}
+                        aria-pressed={isArmed}
+                        className="readative-notebook-margin-control absolute right-full top-0 mr-1 flex h-7 w-3 items-center justify-center disabled:opacity-40"
+                      >
+                        <span aria-hidden="true" />
+                      </button>
+                    )}
+                    <p
+                      data-notebook-paragraph-id={paragraphId}
+                      onMouseUp={scheduleSelectionCapture}
+                      onTouchEnd={scheduleSelectionCapture}
+                      onKeyUp={scheduleSelectionCapture}
+                      tabIndex={isArmed ? 0 : undefined}
+                      onClickCapture={(event) => {
+                        const selection = window.getSelection();
+                        if (isArmed && selection && !selection.isCollapsed) {
+                          event.preventDefault();
+                        }
+                      }}
+                      className={`whitespace-pre-wrap ${
+                        isFocusedPost && isNotebookMode && !isArmed
+                          ? "select-none"
+                          : "select-text"
+                      }`}
+                    >
+                      {paragraphHighlights.length > 0
+                        ? highlightNotebookReactTree(
+                            richText,
+                            paragraphHighlights,
+                          )
+                        : richText}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            {shouldRenderInk && currentUserId && (
-              <Suspense fallback={null}>
-                <InkSurface
-                  hostRef={inkHostRef}
-                  userId={currentUserId}
-                  postId={entry.id}
-                  content={entry.content}
-                  isInkMode={isFocusedPost && isInkMode}
-                  color={inkColor}
-                  width={inkWidth}
-                  onPostHasInk={onPostHasInk}
-                  onStatus={onInkStatus}
-                />
-              </Suspense>
-            )}
+              );
+            })}
+            <span className="sr-only" role="status" aria-live="polite">
+              {notebookStatus}
+            </span>
           </div>
         )}
       </div>

@@ -2056,7 +2056,7 @@ export function Profile({
                 : pendingAction.type === "save"
                   ? "Sign in to save"
                   : pendingAction.type === "ink"
-                    ? "Sign in to use Ink"
+                    ? "Sign in to use Notebook Highlight"
                     : "Sign in to comment"
           }
           description="Use your Google account so this activity is saved to your profile on every browser and device."

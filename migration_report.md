@@ -1,90 +1,90 @@
-# Readative Release Y.1 — Migration Report
+# Readative Release Y.2 — Migration Report
 
-Date: 2026-07-01
+Date: 2026-07-03
 
 ## Decision
 
-Legacy Highlight data is **archived in place and not automatically converted**.
+Release Y.2 starts a clean semantic Notebook Highlight namespace.
 
-This is the safe branch explicitly allowed by the release brief.
+No old Ink stroke was migrated. No archived semantic Highlight row was migrated in this release. No legacy document was read, changed, copied, or deleted.
 
-## Why Automatic Conversion Was Rejected
+## Legacy sources
 
-Legacy documents store selected text plus paragraph/start/end offsets. Ink stores responsive freehand vectors tied to rendered content blocks.
+### Release Y.1 Ink
 
-Safe conversion would require all of the following for every historical item:
+Legacy paths:
 
-1. Load the original post.
-2. Reconstruct the exact historical paragraph layout.
-3. Resolve a still-valid text range.
-4. Render that range at a canonical width/font.
-5. Generate vector underline geometry.
-6. Verify it again against current responsive layouts.
+```text
+userInk/{uid}
+userInk/{uid}/posts/{postId}
+```
 
-Posts may have been edited, deleted, restyled, or reflowed. Converting offsets without that proof could put Ink under unrelated text. A server-only conversion cannot recover DOM line rectangles, and a length-based synthetic underline would be guesswork.
+Status: archived in place.
 
-The release therefore chooses correctness over cosmetic migration.
+Y.2 does not import the old repository and has no runtime reference to `userInk`. Vector geometry cannot be reliably converted to paragraph/character ranges, so no heuristic migration exists.
 
-## Archive Behavior
+### Pre-Y.1 semantic Highlight
 
-- Existing `userHighlights` documents are not read, changed, copied, or deleted.
-- No new production code imports or queries `userHighlights`.
-- No new Highlight document can be created.
-- No legacy selected text is copied into Ink.
-- The old collection remains available only as an external data archive/rollback record.
-- Ink starts with a clean `/userInk/{uid}/posts/{postId}` document when the user completes their first stroke.
+Legacy path:
 
-## Code Migration Completed
+```text
+userHighlights/{autoId}
+```
 
-| Legacy component | Result |
+Status: archived in place.
+
+Although some rows contain paragraph indexes and offsets, converting them requires a separately approved validation migration against current post text. Y.2 application startup does not scan or convert them.
+
+## New namespace
+
+```text
+userNotebook/{uid}/posts/{postId}
+```
+
+Each document contains one array of records with only:
+
+- `postId`
+- `paragraphId`
+- `startOffset`
+- `endOffset`
+- `color`
+- `createdAt`
+
+No legacy ID, vector, path, coordinate, selected sentence, post metadata, schema marker, or migration marker is stored.
+
+## Code migration
+
+| Y.1 component | Y.2 result |
 | --- | --- |
-| `HighlightsProvider` app wrapper | Replaced by route-aware `InkProvider` |
-| User-wide `onSnapshot(userHighlights)` | Removed; one `getDoc` Ink index read replaces it |
-| Text-selection mouse/touch handlers | Removed |
-| Yellow `<mark>` renderer | Removed |
-| Offset calculation helper | Removed |
-| Highlight duplicate-range logic | Removed |
-| Per-highlight `addDoc`/`deleteDoc` | Removed |
-| Profile selected-text snippets | Replaced by post-level My Notes cards |
-| Multiple post mode map | Replaced by one active post ID |
-| Profile `highlights` section | Replaced by `notes` |
+| `InkProvider` | Replaced by route-aware `NotebookProvider` |
+| Ink post-ID manifest | Replaced by a count aggregation; no manifest document |
+| `InkSurface` | Deleted |
+| Stroke schema | Deleted |
+| Geometry codec/projector | Deleted |
+| SVG overlay/path rendering | Deleted |
+| Hold/touch/pointer drawing state | Deleted |
+| Pen colors/widths/preferences | Deleted |
+| `InkPreview` | Replaced by derived yellow text preview |
+| `userInk` repository | Replaced by semantic one-document-per-post repository |
+| Ink card indicator/settings | Replaced by one Notebook Highlight icon and paragraph margin controls |
+| Vector My Notes | Replaced by post-level semantic My Notes |
 
-## Data Separation
+## Source archive verification
 
-The new collection does not reuse the legacy schema.
+- No Y.2 highlight source imports the deleted `src/ink` directory.
+- No Y.2 highlight source references `userInk`.
+- No migration script was added to the web bundle.
+- No Firestore write was executed during this implementation/QA session.
+- Old collections remain available for rollback/data-retention decisions.
 
-Ink stores only:
+## Rollback
 
-- Stroke identity/time.
-- Compact vector geometry.
-- Color/width enums.
-- Hash-based block/revision anchors.
+Application rollback can restore Release Y.1, which will continue reading its archived `userInk` namespace. Y.1 ignores `userNotebook`.
 
-It does not store:
+Y.2 rollback must not delete `userNotebook` automatically. Any future data cleanup requires a separately approved, scoped process.
 
-- Legacy selected text.
-- Legacy paragraph/start/end offsets.
-- Post title/author/body.
-- Images, screenshots, bitmaps, canvas snapshots, or arbitrary SVG.
+## Migration status
 
-## Migration Risk
+Complete as archive-and-start-clean.
 
-| Risk | Result |
-| --- | --- |
-| Misplaced converted mark | Eliminated by no automatic conversion |
-| Duplicate writes during conversion | Eliminated |
-| Legacy data loss | Eliminated; archive untouched |
-| New code accidentally reading private snippets | Eliminated; all source references removed |
-| User does not see old marks in My Notes | Accepted tradeoff; documented consequence of safe fresh start |
-
-## Verification
-
-`rg` returned no source references to the legacy collection, selected-text fields, offset fields, old context, old Profile renderer, or old helper.
-
-The archive itself was not inspected or modified during this implementation.
-
-## Final Migration Status
-
-**Complete as archive-and-start-fresh.**
-
-Any future conversion utility must be a separately approved, audited project. It must not be reintroduced into the app startup or Ink rendering path.
+Production activation remains conditional on deployed security-rule validation for the new owner-scoped path.

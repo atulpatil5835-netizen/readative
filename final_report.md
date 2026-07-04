@@ -1,107 +1,67 @@
-# Readative Release Y.1 — Final Report
+# Release Y.2.3 Final Report
 
-Date: 2026-07-01
+Status: implementation complete; automated validation passed; authenticated browser scenario pending sign-in.
 
-## Final Result
+## Root cause fixed
 
-The old Highlight feature has been fully removed from production source and replaced by the engineering-first Ink System.
+Notebook activation on a non-focused visible card was opening the post route before activation. That route update set `focusedEntryId`, and `KnowledgeFeed` responded with its explicit focused-post `scrollIntoView` behavior.
 
-Ink is route-scoped, SVG-based, lazy-loaded, private, and reading-first. Feed cards never mount annotation SVGs. My Notes uses stored vectors for previews and canonical post documents for title/author.
+Y.2.3 removes route navigation from Notebook activation.
 
-## Bundle Impact
+## Files changed
 
-- Main app: **+0.72 kB gzip** versus clean HEAD.
-- Focused Ink lazy path: approximately **4.89 kB gzip** including shared repository/geometry.
-- My Notes lazy path: approximately **4.10 kB gzip** including shared repository/geometry.
-- All new lazy Ink assets combined: **7.20 kB gzip**.
-- Profile base chunk: **-0.36 kB gzip** because My Notes moved behind its own lazy boundary.
-- CSS: **+0.25 kB gzip**.
-- New dependencies: **0**.
+- `src/App.tsx`
+- `src/context/NotebookContext.tsx`
+- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `root_cause.md`
+- `walkthrough.md`
+- `task.md`
+- `final_report.md`
 
-## Firestore Impact
+## What changed
 
-- One user Ink index read per signed-in identity session.
-- Zero per-post feed reads.
-- Zero Ink realtime listeners.
-- One focused user/post read when Ink is activated or known to exist.
-- One write per completed stroke on an existing post.
-- Two writes in one batch for the first stroke on a post.
-- My Notes reads at most 12 Ink documents plus 12 canonical post documents per page.
-- No duplicated post content, selected snippets, screenshots, or bitmaps.
+- Notebook button activation no longer calls `onOpenEntry(entry.id)`.
+- The sign-in completion path for Notebook activation no longer calls `onOpenEntry(entry.id)`.
+- Stale browser selection is cleared safely before activation.
+- Notebook mode can activate on the visible Knowledge card without route focus.
+- Provider auto-exit still clears Notebook when leaving Knowledge, opening another focused post, or closing a focused post.
 
-## Rendering Impact
+## What did not change
 
-- No Ink SVG in the ordinary feed.
-- One SVG for the focused annotated/active post.
-- Lightweight preview SVGs only on My Notes.
-- At most 15 grouped committed paths on the focused surface.
-- One direct DOM path update per animation frame during drawing.
-- One React update per completed stroke.
-- No Canvas, hidden renderer, or Ink `html-to-image` usage.
+- No Firestore change.
+- No schema change.
+- No My Notes change.
+- No highlight persistence change.
+- No text highlight rendering change.
+- No Notebook visual/UI redesign.
+- No virtualization change.
 
-## Memory Impact
+## Validation
 
-- Global memory contains only the post-ID index, active post ID, and settings.
-- Stroke vectors load for one focused post, not every feed card.
-- My Notes is paginated in groups of 12 and unmounts outside the section.
-- Gesture and stored geometry have explicit point/character/stroke caps.
-- Desktop Home QA contained 381 DOM elements, 0 Ink overlays, 0 previews, and 0 canvases.
-- Heap was not directly measurable through the available browser QA surface, so no unsupported heap claim is made.
+Passed:
 
-## Migration
+- `npm run build`
+- `npx tsc --noEmit`
+- Desktop browser scroll delta after Notebook click: `0`
+- Tablet browser scroll delta after Notebook click: `0`
+- Mobile browser scroll delta after Notebook click: `0`
+- No console errors observed in available browser checks
 
-Migration uses the safe archive branch.
+Pending:
 
-- Existing `userHighlights` documents remain untouched as an external archive.
-- Production source no longer reads or writes them.
-- Automatic conversion was rejected because legacy text offsets cannot safely reconstruct responsive freehand vectors after post edits/reflow.
-- Ink starts clean, preventing misplaced or duplicated marks.
+- Full authenticated scenario with a saved highlight on Post A, then scrolling to Post B and enabling Notebook there.
 
-## Regression Risk
+Reason pending:
 
-Current risk: **Medium**.
+- The in-app browser is signed out and opens the Google sign-in prompt on Notebook click.
+- Chrome fallback requires explicit user approval when the preferred browser is blocked by missing authentication, so it was not used.
 
-Reduced risks:
+## Regression risk
 
-- No app-wide annotation subscription.
-- No per-pointer React renders.
-- No feed overlays.
-- No legacy snippet exposure.
-- No new package.
-- Explicit cancellation and storage caps.
-- Build, strict TypeScript, geometry, responsive routes, overflow, scroll, and console checks pass.
+Low-medium.
 
-Residual risks:
+The fix is localized to Notebook activation and provider lifecycle. The main risk is lifecycle edge cases, not data loss or rendering changes.
 
-- Real signed-in touch arbitration on physical mobile hardware.
-- Firestore persistence/offline behavior under real credentials.
-- Populated My Notes behavior.
-- High-stroke-count mobile rendering.
+## Production readiness
 
-## Production Readiness
-
-**Code readiness: PASS.**
-
-**Static/build readiness: PASS.**
-
-**Signed-out responsive browser readiness: PASS.**
-
-**Authenticated end-to-end readiness: NOT YET VERIFIED.**
-
-Production recommendation: **Conditional hold.** The implementation is ready for an authenticated staging/device pass, but it should not be declared fully production-verified until a signed-in user completes stroke persistence, My Notes, offline/reconnect, and physical touch QA.
-
-## Verification Summary
-
-- Production build: passed.
-- TypeScript: passed.
-- Strict unused code check: passed.
-- Diff whitespace check: passed.
-- Desktop/tablet/mobile named routes: passed.
-- Console warnings/errors: zero in tested routes.
-- Feed Ink overlays/canvases: zero.
-- Mobile scrolling: passed in signed-out reading mode.
-- Authenticated Ink/My Notes persistence: blocked by signed-out browser session and intentionally not bypassed.
-
-## Release Status
-
-Release Y.1 implementation is complete. All obsolete Highlight source is removed. Final production approval waits only on the authenticated runtime checklist documented in `task.md`.
+Not final production-ready until the authenticated scroll scenario is verified. The code is ready for that QA gate.

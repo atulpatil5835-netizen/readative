@@ -1,322 +1,246 @@
-# Readative Release Y — Ink System Implementation Plan
+# Release Z.1 - Implementation Plan
 
-Date: 2026-07-01
-
-Status: Proposed sequence only; no implementation authorized
+Status: planning only. Do not implement until architecture approval is received.
 
 ## Objective
 
-Evolve the working Highlight feature into the approved Ink architecture through small, independently reversible releases. The current Highlight System remains the production default until all gesture, rendering, anchoring, storage, migration, accessibility, and performance gates pass.
+Transform the desktop experience into a premium knowledge workspace while preserving the current mobile and tablet layouts exactly.
 
-## Non-Implementation Boundary for This Release
+The implementation must not copy a social-media layout. Reading remains primary.
 
-The architecture phase creates only:
+## Scope boundaries
 
-- `architecture.md`
-- `implementation_plan.md`
-- `engineering_risk.md`
-- `migration_plan.md`
-- `task.md`
+Allowed after approval:
 
-It does not alter source code, UI, routes, Firestore data, security rules, indexes, dependencies, or deployed behavior.
+- Desktop-only adaptive shell at widths above 1400px.
+- Sticky left and right rails.
+- Center reading column constrained to 760-820px.
+- Presentational rail modules using already-loaded/local data.
+- Small route-owned selector helpers if needed.
 
-## Delivery Principles
+Not allowed:
 
-1. Add before replacing.
-2. Keep Highlight as the rollback path until post-migration verification is complete.
-3. Never dual-write the same gesture into both systems.
-4. Keep each release small enough to disable independently.
-5. Ship no drawing dependency; use browser APIs and native SVG.
-6. Treat gesture acceptance and anchor correctness as production blockers, not polish.
-7. Measure initial bundle, feed reads, DOM mounts, and mobile frame timing in every implementation release.
+- Firestore schema changes.
+- New Firestore listeners.
+- Repeated queries for rail data.
+- Polling or intervals.
+- New dependencies.
+- Feed ranking changes.
+- SmartTalk logic changes.
+- Profile logic changes.
+- Explore logic changes beyond route-local presentation.
+- Routing changes.
+- Notebook/Highlight changes.
+- Downloader, SEO, Authentication, Notifications behavior changes.
 
-## Proposed Release Sequence
+## Recommended architecture
 
-### Y0 — Architecture Approval
+Use a shared presentational `DesktopWorkspaceShell` plus route-owned rail data.
 
-Scope: documentation only.
+```text
+DesktopWorkspaceShell
+  leftRail: ReactNode
+  center: ReactNode
+  rightRail: ReactNode
+```
 
-Deliverables:
+Behavior:
 
-- Approve or revise the state machine, settings interaction, renderer, anchor model, Firestore schema, My Notes behavior, migration order, budgets, and stop conditions.
-- Confirm that tapping Ink from the base feed may reuse `/post/:id` and focus the existing card before arming.
-- Confirm that unresolved annotations fail closed instead of being drawn at a guessed location.
+- Hidden below 1400px.
+- Below 1400px, render the current route content exactly as today.
+- At/above 1400px, render:
+  - left rail: 220-260px;
+  - center: 760-820px;
+  - right rail: 260-320px.
+- Keep the browser window as the only primary scroll container.
+- Rails use sticky positioning with a top offset below the fixed header.
 
-Exit gate:
+## Recommended file ownership after approval
 
-- Explicit user approval to begin implementation.
+Minimal likely files:
 
-### Y1 — Isolated Ink Core Behind a Disabled Flag
+- `src/App.tsx`
+  - Keep route lazy loading.
+  - Avoid global data loading.
+  - Optionally provide a desktop shell wrapper only if it can remain presentational.
 
-Scope: no user-visible replacement and no production data migration.
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+  - Own feed-derived rail selectors.
+  - Pass loaded data into desktop rail modules.
+  - Do not add reads/listeners.
 
-Planned additions after approval:
+- `src/components/KnowledgeFeed/FeedRenderer.tsx`
+  - Place the desktop workspace around existing feed content.
+  - Keep `KnowledgeCardList` unchanged.
+  - Keep current mobile/tablet markup path intact.
 
-- Ink domain types and color/width enums.
-- Stroke sampling, simplification, quantization, codec, and SVG-path conversion.
-- Content revision and anchor projection utilities.
-- A repository interface with an in-memory test implementation.
-- Unit fixtures for reflow, edit, orientation, and malformed vectors.
-- A disabled feature flag that tree-shakes or dynamically excludes the feature from normal startup.
+- New small presentational components, if approved:
+  - `src/components/DesktopWorkspaceShell.tsx`
+  - `src/components/KnowledgeFeed/DesktopFeedRails.tsx`
 
-Likely files:
+Avoid touching:
 
-- New isolated `src/ink/` modules.
-- Test/fixture files only outside the existing feature surfaces.
+- `src/components/KnowledgeCardList.tsx` unless a measured bug appears.
+- `src/components/KnowledgeCard/*`.
+- `src/components/SmartTalk.tsx`.
+- `src/components/Profile.tsx`.
+- `src/components/Explore.tsx` logic.
+- `src/context/NotebookContext.tsx`.
+- Firestore utility modules.
 
-Verification:
+## Proposed implementation phases
 
-- Codec round-trip is deterministic.
-- Invalid vectors and out-of-range enums are rejected.
-- Simplification stays within an approved visual error tolerance.
-- The production UI and current Highlight behavior are unchanged.
-- Initial bundle delta is zero when the flag is disabled.
+### Phase 0 - Approval gate
 
-Rollback:
+No code changes before approval.
 
-- Remove/disable the isolated import; no data or UI rollback required.
+Required approval item:
 
-### Y2 — Gesture and SVG Prototype on the Focused Post
+- Confirm the recommended route-owned desktop shell architecture.
 
-Scope: internal/flagged prototype using memory only. The current Highlight button remains the production control.
+### Phase 1 - Layout shell
 
-Planned work:
+Create a tiny presentational shell:
 
-- Reuse `focusedEntryId` and `/post/:id` as the single Ink surface.
-- Add the OFF → VIEWING/ARMED → CANDIDATE → DRAWING → COMMITTING state machine behind the flag.
-- Implement the timed first-move handoff and cancellation paths.
-- Mount one lazy SVG overlay only for the focused post.
-- Add the temporary inline settings rail behind the flag.
-- Keep all strokes in memory; no Firestore write.
+- Uses CSS/Tailwind only.
+- Activates at `min-width: 1400px`.
+- Keeps existing single-column markup for smaller widths.
+- Uses a max workspace width that can fit:
+  - left 240px;
+  - center 780-800px;
+  - right 280px;
+  - gaps 24-32px.
 
-Likely existing seams touched:
+Implementation rule:
 
-- `src/components/KnowledgeCard/KnowledgeCard.tsx`
-- `src/components/KnowledgeCard/CardTrust.tsx`
-- `src/components/KnowledgeCard/CardContent.tsx`
-- `src/components/KnowledgeCard/cardTypes.ts`
-- Existing route callback plumbing only if required; no new route
+- Do not move the virtualized list into an independent scroll container.
+- Do not change card width on tablet/mobile.
 
-Required device matrix:
+### Phase 2 - Feed rail data selectors
 
-- iPhone Safari: current and previous supported iOS.
-- Android Chrome on a mid-tier device.
-- Samsung Internet.
-- Windows touch device in Edge.
-- Desktop Chrome/Edge with mouse.
-- Stylus device where available.
+Inside `KnowledgeFeed`, derive small memoized rail view models from existing state:
 
-Exit gates:
+- current visible/focused entry;
+- loaded `visibleEntries` / `filteredEntries`;
+- loaded `journeyQuestions`;
+- active category/topic;
+- selected hashtag;
+- local identity.
 
-- Ordinary scrolls do not create strokes.
-- Hold-and-draw does not scroll the page while the stroke is active.
-- Release restores native scrolling immediately.
-- Pinch zoom, links, selection outside Ink, and controls remain usable.
-- No global non-passive touch listener exists while not drawing.
-- 500 simplified strokes meet the SVG performance gate.
+Selectors should return small display models:
 
-Rollback:
+```text
+{ id, label, title, description, href/action }
+```
 
-- Disable the flag; no persistent data exists.
+Do not store duplicate full entries in rail state.
 
-### Y3 — Additive Private Storage and Focused-Post Loading
+### Phase 3 - Left rail modules
 
-Scope: approved beta users only; Highlight remains available to everyone else.
+Recommended first-release left rail:
 
-Firestore prerequisites after explicit approval:
+- Quick Navigation
+- Continue Reading
+- Reading Progress
+- Trending Categories / Tags from loaded entries
 
-- Owner-scoped `/userInk/{uid}/posts/{postId}` and `/chunks/{chunkId}` security rules.
-- Validation for schema version, allowed fields, enums, and bounded payloads.
-- Single-field index exemptions for vector/anchor/preview payload fields.
-- Emulator rule tests for cross-user denial and malformed writes.
+Rules:
 
-Planned app work:
+- Use only local loaded data.
+- Limit to small item counts.
+- No Firestore imports.
+- No timers.
+- No social metrics panel.
 
-- Add the Firestore Ink repository behind a dynamic import.
-- Read one manifest only on a focused post after initial content paint or on explicit activation.
-- Fetch bounded chunks only when the manifest exists.
-- Batch session-chunk and manifest writes on release.
-- Support offline pending/failed state without a Done button.
-- Add delete-all-notes-for-post while preserving source chunks until confirmed.
-- Do not add any realtime Ink listener.
+### Phase 4 - Right rail modules
 
-Exit gates:
+Recommended first-release right rail:
 
-- Feed reads/listeners remain unchanged at zero Ink activity.
-- Cross-user reads and writes fail in emulator tests.
-- 1, 40, 200, and 500-stroke fixtures stay under chunk limits.
-- Two tabs and two devices do not overwrite source strokes.
-- Network failure, offline mode, route change, and app backgrounding do not silently lose a released stroke.
+- Knowledge Journey for current/focused entry.
+- Related Posts from loaded entries.
+- Related SmartTalk from existing `journeyQuestions`.
+- Same Author from loaded entries.
+- Continue Learning via existing category/topic metadata.
 
-Rollback:
+Rules:
 
-- Disable beta flag. Additive Ink data remains private and untouched.
+- Do not render full `KnowledgeCard`.
+- Use compact rows.
+- Avoid updating on every scroll frame.
 
-### Y4 — My Notes Beta
+### Phase 5 - Route handling
 
-Scope: new private tab for beta users; existing Highlights remains the default for non-beta users.
+Initial desktop behavior:
 
-Planned work:
+- Knowledge Feed gets full left/center/right workspace because it owns reusable loaded data.
+- Explore, SmartTalk, and Profile keep current content behavior and can remain centered inside the desktop shell unless route-local rails are implemented with existing route data only.
 
-- Build `MyNotes` as a lazy profile section.
-- Query manifests only when the tab is opened: `orderBy(lastAnnotatedAt, desc)`, `limit(12)`, cursor pagination.
-- Hydrate title/author from current canonical post data using cache-first, bounded ID reads.
-- Generate preview SVG paths by decoding the manifest's bounded preview vectors.
-- Add Continue Reading through the existing route.
-- Add the confirmed delete-notes action.
-- Handle deleted/private/unavailable posts without revealing stale duplicated content.
+If route-local rails are added in Z.1, they must be presentation-only:
 
-Likely existing seams touched:
+- Explore: derived from its own loaded `entries`, `questions`, `profiles`, and topic stats.
+- SmartTalk: derived from already-loaded `questions`.
+- Profile: derived from already-loaded `profile`, `sharedEntries`, and `smartTalkSummary`.
 
-- `src/components/Profile.tsx`
-- Replaceable `src/components/ProfileHighlights.tsx` slot or a new lazy `MyNotes` component
-- `src/utils/routes.ts` only for the `notes` section alias; no content route change
+Do not preload route data globally.
 
-Exit gates:
+### Phase 6 - Responsive preservation
 
-- Opening any other Profile section causes zero Ink reads.
-- First page is bounded to 12 manifest documents and at most 12 missing post documents.
-- No post body is loaded to create a preview.
-- No image, screenshot, canvas snapshot, selected snippet, title, or author is stored in Ink.
-- Old `?tab=highlights` links can resolve safely during migration.
+Required invariants:
 
-Rollback:
+- Mobile layout remains pixel-identical.
+- Tablet layout remains pixel-identical.
+- Desktop center column remains 760-820px.
+- Existing mobile bottom navigation remains unchanged.
+- Existing route overlays remain unchanged.
 
-- Hide My Notes beta; existing Highlights remains intact.
+Implementation check:
 
-### Y5 — Legacy Conversion and Controlled Cutover
+- All desktop-only classes must be gated at 1400px+.
+- Existing `sm`, `md`, and regular classes must not be rewritten unless necessary.
 
-Scope: convert legacy ranges without deleting their source documents, then rename the production UI.
+### Phase 7 - Validation
 
-Planned work:
+Required commands after implementation approval:
 
-- Freeze new legacy Highlight writes only for users entering the Ink rollout.
-- Read legacy highlights on demand, never through the current app-wide listener for migrated users.
-- Convert each valid range into deterministic blue underline vectors with semantic anchors; do not copy `selectedText`, title, or author into Ink.
-- Use deterministic migration chunk IDs and `migrationVersion` for idempotency.
-- Compare per-user/per-post source counts, converted counts, unresolved counts, and duplicate IDs.
-- Show Ink/My Notes only after the user's conversion audit succeeds.
-- Rename Highlight to Ink and Highlights to My Notes for the approved cohort.
-- Preserve the delete capability and old route alias.
+```bash
+npm run build
+npx tsc --noEmit
+git diff --check
+```
 
-Exit gates:
+Required QA:
 
-- No migrated user loses access to a valid prior mark.
-- Re-running migration creates no duplicate stroke.
-- Unresolvable legacy data remains in `userHighlights` and is reported; it is never silently deleted.
-- Rollback can return the user to the untouched Highlight experience.
+- Desktop >1400px:
+  - three-column adaptive shell;
+  - center width 760-820px;
+  - sticky rails;
+  - feed virtualization still works;
+  - no console errors.
+- Tablet:
+  - current layout unchanged.
+- Mobile:
+  - current layout unchanged.
+- Route QA:
+  - Home feed.
+  - Focused post.
+  - Explore.
+  - SmartTalk.
+  - Profile.
+  - Profile My Notes remains lazy.
 
-Rollback:
+## Acceptance criteria
 
-- Restore the old feature flag and legacy read path. Do not delete Ink or Highlight data.
+Z.1 is implementation-ready only if:
 
-### Y6 — General Availability and Deferred Cleanup
+- no new dependency is added;
+- no rail component imports Firestore;
+- no new listener/query exists for rails;
+- mobile/tablet rendering is unchanged;
+- center reading width stays within 760-820px on desktop;
+- rails are sticky and calm;
+- virtualization remains window-scroll based;
+- build, strict TypeScript, and diff check pass.
 
-Scope: production replacement only after a stable observation window and separate approval.
+## Stop condition
 
-Planned work:
-
-- Make Ink the default.
-- Remove the app-wide Highlight listener and legacy write path from the startup graph.
-- Keep the read-only legacy adapter lazy for users with unresolved legacy documents.
-- Retain old route aliases.
-- After the agreed retention window, produce a deletion proposal for obsolete legacy documents/code. Deletion is not automatic and requires explicit approval.
-
-Exit gates:
-
-- Error, gesture, write-failure, anchor-resolution, read-count, and frame-time metrics remain within budgets for the observation window.
-- No rollback has been required for the approved period.
-- A separate cleanup audit proves that no user data or reachable capability depends on the old path.
-
-## Implementation Ownership Map
-
-| Concern | Owner | Must not own |
-| --- | --- | --- |
-| Route/focused post | Existing app and feed routing | Stroke storage or projection |
-| Card shell | Existing `KnowledgeCard` seams | Pointer sampling loop |
-| Ink controller | Active post and gesture state | User-wide annotation collection |
-| Ink surface | Gesture arbitration and live SVG | Firestore query policy |
-| Projection/codec | Geometry, anchors, hashes, path output | React UI |
-| Repository | Bounded reads/writes and migration adapter | Rendering |
-| My Notes | Pagination, canonical metadata, preview, navigation | Full stroke-chunk loading |
-| Legacy adapter | Read/convert old ranges | New Ink writes after cutover |
-
-## Data and API Contracts to Freeze Before UI Work
-
-- Color and width enums.
-- Stroke ID and session chunk ID format.
-- Geometry quantization and codec version.
-- Anchor schema and resolution outcomes: exact, reflowed, relocated, unresolved.
-- Manifest/chunk schema and byte ceilings.
-- Preview viewBox and path cap.
-- Repository read/write/delete result types.
-- Migration idempotency key.
-- Telemetry events that contain IDs/status only and never note geometry or nearby text.
-
-## Verification Plan
-
-### Static and build
-
-- TypeScript compile.
-- Production build.
-- `git diff --check`.
-- Bundle analyzer comparison against the pre-Ink baseline.
-- Dependency graph check proving no new drawing package and no Ink code in initial startup.
-
-### Gesture
-
-- Slow/fast vertical scroll, diagonal scroll, flick, repeated scroll.
-- Short tap, long hold without movement, hold then underline, circle, arrow, vertical mark, and scribble.
-- Hold near links/buttons/media and across paragraph boundaries.
-- Multi-touch and pinch zoom.
-- Route change, notification interruption, app background, pointer cancel, and rotation mid-stroke.
-- Tremor/slop testing and left/right-hand use.
-
-### Rendering and anchors
-
-- 1, 40, 200, and 500 strokes.
-- All 15 color/width combinations.
-- Narrow/wide mobile, tablet, desktop, portrait/landscape.
-- Font size/zoom changes.
-- Paragraph inserted, removed, split, merged, and edited.
-- Same quote repeated multiple times.
-- Deleted/private post and missing content.
-
-### Firestore and offline
-
-- No Ink reads on feed/app startup.
-- Cache hit, cold manifest miss, existing manifest, and paginated My Notes.
-- Chunk rollover at count and byte limits.
-- Offline release, reconnect, rejected write, and retry.
-- Two tabs and two devices.
-- Unauthorized and malformed operations in the emulator.
-- Idempotent legacy conversion and rollback.
-
-## Performance Acceptance Gates
-
-- Initial JS increase: no more than 1 KiB gzip.
-- Lazy Ink interaction chunk: no more than 12 KiB gzip; 6–10 KiB target.
-- Base feed: zero Ink Firestore reads/listeners and zero mounted Ink SVGs.
-- No React state update per pointer sample.
-- No long task over 50 ms caused by Ink surface mount or a normal stroke commit on the agreed test device.
-- Drawing loop: p95 frame work fits a 16.7 ms frame on the agreed mid-tier mobile test device.
-- Scroll behavior before the hold remains native and visually indistinguishable from Ink OFF.
-- Focused annotated post: bounded summary/chunk reads only.
-- My Notes: exactly paginated manifest reads; no eager full-history query.
-
-## Stop Conditions
-
-Stop rollout and return to the prior flag if any of the following occurs:
-
-- Intentional scrolling can create a saved stroke.
-- Drawing can leave scrolling blocked after release/cancel.
-- Pinch zoom is disabled outside the single active stroke.
-- An unresolved anchor is rendered against unrelated text.
-- A released stroke can be silently lost on a normal route/background transition.
-- A user can read or write another user's Ink.
-- Ink enters the initial bundle above budget or introduces feed reads/listeners/hidden overlays.
-- Legacy conversion deletes, duplicates, or exposes selected snippets.
-
-## Approval Requirement
-
-Implementation begins only after explicit approval of this plan and its linked architecture, risk, and migration decisions.
+Stop here until architecture approval is received.

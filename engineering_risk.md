@@ -1,216 +1,186 @@
-# Readative Release Y — Ink System Engineering Risk
+# Release Z.1 - Engineering Risk
 
-Date: 2026-07-01
+Status: risk audit complete. Production code was not modified.
 
-Status: Architecture risk assessment only
+## Risk summary
 
-## Risk Posture
+The release is feasible, but the primary risks are not visual. They are scroll, virtualization, and hidden data-loading regressions.
 
-Overall engineering risk is **medium-high**. SVG rendering and chunked vector storage are conventional. The two genuinely difficult areas are:
+The safest implementation is desktop-only, route-owned, and presentational. Rails must be outside the virtualized card list and must use only already-loaded data.
 
-1. Distinguishing a deliberate hold-and-draw from a normal touch scroll without making reading feel worse.
-2. Keeping arbitrary freehand marks attached to meaningful content after responsive reflow or author edits.
+## Risk register
 
-Neither problem should be treated as a late QA detail. Both require prototypes and explicit production gates before the current Highlight System is replaced.
+| Risk | Severity | Why it matters | Mitigation |
+|---|---:|---|---|
+| Mobile/tablet layout regression | High | Current app is mobile/tablet-first and all routes share one `main` container. | Gate all new layout behavior above 1400px. Do not rewrite existing `sm`/`md` behavior. |
+| Feed virtualization breakage | High | `KnowledgeCardList` measures row heights and uses window scroll. Width or scroll-container changes can cause jumps. | Keep the center column stable. Do not place rails inside `KnowledgeCardList`. Do not create nested main scroll containers. |
+| Extra Firestore reads/listeners | High | Rails could accidentally become new data surfaces. | Rail components must not import Firestore. Pass already-loaded route data as props. |
+| Startup bundle growth over 2KB gzip | Medium | A broad shell/module set could add more JS than the budget. | Use tiny presentational components, existing icons only if already in the chunk, no dependency, no full card duplication. |
+| Re-render churn during scroll | Medium | Sticky rails tied to visible-entry updates can render too often. | Use memoized selectors, cap item counts, avoid per-scroll state updates for rails. |
+| Duplicate heavy card rendering | High | Rendering full cards in rails defeats virtualization and increases memory. | Rails must render compact text/link rows only. |
+| Header/body/footer visual mismatch | Medium | Current header/footer are wider than body; new desktop shell can worsen imbalance if not aligned. | Align desktop workspace visually without changing header behavior. |
+| Sticky rail overflow | Medium | Tall rails can create unusable columns or nested scroll conflicts. | Cap rail content. Prefer compact modules. Avoid independent rail scrolling in the first implementation unless necessary. |
+| Route data coupling | High | App does not own feed/profile/explore/smarttalk data. Global rails could force broad architecture changes. | Use route-owned rail data. Keep App shell presentational. |
+| SmartTalk/Profile logic regression | High | Both routes have listeners, pagination, and focused-route scroll behavior. | Do not modify their data logic. Any rails must be route-local and use existing state. |
+| Explore preload regression | Medium | Explore currently loads three collections when mounted. Preloading it for desktop rails would violate performance rules. | Never mount Explore just to populate desktop rails. |
+| My Notes lazy-load regression | Medium | My Notes currently loads only from the Profile notes tab. | Do not touch Profile My Notes loading in Z.1. |
+| Accessibility/focus regression | Medium | New side rails add more keyboard targets before/after reading content. | Keep center content first in source order where practical; provide semantic `aside` labels; avoid focus traps. |
+| Social-media layout drift | Product risk | Dense sidebars could make Readative feel like LinkedIn/Reddit. | Rail modules should be calm, knowledge-oriented, compact, and reading-supportive. |
 
-## Risk Matrix
+## Root technical hazards
 
-| ID | Risk | Probability | Impact | Level | Primary mitigation | Release gate |
-| --- | --- | --- | --- | --- | --- | --- |
-| R1 | A normal scroll becomes an accidental stroke | Medium | Critical | Critical | Stationary hold, movement slop, no save below stroke threshold, device testing | Zero saved strokes during the agreed scroll test suite |
-| R2 | A held draw scrolls or is canceled mid-circle/arrow | Medium | High | High | First-post-hold `touchmove` handoff; touch-specific fallback; cancel-safe state machine | Every supported browser completes all gesture shapes |
-| R3 | Scrolling remains blocked after release/cancel | Low/medium | Critical | Critical | Scoped listeners, central cleanup, route/visibility/pointer-cancel handling | Automated cleanup assertions plus manual interruption tests |
-| R4 | Native selection, links, pinch zoom, or accessibility gestures regress | Medium | High | High | Exclusion zones; multi-touch cancellation; selection suppression only when armed/active | Accessibility and browser matrix passes |
-| R5 | An annotation moves to unrelated text after an edit | Medium | Critical | Critical | Dual geometry/semantic anchors; hashed context; fail closed | No ambiguous fixture is drawn |
-| R6 | Marks distort across width/font/orientation changes | Medium | Medium/high | High | Sparse text pins, `em` offsets, piecewise reprojection, resize throttling | Reflow visual tolerance approved on matrix |
-| R7 | One Firestore document grows too large | Low with design | High | Medium | 32 KiB target chunks, 64 KiB client hard stop, rollover by count/bytes | Boundary fixture passes before beta |
-| R8 | Concurrent tabs/devices overwrite strokes | Medium | High | High | Session-owned chunk IDs; unique stroke IDs; atomic counters | Two-tab/two-device conflict tests pass |
-| R9 | Manifest preview is incomplete after concurrent writes | Medium | Low | Low/medium | Preview is non-authoritative and self-heals after a full load | Source chunks remain complete; preview repairs |
-| R10 | App startup/feed becomes heavier | Medium | High | High | Dynamic imports; no global provider listener; focused route only | Bundle/read/DOM budgets pass |
-| R11 | Hundreds of SVG nodes cause frame drops | Low/medium | Medium | Medium | Simplify, quantize, group committed paths, update live path outside React | 500-stroke benchmark passes or renderer is revisited |
-| R12 | My Notes causes large post reads | Medium | Medium | Medium | Tab-scoped pagination, cache-first metadata, 12-card cap | Network/read trace stays within documented bounds |
-| R13 | Private Ink is readable or writable by another account | Low if rules correct | Critical | Critical | UID-scoped paths, field validation, emulator rules suite | Security suite is mandatory before any beta write |
-| R14 | Offline/background transition loses a released mark | Medium | High | High | Optimistic queue, release flush, `visibilitychange`, idempotent retry | Offline/interruption test suite passes |
-| R15 | Legacy conversion loses or duplicates highlights | Medium | Critical | Critical | Additive deterministic conversion; count audit; no source deletion | Per-user audit succeeds before cutover |
-| R16 | New Ink stores text snippets through anchor metadata/telemetry | Low/medium | High | High | Hash-only context, schema allowlist, telemetry content ban | Payload inspection contains no readable selected text |
-| R17 | Deleted/private posts leave unusable note records | Medium | Low/medium | Medium | Unavailable My Notes state and delete-notes action | Privacy behavior approved |
-| R18 | Malformed/hostile vectors exhaust rendering | Low | High | Medium | Rule/client bounds, point/path caps, parser rejection | Fuzzed payloads fail safely |
+### 1. Window-scroll dependency
 
-## R1–R4: Scroll and Input Arbitration
+The feed virtualizer, feed scroll persistence, focused post navigation, SmartTalk focused question behavior, and Profile author-change behavior all assume the browser window is the primary scroll container.
 
-### Why this is the largest risk
+Regression pattern:
 
-Browsers decide touch panning early. Under Pointer Events, panning generally cannot be taken back merely by canceling a later pointer event; `touch-action` must declare intent before the gesture. Changing `touch-action` after contact does not affect that contact. Setting it to `none` up front would make Ink feel like a drawing editor and would damage native reading performance.
+```text
+New desktop shell adds nested scroll
+  -> window scroll no longer represents content scroll
+  -> virtualization window is wrong
+  -> focused/restore scroll behavior is wrong
+```
 
-The recommended model relies on a narrower Touch Events behavior: if no movement has begun, canceling the first active `touchmove` after a successful hold can suppress scrolling for that contact. That is a standards-backed path, but real browser behavior, passive listener defaults, callouts, selection, and WebView differences still require a prototype.
+Mitigation:
 
-### Required safeguards
+- Keep page scroll on the window.
+- Use sticky rails inside the normal document flow.
+- Do not put the center column in `overflow-y-auto`.
 
-- The hold timer cannot save anything by itself.
-- Movement beyond the slop threshold before the timer permanently makes that contact a scroll.
-- The non-passive move handler is added only after the stationary hold succeeds and removed on every terminal path.
-- All cleanup is centralized and idempotent.
-- No component unmount can leave a document/window listener, pointer capture, selection lock, or scroll lock behind.
-- A stroke is saved only after minimum distance and sample-count checks.
-- Interactive descendants and multiple contacts are excluded.
-- Browser zoom remains enabled when not in the one active stroke.
+### 2. Center width changes
 
-### Test volume
+`KnowledgeCardList` estimates card height and then measures actual card height. Changing center width changes text wrapping and media layout, which can trigger measurement churn.
 
-The implementation phase should run at least 500 scripted/manual scroll gestures across the supported mobile matrix before beta. The acceptance target is not “rare accidental ink”; it is zero saved accidental strokes in the controlled suite. Any failure blocks rollout and triggers threshold/interaction redesign.
+Mitigation:
 
-### Fallback if the handoff is inconsistent
+- Keep center width in the same practical range as today's `max-w-3xl`.
+- Avoid dynamic width changes based on rail content.
+- Test at 1400px, 1440px, 1536px, and larger desktop widths.
 
-Do not fall back to a permanent `touch-action: none` surface or JavaScript-simulated scrolling. The acceptable fallback is a safer two-contact sequence—hold to arm one stroke, lift, then draw—or deferring touch Ink while preserving mouse/pen support. That fallback changes the target interaction and therefore requires explicit product approval.
+### 3. Data ownership leakage
 
-## R5–R6: Reflow and Edit Anchoring
+App owns routing, identity, notifications, panels, and lazy routes. It does not own feed entries, Explore entries, SmartTalk questions, or Profile entries.
 
-### Fundamental limitation
+Mitigation:
 
-A freehand path is geometric; web text is reflowable and editable. There is no coordinate transform that can preserve a circle or arrow perfectly after arbitrary content changes. Storing screenshots or freezing the post layout would solve geometry at the cost of the explicit product requirements, so both are excluded.
+- Do not introduce a global desktop data store.
+- Do not import route data loaders in App.
+- Let route components pass already-loaded data to desktop rail modules.
 
-### Safe policy
+### 4. Rail over-rendering
 
-- Store block-local vector geometry for fidelity.
-- Store sparse semantic text pins for responsive reprojection.
-- Store canonical text positions and hash-only exact/prefix/suffix context for relocation.
-- Treat paragraph ordinal and `updatedAt` only as hints.
-- Report resolution as exact, reflowed, relocated, or unresolved.
-- Never render unresolved or ambiguous strokes.
-- Never auto-delete unresolved strokes.
+A rail tied to scroll position can re-render on every scroll animation frame.
 
-### Distortion policy
+Mitigation:
 
-The implementation must define a visual error threshold. If sparse pins would stretch or fold a stroke beyond that threshold, the stroke becomes unresolved for that layout instead of being shown incorrectly. A temporarily missing mark is safer than confidently wrong Ink.
+- Rail modules should update on loaded data, focused entry, route, search/topic changes, or coarse visible-entry changes only.
+- Cap derived arrays and memoize them.
 
-### Edit fixtures that must pass
+## Files with highest regression sensitivity
 
-- Paragraph inserted before the mark.
-- Words inserted before and inside the anchored range.
-- Paragraph split or merged.
-- Repeated identical phrase in the same post.
-- Target phrase removed.
-- Entire post rewritten.
-- Title-only and hashtag-only edits.
-- Font, line height, zoom, device width, and orientation changes without content edits.
+- `src/App.tsx`
+  - Top-level layout, route rendering, panels, mobile nav.
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+  - Feed data lifecycle, scroll restoration, route filters, pagination.
+- `src/components/KnowledgeFeed/FeedRenderer.tsx`
+  - Feed UI composition, category controls, card list placement.
+- `src/components/KnowledgeCardList.tsx`
+  - Virtualization and measurement.
+- `src/components/Header.tsx`
+  - Fixed header and account/notification controls.
+- `src/components/Explore.tsx`
+  - Discovery route data loading and derived sections.
+- `src/components/SmartTalk.tsx`
+  - Route listeners, count query, focused-question scroll.
+- `src/components/Profile.tsx`
+  - Profile listeners, virtualized shared/saved sections, My Notes tab.
 
-## R7–R9: Storage and Concurrency
+## Regression risk by surface
 
-### Document growth
+### Home feed
 
-Firestore's 1 MiB document limit makes a single indefinitely growing annotation document unsafe. The proposed 32 KiB target/64 KiB hard client limit leaves substantial margin for Firestore encoding and future schema fields. Both stroke count and actual encoded byte length determine rollover.
+Risk: high.
 
-### Chunk update cost
+Reason:
 
-Updating an active chunk rewrites that bounded document. This is acceptable only while chunks remain small. A benchmark must compare 1, 20, and 40-stroke chunk commits on slow mobile/network conditions. If write latency becomes visible, lower the chunk target rather than increasing it.
+- It is the primary reading surface and uses virtualization, scroll persistence, focus scroll, pagination, and already-loaded SmartTalk/profile preview data.
 
-### Concurrency
+Control:
 
-Each tab/device writes its own session chunk. This prevents source overwrites without a transaction per point. The manifest uses atomic increments and a batch with the chunk update. The bounded preview is allowed to be temporarily incomplete because it is presentation data, not the source of truth.
+- Implement rails outside the virtualized list.
+- Use KnowledgeFeed-owned selectors.
 
-### Deletion
+### Focused post
 
-Deleting a parent Firestore document does not implicitly remove subcollection documents. “Delete notes from this post” must enumerate the bounded chunks, delete them in batches, and delete the manifest only after chunk deletion succeeds. Partial failure must be resumable and must not claim success.
+Risk: medium-high.
 
-## R10–R12: Performance and Bundle
+Reason:
 
-### Initial bundle regression
+- Focused post route scrolls the target into view.
+- Desktop rails should not alter focus scroll behavior.
 
-The easiest accidental regression is importing Ink utilities from `KnowledgeCard` or a global provider, pulling the entire feature into the initial graph. The shell may know only how to request a dynamic Ink module. Bundle analysis is required; source-level dynamic imports alone are not proof.
+Control:
 
-### Feed regression
+- Test focused post open from feed and direct route.
+- Do not add route-level scroll restoration changes.
 
-The current global Highlight provider reads all user highlights through a realtime listener. Carrying that pattern into Ink would violate the release mission. The feed cannot query manifests merely to show an annotated badge. A badge may appear only when the information is already in the current session cache; it cannot justify a new feed read.
+### Explore
 
-### SVG load
+Risk: medium.
 
-The risk is DOM path count, not the vector format itself. Source strokes remain individual for deletion and migration, while committed render output can be grouped by block/color/width. The active stroke is the only frequently mutated node.
+Reason:
 
-### My Notes hydration
+- Explore has route-local one-shot reads and many derived sections.
 
-Strictly avoiding duplicated post title/author means missing metadata reads return full `knowledge` documents in the client SDK. Since posts may include images/comments, My Notes must use a small 12-card page, cache-first lookup, and concurrency limits. If measured payload is too large, the architecture must be revisited explicitly; silently duplicating canonical post fields into Ink is not allowed.
+Control:
 
-## R13 and R16: Privacy and Security
+- Do not preload Explore.
+- Preserve single-column behavior below 1400px.
 
-Ink contains potentially sensitive private reading behavior even without text snippets.
+### SmartTalk
 
-Required controls:
+Risk: medium-high.
 
-- Firebase Authentication UID must match the path UID for every read/write/delete.
-- My Notes must render only on the signed-in user's own profile.
-- Rules must allowlist fields and bound collections, arrays, strings/bytes, counts, and enum values where the rules language permits.
-- Vector payloads and anchor hashes must be excluded from indexing.
-- No geometry, nearby text, selected text, or post body goes to analytics, logs, error messages, URLs, or notifications.
-- Error reporting may include schema version, status code, byte count, and opaque IDs only.
-- Do not use public `knowledge` document fields to authorize ownership of private Ink.
+Reason:
 
-Security rules are not present in this architecture deliverable and must be reviewed/deployed before any production Ink write is possible.
+- SmartTalk uses listeners, count query, pagination, and focused-question scroll.
 
-## R14: Offline and Durability
+Control:
 
-The lack of a Done button makes release the durability boundary. The UI can return to scrolling immediately, but the repository must keep an optimistic pending record until Firestore acknowledges or queues the write.
+- Do not change SmartTalk data logic.
+- Avoid global SmartTalk rail subscriptions.
 
-Required cases:
+### Profile
 
-- Online success.
-- Offline with persistent cache.
-- Permission denied.
-- Payload rejected by bounds.
-- Route change immediately after release.
-- Tab background/close immediately after release.
-- Retry after a transient failure.
-- Duplicate retry after an unknown commit result.
+Risk: medium-high.
 
-Unique stroke IDs make retry idempotent. A failed mark stays locally distinguishable and retryable; it must not silently disappear or appear permanently saved.
+Reason:
 
-## R15: Migration
+- Profile combines document listeners, post listeners, saved item reads, lazy My Notes, and virtualized card lists.
 
-Legacy Highlight documents contain selected text and duplicated post metadata. The new Ink schema must not copy those fields. Conversion uses the legacy text only in memory to verify old offsets, then writes vector geometry, numeric/hash anchors, timestamps, and source IDs.
+Control:
 
-Migration is unsafe if it deletes source documents in the same pass. The required order is convert → verify counts/content resolution → cohort cutover → observe → separately approve cleanup. Unresolved items remain legacy data and keep the rollback path alive.
+- Do not change profile data logic.
+- Confirm My Notes remains lazy.
 
-## R17: Orphaned Notes
+## Recommended minimal implementation risk posture
 
-Without duplicated post title/author, a deleted or newly inaccessible post cannot produce the complete requested My Notes card. The privacy-safe behavior is an “Unavailable post” card with the private vector preview, last annotated time, and delete action. It does not expose a stale title or author and does not offer Continue Reading.
+1. Build the desktop shell as presentational.
+2. Keep route data ownership unchanged.
+3. Complete the Knowledge Feed workspace first.
+4. Keep other route rails minimal or absent unless they can be derived from route-local state without new reads.
+5. Validate mobile/tablet before judging desktop polish.
 
-This tradeoff should be approved explicitly because it follows directly from the no-duplicate-post-data requirement.
+## Production readiness gate after implementation
 
-## R18: Malformed Vector Defense
+Production readiness requires:
 
-Even private user data is untrusted input after sync.
-
-- Cap chunks, strokes, points, path length, previews, and anchor pins.
-- Reject NaN, infinity, negative counts, unknown schema versions, invalid enum values, and coordinates outside the quantized range.
-- Never assign stored strings to `innerHTML`.
-- Generate SVG path strings from decoded numeric vectors; do not accept arbitrary SVG markup, elements, URLs, filters, styles, or event attributes.
-- Abort a pathological decode within a fixed work budget.
-
-## Production Gates
-
-Ink is not production-ready until all gates are green:
-
-1. Gesture matrix and 500-scroll accidental-stroke test.
-2. Cleanup/interruption tests with no stuck scroll state.
-3. Reflow/edit fixture suite with ambiguous anchors hidden.
-4. 1/40/200/500-stroke SVG performance benchmark.
-5. Initial bundle and lazy chunk budgets.
-6. Zero feed Ink reads/listeners/overlays.
-7. Firestore emulator security and payload-bound tests.
-8. Offline, retry, and multi-tab/device durability tests.
-9. My Notes pagination/read trace.
-10. Idempotent legacy conversion with per-user count audit.
-11. Accessibility review for zoom, motor control, keyboard/mouse, reduced motion, and touch targets.
-12. Feature-flag rollback rehearsal.
-
-## Rollback Requirements
-
-- One remote/configurable flag must disable Ink entry without a redeploy if feasible.
-- Current Highlight source and data remain untouched through migration observation.
-- Ink writes are additive and private; disabling the UI does not require destructive data reversal.
-- Legacy route aliases remain valid.
-- A rollback must remove any active touch listeners/capture immediately and restore normal scrolling.
-- No cleanup or collection deletion is part of an emergency rollback.
-
-## Recommendation
-
-Proceed only to a memory-only gesture/anchor prototype after architecture approval. Do not authorize Firestore deployment or production replacement until the prototype proves that the one-contact handoff is reliable on the supported mobile browsers.
+- `npm run build` passes.
+- `npx tsc --noEmit` passes.
+- `git diff --check` passes.
+- Desktop/tablet/mobile QA passes.
+- No added dependencies.
+- No new Firestore reads/listeners for rails.
+- Center reading column remains 760-820px.
+- Virtualization behavior is unchanged.
