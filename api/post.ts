@@ -211,10 +211,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <div class="seo-grid">
             <section><h3>Related Posts</h3><ul class="seo-list">${renderPostList(relatedPosts)}</ul></section>
             <section><h3>Related SmartTalk</h3><ul class="seo-list">${renderSmartTalkList(relatedSmartTalks)}</ul></section>
+            <section><h3>Same Category</h3><ul class="seo-list"><li>${categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : '<a href="/posts">Browse categories</a>'}</li></ul></section>
+            <section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="/profile/${encodeURIComponent(post.authorId)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>
           </div>
+          <section><h3>Similar Topics</h3><div class="seo-tags">${tags || '<a href="/explore">Explore topics</a>'}</div></section>
           <div class="seo-meta">
-            ${categoryPath ? `<a href="${categoryPath}">More in ${escapeHtml(post.category || "this category")}</a>` : ""}
-            ${authorUrl ? `<a href="/profile/${encodeURIComponent(post.authorId)}">More from ${escapeHtml(post.authorName)}</a>` : ""}
             ${nextPost ? `<a href="${postPath(nextPost.id)}">Next reading: ${escapeHtml(nextPost.title)}</a>` : '<a href="/posts">Next reading</a>'}
           </div>
         </section>

@@ -80,6 +80,7 @@ import {
 import { buildPublicPath, navigateToRoute } from "../utils/routes";
 import type { Answer, Question } from "../types";
 import { tokenizeSearch } from "../utils/searchHelpers";
+import { getRelatedQuestions } from "../utils/contentGraph";
 
 const SMART_TALK_PAGE_SIZE = 50;
 
@@ -1251,13 +1252,7 @@ export function SmartTalk({
   };
 
   const relatedFocusedQuestions = focusedQuestion
-    ? questions
-        .filter(
-          (question) =>
-            question.id !== focusedQuestion.id &&
-            (!focusedQuestion.category || question.category === focusedQuestion.category),
-        )
-        .slice(0, 4)
+    ? getRelatedQuestions(focusedQuestion, questions, 4)
     : [];
   const smartTalkPageUrl = focusedQuestion
     ? buildPublicPath("smarttalk", { focusedEntryId: focusedQuestion.id })
@@ -1566,7 +1561,7 @@ export function SmartTalk({
                     })}
                     className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700"
                   >
-                    Next Reading
+                    Continue Learning
                   </a>
                 )}
               </div>

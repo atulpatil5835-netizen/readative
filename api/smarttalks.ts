@@ -6,6 +6,10 @@ import {
 } from "./_seoData.js";
 import { SEO_CATEGORIES } from "../src/utils/seoTaxonomy.js";
 import {
+  getRelatedPosts,
+  getRelatedQuestions,
+} from "../src/utils/contentGraph.js";
+import {
   SEO_DOCUMENT_STYLES,
   escapeHtml,
   renderAppDocument,
@@ -243,21 +247,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
     const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
     const pageDescription = focusedQuestion.description;
-    const relatedQuestions = questions
-      .filter(
-        (question) =>
-          question.id !== focusedQuestion.id &&
-          (!focusedQuestion.category || question.category === focusedQuestion.category),
-      )
-      .slice(0, 5);
-    const relatedPosts = data.posts
-      .filter(
-        (post) =>
-          !focusedQuestion.category ||
-          post.category === focusedQuestion.category ||
-          post.hashtags.includes(focusedQuestion.category),
-      )
-      .slice(0, 5);
+    const relatedQuestions = getRelatedQuestions(focusedQuestion, questions, 5);
+    const relatedPosts = getRelatedPosts(focusedQuestion, data.posts, 5);
     const head = `
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(pageDescription)}" />
@@ -320,7 +311,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         </div><div class="seo-meta">
           ${focusedQuestion.category ? `<a href="/category/${encodeURIComponent(focusedQuestion.category)}">Related Category: ${escapeHtml(getCategoryLabel(focusedQuestion.category))}</a>` : ""}
           ${focusedQuestion.authorId ? `<a href="/profile/${encodeURIComponent(focusedQuestion.authorId)}">Author: ${escapeHtml(focusedQuestion.authorName)}</a>` : ""}
-          <span>Next Reading: ${nextReading}</span>
+          <span>Continue Learning: ${nextReading}</span>
         </div></section>
       </main>
       <footer class="seo-footer"><a href="/about">About</a> · <a href="/contact">Contact</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/community">Community</a></footer>

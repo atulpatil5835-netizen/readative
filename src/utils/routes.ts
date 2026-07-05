@@ -1,4 +1,7 @@
+import { isLegalPageSlug, type LegalSlug } from "../content/legalRoutes";
+
 export type AppTab = "knowledge" | "smarttalk" | "explore" | "profile";
+export type AppRouteTab = AppTab | "legal" | "notFound";
 
 export const CANONICAL_SITE_ORIGIN = "https://www.readative.com";
 
@@ -8,14 +11,16 @@ export interface RouteOptions {
   selectedHashtag?: string | null;
   selectedTopic?: string | null;
   section?: string | null;
+  legalSlug?: LegalSlug | null;
 }
 
 export interface ParsedAppRoute {
-  tab: AppTab | "notFound";
+  tab: AppRouteTab;
   focusedEntryId: string | null;
   profileAuthorId: string | null;
   selectedHashtag: string | null;
   selectedTopic: string | null;
+  legalSlug: LegalSlug | null;
   source: "hash" | "path";
   attemptedLocation: string;
 }
@@ -40,8 +45,7 @@ function normalizePathname(pathname: string) {
 }
 
 function normalizeTag(tag: string | null | undefined) {
-  const normalized = tag?.replace(/^#/, "").trim().toLowerCase();
-  return normalized || null;
+  return normalizeRouteSlug(tag);
 }
 
 const ROUTE_CATEGORY_ALIASES: Record<string, string> = {
@@ -109,7 +113,7 @@ function getKnowledgeSearchOptions(search: string) {
 }
 
 function createRoute(
-  tab: AppTab | "notFound",
+  tab: AppRouteTab,
   source: "hash" | "path",
   attemptedLocation: string,
   options: RouteOptions = {}
@@ -122,7 +126,25 @@ function createRoute(
     profileAuthorId: options.profileAuthorId ?? null,
     selectedHashtag: options.selectedHashtag ?? null,
     selectedTopic: options.selectedTopic ?? null,
+    legalSlug: options.legalSlug ?? null,
   };
+}
+
+function parseLegalRoute(
+  routePart: string,
+  source: "hash" | "path",
+  attemptedLocation: string,
+) {
+  if (source !== "path" || !routePart.startsWith("/")) {
+    return null;
+  }
+
+  const legalSlug = safeDecode(routePart.slice(1));
+  if (!legalSlug || !isLegalPageSlug(legalSlug)) {
+    return null;
+  }
+
+  return createRoute("legal", source, attemptedLocation, { legalSlug });
 }
 
 function parseKnowledgeRoute(
@@ -369,6 +391,7 @@ function parsePathRoute(pathname: string, search: string) {
   }
 
   return (
+    parseLegalRoute(normalizedPathname, "path", attemptedLocation) ||
     parseCategoryRoute(normalizedPathname, search, "path", attemptedLocation) ||
     parseTagRoute(normalizedPathname, "path", attemptedLocation) ||
     parsePostRoute(normalizedPathname, "path", attemptedLocation) ||

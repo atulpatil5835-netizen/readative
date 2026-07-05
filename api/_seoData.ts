@@ -6,6 +6,11 @@ import {
   SEO_TOPICS,
   normalizeSeoSlug,
 } from "../src/utils/seoTaxonomy.js";
+import {
+  getRelatedPosts,
+  getRelatedQuestions,
+  normalizeContentGraphTags,
+} from "../src/utils/contentGraph.js";
 
 export const SITE_URL = "https://www.readative.com";
 export const DISCOVERY_INDEX_PATH = "/posts";
@@ -17,16 +22,13 @@ export interface SeoPost {
   id: string;
   title: string;
   description: string;
+  content: string;
   authorId: string;
   authorName: string;
   category: string | null;
   hashtags: string[];
   createdAt: number;
   updatedAt: number | null;
-}
-
-export interface SeoPostDocument extends SeoPost {
-  content: string;
 }
 
 export interface SeoProfile {
@@ -74,7 +76,7 @@ export interface SeoData {
 
 export interface SeoPostPageData {
   source: "admin" | "rest";
-  post: SeoPostDocument;
+  post: SeoPost;
   relatedPosts: SeoPost[];
   relatedSmartTalks: SeoSmartTalk[];
 }
@@ -114,6 +116,15 @@ const STATIC_PAGES = [
   { path: "/terms", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/disclaimer", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/community", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/support", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/projects", priority: "0.7", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/mission", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/editorial-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/content-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/corrections-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/cookies", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/copyright", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/dmca", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
 ];
 
 function readEnv(name: string) {
@@ -227,67 +238,6 @@ async function fetchRestCollection(collectionId: string) {
   return documents;
 }
 
-async function fetchRestDocument(collectionId: string, id: string) {
-  const projectId = getProjectId();
-  const apiKey = getApiKey();
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionId}/${encodeURIComponent(id)}`,
-  );
-  if (apiKey) url.searchParams.set("key", apiKey);
-
-  const response = await fetch(url);
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `${collectionId}/${id} REST fetch failed (${response.status}): ${body.slice(0, 220)}`,
-    );
-  }
-
-  return decodeRestDocument((await response.json()) as FirestoreDocument);
-}
-
-async function fetchRestMatches(collectionId: string, field: string, value: string) {
-  if (!value) return [];
-
-  const projectId = getProjectId();
-  const apiKey = getApiKey();
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
-  );
-  if (apiKey) url.searchParams.set("key", apiKey);
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: field },
-            op: "EQUAL",
-            value: { stringValue: value },
-          },
-        },
-        limit: 8,
-      },
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `${collectionId} related REST query failed (${response.status}): ${body.slice(0, 220)}`,
-    );
-  }
-
-  const payload = (await response.json()) as Array<{ document?: FirestoreDocument }>;
-  return payload
-    .map((row) => row.document)
-    .filter((document): document is FirestoreDocument => Boolean(document))
-    .map(decodeRestDocument);
-}
-
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -383,27 +333,13 @@ function normalizePost(id: string, data: Record<string, unknown>): SeoPost | nul
     id,
     title: normalizeString(data.title),
     description: createExcerpt(normalizeString(data.excerpt) || normalizeString(data.content)),
+    content: normalizeString(data.content),
     authorId: normalizeString(data.authorId),
     authorName,
     category: normalizeSeoSlug(normalizeString(data.category)),
-    hashtags: normalizeStringArray(data.hashtags)
-      .map((tag) => normalizeSeoSlug(tag))
-      .filter((tag): tag is string => Boolean(tag)),
+    hashtags: normalizeContentGraphTags(normalizeStringArray(data.hashtags)),
     createdAt,
     updatedAt,
-  };
-}
-
-function normalizePostDocument(
-  id: string,
-  data: Record<string, unknown>,
-): SeoPostDocument | null {
-  const post = normalizePost(id, data);
-  if (!post) return null;
-
-  return {
-    ...post,
-    content: normalizeString(data.content),
   };
 }
 
@@ -669,63 +605,17 @@ export async function loadSeoData(): Promise<SeoData> {
 
 export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | null> {
   if (!id) return null;
+  const data = await loadSeoData();
+  if (data.source === "static") return null;
 
-  const database = getAdminDatabase();
-  if (database) {
-    const snapshot = await database.collection("knowledge").doc(id).get();
-    if (!snapshot.exists) return null;
-
-    const rawData = snapshot.data() || {};
-    const post = normalizePostDocument(snapshot.id, rawData);
-    if (!post) return null;
-
-    const categoryValue = normalizeString(rawData.category);
-    const [relatedPostSnapshot, relatedSmartTalkSnapshot] = categoryValue
-      ? await Promise.all([
-          database.collection("knowledge").where("category", "==", categoryValue).limit(8).get(),
-          database.collection("smarttalk").where("category", "==", categoryValue).limit(8).get(),
-        ])
-      : [null, null];
-
-    return {
-      source: "admin",
-      post,
-      relatedPosts: (relatedPostSnapshot?.docs || [])
-        .map((document) => normalizePost(document.id, document.data()))
-        .filter((candidate): candidate is SeoPost => Boolean(candidate && candidate.id !== id))
-        .slice(0, 4),
-      relatedSmartTalks: (relatedSmartTalkSnapshot?.docs || [])
-        .map((document) => normalizeSmartTalk(document.id, document.data()))
-        .filter((candidate): candidate is SeoSmartTalk => Boolean(candidate))
-        .slice(0, 4),
-    };
-  }
-
-  const document = await fetchRestDocument("knowledge", id);
-  if (!document) return null;
-
-  const post = normalizePostDocument(document.id, document.data);
+  const post = data.posts.find((candidate) => candidate.id === id);
   if (!post) return null;
 
-  const categoryValue = normalizeString(document.data.category);
-  const [relatedPostDocuments, relatedSmartTalkDocuments] = categoryValue
-    ? await Promise.all([
-        fetchRestMatches("knowledge", "category", categoryValue).catch(() => []),
-        fetchRestMatches("smarttalk", "category", categoryValue).catch(() => []),
-      ])
-    : [[], []];
-
   return {
-    source: "rest",
+    source: data.source,
     post,
-    relatedPosts: relatedPostDocuments
-      .map((candidate) => normalizePost(candidate.id, candidate.data))
-      .filter((candidate): candidate is SeoPost => Boolean(candidate && candidate.id !== id))
-      .slice(0, 4),
-    relatedSmartTalks: relatedSmartTalkDocuments
-      .map((candidate) => normalizeSmartTalk(candidate.id, candidate.data))
-      .filter((candidate): candidate is SeoSmartTalk => Boolean(candidate))
-      .slice(0, 4),
+    relatedPosts: getRelatedPosts(post, data.posts, 4),
+    relatedSmartTalks: getRelatedQuestions(post, data.smartTalks, 4),
   };
 }
 

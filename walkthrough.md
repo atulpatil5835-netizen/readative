@@ -1,189 +1,68 @@
-# Release P1 — Production SEO Foundation Walkthrough
+# Release P3.2 - Minimal Trust Refinement Walkthrough
 
 Status: implemented and validated.
 Date: 2026-07-04
 
 ## Objective
 
-Readative now exposes crawlable production URLs for trust pages, SmartTalk questions, post detail pages, and discovery surfaces while preserving existing product behavior.
+Restore Readative's original lightweight footer and replace the About page's creator/company presentation with the approved creator and official-link content.
 
-No business logic, Firestore schema, feed ranking, SmartTalk functionality, Notebook behavior, authentication, virtualization, polling, timers, intervals, or listeners were changed.
+This refinement preserves the P3 trust pages and P4 content graph. It does not change SEO metadata, routing, legal-page content outside About, Firestore, SmartTalk, Notebook, authentication, feed behavior, or dependencies.
 
-## Routes added or hardened
+## Minimal footer
 
-Dedicated legal and trust pages:
+The multi-column corporate footer was removed. The application footer now contains only:
 
-- `/about`
-- `/contact`
-- `/privacy`
-- `/terms`
-- `/disclaimer`
-- `/community`
+- Readative
+- Practical knowledge, creator posts, and SmartTalk discussions.
+- © 2026 Readative. All rights reserved.
+- About • Contact • Privacy • Terms • Disclaimer • Support
 
-SEO and discovery routes:
+The implementation restores the original compact flex layout and uses six direct crawlable links. No panels, scripts, or runtime behavior were added.
 
-- `/smarttalks`
-- `/smarttalks/{questionId}`
-- `/post/{postId}`
-- `/sitemap.xml`
+## About page refinement
 
-Compatibility routes:
+The About page now includes a `Creator & Official Links` section with the approved copy:
 
-- `/smarttalk` redirects to `/smarttalks`.
-- `/smarttalk?id={questionId}` redirects to `/smarttalks/{questionId}`.
-- `/smarttalk/{questionId}` redirects to `/smarttalks/{questionId}`.
-- `/community-guidelines` redirects to `/community`.
-- Existing category query SmartTalk aliases remain resolved by the SPA to avoid stealing the category route from its current product owner.
+- Readative is identified as an independent knowledge platform created and maintained by Atul Hinge.
+- The product goal is stated as building practical technology products that help people learn, solve problems, and explore new ideas.
 
-## Legal pages
+The `Official Links` area includes:
 
-The previous footer/legal side-panel behavior was replaced as the primary experience by dedicated server-rendered pages.
+- Creator: Atul Hinge with LinkedIn icon and the approved personal LinkedIn URL.
+- Readative: Readative with LinkedIn icon and the approved company LinkedIn URL.
+- Email: `reader@readative.com` using a mail link.
+- Support Independent Innovation with the approved short copy and `Support Readative` Razorpay button.
 
-Each legal page includes:
+The new content uses the existing server-rendered About-page design system. The About page title, description, canonical URL, Open Graph, Twitter Card, and JSON-LD generation were not changed.
 
-- unique title
-- unique meta description
-- canonical URL
-- Open Graph tags
-- Twitter Card tags
-- JSON-LD page schema
-- Breadcrumb schema
-- responsive Readative-styled document layout
-- links to the other legal/trust pages
+## Responsive QA
 
-The old `InfoPanel` remains only as a lightweight optional preview shell and now links out to the authoritative public page. Duplicated legal copy and obsolete panel helpers were removed.
+Browser QA was completed at:
 
-## SmartTalk SEO
-
-SmartTalk questions now have permanent production URLs at:
-
-```text
-/smarttalks/{questionId}
-```
-
-Each server-rendered SmartTalk detail page includes:
-
-- self-canonical URL
-- Open Graph and Twitter Card metadata
-- FAQ schema
-- DiscussionForumPosting schema
-- Breadcrumb schema
-- related questions
-- related posts fallback
-- category link
-- author attribution when available
-- next reading link
-
-Client-side SmartTalk schema and internal links now use the same canonical route family. Explore schema SmartTalk item URLs were also normalized to `/smarttalks/{questionId}`.
-
-## Knowledge post SEO
-
-Post detail pages now have server-rendered production documents at:
-
-```text
-/post/{postId}
-```
-
-Each document includes:
-
-- self-canonical URL
-- title and meta description
-- Open Graph and Twitter Card metadata
-- Article schema
-- Breadcrumb schema
-- author/person schema when an author id is available
-- category, author, tags, related posts, related SmartTalk, and Knowledge Journey links
-
-The existing SPA route still hydrates after the crawlable HTML loads.
-
-## Indexing and sitemap
-
-The sitemap loader now fails closed with HTTP 503 if dynamic SEO data is unavailable instead of silently returning a thin fallback sitemap with HTTP 200.
-
-Local dynamic SEO QA loaded:
-
-- source: REST
-- public posts: 328
-- public SmartTalk questions: 109
-- public profiles: 33
-- sitemap URLs: 495
-
-Sitemap QA confirmed:
-
-- legal pages are included
-- post detail URLs are included
-- SmartTalk detail URLs are included
-- legacy `/smarttalk` URLs are not included
-- `/tag/` URLs are not included
-- unknown lastmod values are omitted instead of synthesized
-
-Robots remains consistent:
-
-```text
-User-agent: *
-Allow: /
-
-Sitemap: https://www.readative.com/sitemap.xml
-```
-
-## Browser QA
-
-Browser QA was run against a local production-style server wired to the built `dist` app and the same API handlers used by the Vercel rewrites.
-
-Checked desktop, tablet, and mobile viewports:
-
-- desktop: 1280 × 720
-- tablet: 768 × 1024
-- mobile: 390 × 844
-
-Routes checked in-browser:
-
-- `/about`
-- `/contact`
-- `/privacy`
-- `/terms`
-- `/disclaimer`
-- `/community`
-- `/smarttalks/import_q100`
-- `/post/4ELsdHoS5ra5PJkDQbgk`
+- desktop: 1280 x 720
+- tablet: 768 x 1024
+- mobile: 390 x 844
 
 Results:
 
-- 24 route/viewport checks passed.
-- No browser console errors from the app origin.
-- No horizontal overflow.
-- Legal pages rendered the correct H1/title/canonical/schema.
-- Hydrated SmartTalk and post pages retained exactly one canonical, one description, one OG URL, and one Twitter Card.
-- Legacy `/smarttalk?id=import_q100` reached `/smarttalks/import_q100`.
+- footer had exactly six requested navigation links
+- corporate Product, Company, Resources, and Social columns were absent
+- footer and About page had no horizontal overflow
+- both LinkedIn links contained a LinkedIn icon
+- all four About links matched the approved destinations
+- About retained one canonical URL: `https://www.readative.com/about`
+- browser console errors and warnings: 0
 
-## Files changed for this SEO release
+## Files changed for P3.2
 
-- `api/_document.ts`
-- `api/_seoData.ts`
-- `api/discovery.ts`
-- `api/legal.ts`
-- `api/post.ts`
-- `api/sitemap.xml.ts`
-- `api/smarttalk.ts`
-- `api/smarttalks.ts`
-- `public/404.html`
-- `public/_redirects`
-- `public/amp/index.html`
-- `src/App.tsx`
-- `src/components/AppPanels.tsx`
 - `src/components/AppShell.tsx`
-- `src/components/Explore.tsx`
-- `src/components/Header.tsx`
-- `src/components/KnowledgeFeed/feedHelpers.ts`
-- `src/components/SmartTalk.tsx`
-- `src/utils/loadThirdPartyScripts.ts`
-- `src/utils/routes.ts`
-- `src/utils/seoSchemas.ts`
-- `vercel.json`
+- `api/legal.ts`
 - `walkthrough.md`
 - `performance_report.md`
-- `migration_report.md`
 - `task.md`
 - `final_report.md`
 
-Unrelated pre-existing working-tree edits in reading/card surfaces were preserved and not folded into this SEO release scope.
+## Production readiness
+
+Release P3.2 is production-ready.

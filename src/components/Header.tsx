@@ -11,11 +11,16 @@ import {
   UserRound,
 } from "lucide-react";
 import { Logo } from "./Logo";
-import { buildPublicPath, navigateToRoute, type AppTab } from "../utils/routes";
+import {
+  buildPublicPath,
+  navigateToRoute,
+  type AppRouteTab,
+  type AppTab,
+} from "../utils/routes";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
 interface HeaderProps {
-  activeTab: AppTab | "notFound";
+  activeTab: AppRouteTab;
   setActiveTab: (tab: AppTab) => void;
   identity: KnowledgeIdentity | null;
   onHomeAction: () => void;

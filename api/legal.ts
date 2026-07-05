@@ -7,320 +7,21 @@ import {
   renderStandaloneDocument,
 } from "./_document.js";
 
-type LegalSlug = "about" | "contact" | "privacy" | "terms" | "disclaimer" | "community";
-
-interface LegalSection {
-  title: string;
-  paragraphs?: string[];
-  items?: string[];
-}
-
-interface LegalPage {
-  slug: LegalSlug;
-  title: string;
-  eyebrow: string;
-  description: string;
-  schemaType: "AboutPage" | "ContactPage" | "WebPage";
-  sections: LegalSection[];
-}
-
-const EFFECTIVE_DATE = "July 4, 2026";
-const CONTACT_EMAIL = "reader@readative.com";
-
-const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
-  about: {
-    slug: "about",
-    title: "About Readative",
-    eyebrow: "Knowledge with context",
-    description: "Learn about Readative's mission, creator, community knowledge model, and approach to useful learning.",
-    schemaType: "AboutPage",
-    sections: [
-      {
-        title: "Our mission",
-        paragraphs: [
-          "Readative is a knowledge-first community for practical ideas, thoughtful learning posts, and SmartTalk discussions. It is designed to help readers discover useful explanations, tools, perspectives, and next steps without turning learning into an attention contest.",
-          "Readative combines creator-published knowledge posts with community questions and answers. Posts and SmartTalk contributions remain attributable to their authors so readers can understand where information came from and explore related work.",
-        ],
-      },
-      {
-        title: "Creator and company presence",
-        paragraphs: [
-          "Readative was created by Atul Hinge. The platform's company presence is listed as Innovation InfoHub on LinkedIn.",
-        ],
-        items: [
-          "Creator: Atul Hinge",
-          "Company presence: Innovation InfoHub",
-          `General contact: ${CONTACT_EMAIL}`,
-        ],
-      },
-      {
-        title: "How content works",
-        items: [
-          "Knowledge posts are published by identified contributors and may include links, images, comments, reactions, categories, and tags.",
-          "SmartTalk is the community question-and-answer space for practical learning discussions.",
-          "Trust indicators and community reactions are context signals, not professional endorsements or guarantees of accuracy.",
-          "Recommendations and discovery surfaces help readers find related material; they do not replace independent judgment.",
-        ],
-      },
-      {
-        title: "Independence and corrections",
-        paragraphs: [
-          "Authors are responsible for their contributions. Readers can report policy, copyright, privacy, or accuracy concerns by contacting Readative. Material concerns may result in review, correction, reduced visibility, or removal.",
-        ],
-      },
-    ],
-  },
-  contact: {
-    slug: "contact",
-    title: "Contact Readative",
-    eyebrow: "We're listening",
-    description: "Contact Readative for support, privacy, policy, copyright, corrections, safety, or business questions.",
-    schemaType: "ContactPage",
-    sections: [
-      {
-        title: "General contact",
-        paragraphs: [
-          `Email Readative at ${CONTACT_EMAIL}. Include the relevant post, SmartTalk question, profile, or page URL when your request concerns specific content.`,
-        ],
-      },
-      {
-        title: "What to include",
-        items: [
-          "Support: the feature, browser, device, and a concise description of the problem.",
-          "Privacy: the account email or profile identifier and the action you are requesting.",
-          "Corrections: the disputed statement, supporting source, and requested correction.",
-          "Copyright or safety: the exact URL, the protected work or policy concern, and your relationship to it.",
-          "Business: organization, purpose, and a reliable reply address.",
-        ],
-      },
-      {
-        title: "Urgent matters",
-        paragraphs: [
-          "Readative is not an emergency service. If someone is in immediate danger, contact the appropriate local emergency service. Legal notices should clearly identify the sender and the authority or right relied upon.",
-        ],
-      },
-    ],
-  },
-  privacy: {
-    slug: "privacy",
-    title: "Privacy Policy",
-    eyebrow: "Your data, explained",
-    description: "Readative's privacy policy explains account, content, device, analytics, advertising, storage, and privacy-request practices.",
-    schemaType: "WebPage",
-    sections: [
-      {
-        title: "Scope",
-        paragraphs: [
-          "This policy describes information processed when people browse Readative, sign in, publish content, participate in SmartTalk, react, comment, save preferences, or contact the platform.",
-        ],
-      },
-      {
-        title: "Information Readative processes",
-        items: [
-          "Account information provided through Google sign-in, such as an account identifier, name, email address, and profile image when available.",
-          "Public contributions such as profile details, posts, images, comments, reactions, questions, answers, categories, tags, and trust signals.",
-          "Private or device-local information used for Notebook features, guest identity, feed preferences, seen-item history, saved state, and performance caches where the product indicates that storage location.",
-          "Technical and usage information such as page views, browser or device characteristics, referrers, and diagnostic events.",
-          "Messages and supporting information sent to the contact address.",
-        ],
-      },
-      {
-        title: "Why information is used",
-        items: [
-          "Provide authentication, profiles, publishing, discussion, moderation, notification, personalization, and support features.",
-          "Protect the service, enforce community rules, investigate abuse, and correct technical problems.",
-          "Measure usage and improve reliability, navigation, and content discovery.",
-          "Display and measure advertising and comply with legal obligations where applicable.",
-        ],
-      },
-      {
-        title: "Public content",
-        paragraphs: [
-          "Content and profile information published as public may be visible to anyone, linked by other users, included in search-engine indexes, and retained in third-party caches. Do not publish personal information you do not want publicly associated with you.",
-        ],
-      },
-      {
-        title: "Cookies, local storage, analytics, and advertising",
-        paragraphs: [
-          "Readative uses browser storage for sign-in persistence, guest identity, preferences, feed state, performance, and other requested features. Google Analytics is used to understand site usage. Google advertising technology may use cookies or similar identifiers to deliver and measure ads, subject to Google's controls and applicable consent requirements.",
-        ],
-      },
-      {
-        title: "Service providers and external services",
-        paragraphs: [
-          "Readative relies on service providers including Firebase and Google services for hosting, authentication, database, analytics, and advertising capabilities. External links, including LinkedIn and payment or support links, are governed by the destination's own policies.",
-        ],
-      },
-      {
-        title: "Retention, security, and requests",
-        paragraphs: [
-          "Information is retained for as long as reasonably needed to operate the service, preserve security and integrity, meet legal obligations, resolve disputes, and enforce policies. No internet service can guarantee absolute security.",
-          `To request access, correction, deletion, or another privacy action, email ${CONTACT_EMAIL}. Readative may need to verify the request and may retain information where law, safety, fraud prevention, or recordkeeping requires it.`,
-        ],
-      },
-      {
-        title: "Children and changes",
-        paragraphs: [
-          "Readative is a general-audience knowledge service and is not directed to children under 13. If you believe a child provided personal information without appropriate permission, contact Readative.",
-          `This policy is effective ${EFFECTIVE_DATE}. Material updates will be reflected on this page with a revised effective date.`,
-        ],
-      },
-    ],
-  },
-  terms: {
-    slug: "terms",
-    title: "Terms of Use",
-    eyebrow: "Use Readative responsibly",
-    description: "Readative's terms cover accounts, user content, acceptable use, moderation, intellectual property, and service limitations.",
-    schemaType: "WebPage",
-    sections: [
-      {
-        title: "Acceptance and eligibility",
-        paragraphs: [
-          "By accessing or using Readative, you agree to these Terms and the Community Guidelines. If you do not agree, do not use the service. You must be legally able to enter this agreement and meet any minimum age required where you live.",
-        ],
-      },
-      {
-        title: "Accounts",
-        paragraphs: [
-          "You are responsible for activity under your account, the accuracy of information you provide, and keeping access to your sign-in provider secure. Do not impersonate another person or misrepresent your affiliation.",
-        ],
-      },
-      {
-        title: "Your content and the platform license",
-        paragraphs: [
-          "You retain ownership of content you create. By publishing content on Readative, you grant Readative a non-exclusive, worldwide, royalty-free license to host, store, reproduce, format, display, distribute, and make that content available as needed to operate, promote, secure, and improve the service. This license ends when content is removed, except for reasonable backups, legal records, and copies already shared or cached by others.",
-          "You confirm that you have the rights and permissions needed for everything you publish and that your content does not violate law, privacy, intellectual property, or these policies.",
-        ],
-      },
-      {
-        title: "Prohibited use",
-        items: [
-          "Illegal, fraudulent, deceptive, abusive, hateful, sexually exploitative, or dangerous activity.",
-          "Spam, scams, manipulation, impersonation, malware, unauthorized scraping, or interference with the service.",
-          "Publishing private information, infringing content, or material you do not have permission to share.",
-          "Attempting to bypass security, access controls, moderation, rate limits, or account restrictions.",
-        ],
-      },
-      {
-        title: "Moderation and termination",
-        paragraphs: [
-          "Readative may review, limit, label, hide, remove, or preserve content and may restrict or terminate access when reasonably necessary for policy enforcement, safety, legal compliance, or service integrity. Contact Readative if you believe an enforcement decision was made in error.",
-        ],
-      },
-      {
-        title: "Intellectual property and reports",
-        paragraphs: [
-          `Readative's software, branding, and original site materials are protected by applicable rights. To report copyright or other rights concerns, email ${CONTACT_EMAIL} with the exact URL, identification of the protected work, your contact information, and a good-faith explanation of the issue.`,
-        ],
-      },
-      {
-        title: "Service and liability limits",
-        paragraphs: [
-          "Readative is provided on an as-available basis. Features may change, be interrupted, or be discontinued. User-created content may be inaccurate or incomplete and does not constitute professional advice.",
-          "To the maximum extent permitted by applicable law, Readative and its creator are not liable for indirect, incidental, special, consequential, or punitive losses arising from use of the service or reliance on user content. Nothing in these Terms excludes rights or liability that cannot legally be excluded.",
-        ],
-      },
-      {
-        title: "Changes and contact",
-        paragraphs: [
-          `These Terms are effective ${EFFECTIVE_DATE}. Continued use after a material update means you accept the revised Terms. Questions may be sent to ${CONTACT_EMAIL}.`,
-        ],
-      },
-    ],
-  },
-  disclaimer: {
-    slug: "disclaimer",
-    title: "Disclaimer",
-    eyebrow: "Important limits",
-    description: "Important limits concerning Readative's educational, user-created, AI-assisted, external, and advertising content.",
-    schemaType: "WebPage",
-    sections: [
-      {
-        title: "Educational information only",
-        paragraphs: [
-          "Readative provides general information and learning material. It is not a substitute for legal, medical, financial, mental-health, safety, or other professional advice. Consult an appropriately qualified professional for decisions that carry significant risk.",
-        ],
-      },
-      {
-        title: "User-created and AI-assisted content",
-        paragraphs: [
-          "Creators are responsible for their posts, questions, answers, comments, and sources. Some material may be prepared with AI assistance. Readative does not guarantee that every contribution is accurate, complete, current, original, or suitable for a particular purpose. Verify important claims independently.",
-        ],
-      },
-      {
-        title: "Trust signals and recommendations",
-        paragraphs: [
-          "Reactions, badges, answer labels, rankings, recommendations, and related-content links are contextual product signals. They are not professional endorsements and should not be treated as proof that a claim is correct.",
-        ],
-      },
-      {
-        title: "External links, advertising, and support",
-        paragraphs: [
-          "External websites control their own content and practices. Readative may display advertising and may link to payment, donation, or other commercial services. The presence of a link or advertisement does not guarantee or endorse the destination, product, or claim unless expressly stated.",
-        ],
-      },
-      {
-        title: "Updates",
-        paragraphs: [
-          `Content may change without notice as authors revise work or the service evolves. This disclaimer is effective ${EFFECTIVE_DATE}. Report a material concern to ${CONTACT_EMAIL}.`,
-        ],
-      },
-    ],
-  },
-  community: {
-    slug: "community",
-    title: "Community Guidelines",
-    eyebrow: "Learn generously",
-    description: "Readative's community guidelines explain participation, prohibited content, attribution, moderation, reporting, and appeals.",
-    schemaType: "WebPage",
-    sections: [
-      {
-        title: "Share useful knowledge",
-        items: [
-          "Make posts and answers relevant, understandable, and genuinely useful to readers.",
-          "Distinguish evidence, personal experience, opinion, and uncertainty.",
-          "Credit sources and creators, and disclose material sponsorship, affiliation, or AI assistance when it affects reader understanding.",
-          "Correct meaningful errors when they are identified.",
-        ],
-      },
-      {
-        title: "Treat people with respect",
-        paragraphs: [
-          "Challenge ideas without attacking people. Harassment, threats, hateful conduct, sexual exploitation, targeted humiliation, stalking, and unwanted disclosure of personal information are not allowed.",
-        ],
-      },
-      {
-        title: "Keep the platform safe and authentic",
-        items: [
-          "No impersonation, coordinated deception, scams, spam, malware, manipulated engagement, or fraudulent credentials.",
-          "No instructions intended to facilitate serious harm, illegal access, exploitation, or evasion of safety controls.",
-          "Do not present dangerous, medical, legal, or financial claims as certain when qualified context is necessary.",
-          "Do not upload copyrighted, private, or confidential material without permission or another lawful basis.",
-        ],
-      },
-      {
-        title: "Commercial content",
-        paragraphs: [
-          "Relevant commercial references may be allowed when transparent and useful. Repetitive promotion, undisclosed affiliate interests, deceptive claims, and link spam are not allowed.",
-        ],
-      },
-      {
-        title: "Enforcement, reporting, and appeals",
-        paragraphs: [
-          "Readative may warn, label, reduce distribution, hide, remove, or preserve content, and may restrict accounts based on severity, context, history, and risk. Repeated or severe violations may lead to permanent restrictions.",
-          `Report concerns or appeal a decision at ${CONTACT_EMAIL}. Include the exact URL, the rule or right involved, relevant evidence, and why you believe action is needed or should be reconsidered.`,
-        ],
-      },
-      {
-        title: "Policy date",
-        paragraphs: [`These guidelines are effective ${EFFECTIVE_DATE}.`],
-      },
-    ],
-  },
-};
-
-const PAGE_ORDER: LegalSlug[] = ["about", "contact", "privacy", "terms", "disclaimer", "community"];
+import {
+  COMPANY_LINKEDIN_URL,
+  CONTACT_EMAIL,
+  EFFECTIVE_DATE,
+  GITHUB_URL,
+  LEGAL_PAGES,
+  PAGE_ORDER,
+  PERSONAL_LINKEDIN_URL,
+  type InnovationProject,
+  type LegalLink,
+  type LegalOfficialLinks,
+  type LegalPage,
+  type LegalSection,
+  type LegalSlug,
+} from "../src/content/legalPages.js";
 
 function getQueryValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || "" : value || "";
@@ -331,11 +32,69 @@ function isLegalSlug(value: string): value is LegalSlug {
 }
 
 function renderSection(section: LegalSection) {
-  return `<section class="seo-card">
+  const sectionId = section.id ? ` id="${escapeHtml(section.id)}"` : "";
+  return `<section class="seo-card"${sectionId}>
     <h2>${escapeHtml(section.title)}</h2>
     ${(section.paragraphs || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}
     ${section.items?.length ? `<ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+    ${section.links?.length ? `<div class="seo-grid">${section.links.map(renderLinkCard).join("")}</div>` : ""}
+    ${section.officialLinks ? renderOfficialLinks(section.officialLinks) : ""}
   </section>`;
+}
+
+function renderLinkedInIcon() {
+  return `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="currentColor"><path d="M5.4 3.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4ZM3.5 9.8h3.8v10.7H3.5V9.8Zm6.1 0h3.6v1.5h.1c.5-.9 1.7-1.9 3.5-1.9 3.8 0 4.5 2.5 4.5 5.7v5.4h-3.8v-4.8c0-1.1 0-2.7-1.8-2.7s-2.1 1.3-2.1 2.6v4.9H9.8V9.8Z" /></svg>`;
+}
+
+function renderOfficialLinks(officialLinks: LegalOfficialLinks) {
+  const linkedInIcon = renderLinkedInIcon();
+  const linkCards = officialLinks.links.map((link) => {
+    if (link.kind === "linkedin") {
+      return `<a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="seo-card" style="margin-top:0;display:flex;align-items:center;gap:.85rem;text-decoration:none">
+        <span style="display:inline-flex;color:#0a66c2">${linkedInIcon}</span>
+        <span><span class="seo-kicker" style="display:block;margin-bottom:.2rem">${escapeHtml(link.label)}</span><strong style="color:#0f172a">${escapeHtml(link.name)}</strong></span>
+      </a>`;
+    }
+
+    return `<a href="${escapeHtml(link.href)}" class="seo-card" style="margin-top:0;text-decoration:none">
+      <span class="seo-kicker" style="display:block;margin-bottom:.2rem">${escapeHtml(link.label)}</span>
+      <strong style="color:#0f172a">${escapeHtml(link.name)}</strong>
+    </a>`;
+  }).join("");
+  const support = officialLinks.support;
+
+  return `<div style="margin-top:1.5rem">
+    <h3 style="margin:0 0 1rem;color:#0f172a;font-size:1rem">${escapeHtml(officialLinks.heading)}</h3>
+    <div class="seo-grid">
+      ${linkCards}
+      <article class="seo-card" style="margin-top:0">
+        <p class="seo-kicker" style="margin-bottom:.35rem">${escapeHtml(support.title)}</p>
+        <p style="margin:.35rem 0 1rem">${escapeHtml(support.description)}</p>
+        <a href="${escapeHtml(support.href)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;border-radius:.75rem;background:#047857;color:#fff;padding:.65rem .9rem;font-size:.82rem;font-weight:800;text-decoration:none">${escapeHtml(support.label)}</a>
+      </article>
+    </div>
+  </div>`;
+}
+
+function renderLinkCard(link: LegalLink) {
+  const external = /^https?:\/\//i.test(link.href);
+  return `<a href="${escapeHtml(link.href)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ""} class="seo-card" style="margin-top:0;text-decoration:none">
+    <h3>${escapeHtml(link.label)}</h3>
+    ${link.description ? `<p>${escapeHtml(link.description)}</p>` : ""}
+  </a>`;
+}
+
+function renderProject(project: InnovationProject) {
+  return `<article class="seo-card" style="margin-top:0">
+    <p class="seo-kicker">${escapeHtml(project.status)}</p>
+    <h3>${escapeHtml(project.name)}</h3>
+    <p>${escapeHtml(project.description)}</p>
+    <dl class="seo-meta" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem 1rem">
+      <div><dt>Status</dt><dd>${escapeHtml(project.status)}</dd></div>
+      <div><dt>Category</dt><dd>${escapeHtml(project.category)}</dd></div>
+      <div style="grid-column:1/-1"><dt>Current Stage</dt><dd>${escapeHtml(project.currentStage)}</dd></div>
+    </dl>
+  </article>`;
 }
 
 function renderPage(page: LegalPage) {
@@ -343,6 +102,17 @@ function renderPage(page: LegalPage) {
   const canonicalUrl = `${SITE_URL}${canonicalPath}`;
   const pageTitle = `${page.title} | Readative`;
   const schemas = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: "Readative",
+      alternateName: "Info Hub Innovation Platform",
+      url: SITE_URL,
+      logo: `${SITE_URL}/logo.png`,
+      sameAs: [GITHUB_URL, PERSONAL_LINKEDIN_URL, COMPANY_LINKEDIN_URL],
+      contactPoint: { "@type": "ContactPoint", email: CONTACT_EMAIL, contactType: "customer support" },
+    },
     {
       "@context": "https://schema.org",
       "@type": page.schemaType,
@@ -362,6 +132,28 @@ function renderPage(page: LegalPage) {
         { "@type": "ListItem", position: 2, name: page.title, item: canonicalUrl },
       ],
     },
+    ...(page.projects?.length
+      ? [{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          name: "Info Hub Projects",
+          url: canonicalUrl,
+          itemListElement: page.projects.map((project, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            item: {
+              "@type": "CreativeWork",
+              name: project.name,
+              description: project.description,
+              genre: project.category,
+              creativeWorkStatus: project.status,
+              additionalProperty: [
+                { "@type": "PropertyValue", name: "Current Stage", value: project.currentStage },
+              ],
+            },
+          })),
+        }]
+      : []),
     ...(page.slug === "contact"
       ? [{
           "@context": "https://schema.org",
@@ -409,6 +201,7 @@ function renderPage(page: LegalPage) {
         <p class="seo-meta"><span>Effective ${EFFECTIVE_DATE}</span><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       </div></header>
       ${page.sections.map(renderSection).join("")}
+      ${page.projects?.length ? `<section class="seo-card"><h2>Project lifecycle</h2><div class="seo-grid">${page.projects.map(renderProject).join("")}</div></section>` : ""}
       <nav class="seo-card" aria-label="Readative policies"><h2>Readative information and policies</h2><div class="seo-navlinks">${relatedLinks}</div></nav>
     </main>
     <footer class="seo-footer">Copyright ${new Date().getUTCFullYear()} Readative. All rights reserved.</footer>

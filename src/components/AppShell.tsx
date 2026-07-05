@@ -73,8 +73,8 @@ const FOOTER_LINKS = [
   { label: "Contact", href: "/contact" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
-  { label: "Community", href: "/community" },
   { label: "Disclaimer", href: "/disclaimer" },
+  { label: "Support", href: "/support" },
 ];
 
 export function AppFooter() {
@@ -91,21 +91,26 @@ export function AppFooter() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {FOOTER_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="readative-footer-link text-xs font-semibold text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
-              >
-                {link.label}
-              </a>
+          <nav
+            aria-label="Footer navigation"
+            className="flex flex-wrap items-center gap-x-2 gap-y-2"
+          >
+            {FOOTER_LINKS.map((link, index) => (
+              <span key={link.href} className="inline-flex items-center gap-x-2">
+                {index > 0 ? <span aria-hidden="true">•</span> : null}
+                <a
+                  href={link.href}
+                  className="readative-footer-link text-xs font-semibold text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  {link.label}
+                </a>
+              </span>
             ))}
-          </div>
+          </nav>
         </div>
 
         <p className="mt-4 text-xs">
-          Copyright {new Date().getFullYear()} Readative. All rights reserved.
+          © 2026 Readative. All rights reserved.
         </p>
       </div>
     </footer>

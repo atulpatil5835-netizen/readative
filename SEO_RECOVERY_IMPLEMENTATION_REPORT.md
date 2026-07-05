@@ -1,6 +1,6 @@
 # SEO Recovery Implementation Report
 
-Generated: 2026-06-18T09:22:23.642Z
+Generated: 2026-07-04T19:01:39.796Z
 
 ## Summary
 
@@ -8,11 +8,11 @@ Generated: 2026-06-18T09:22:23.642Z
 - Crawlable discovery index: https://www.readative.com/posts
 - Crawlable SmartTalk index: https://www.readative.com/smarttalks
 - Firestore SEO data source: rest
-- Published post URLs discovered: 280
+- Published post URLs discovered: 328
 - SmartTalk discussions discovered: 109
-- Profile URLs discovered: 65
-- Tag URLs discovered: 469
-- Total sitemap URLs generated: 981
+- Profile URLs discovered: 33
+- Tag URLs discovered: 540
+- Total sitemap URLs generated: 504
 
 ## Files Changed
 
@@ -38,13 +38,13 @@ Generated: 2026-06-18T09:22:23.642Z
 
 ## Sitemap Coverage
 
-- Published posts in sitemap: 280 / 280
+- Published posts in sitemap: 328 / 328
 - Missing post URLs: 0
 - Categories in sitemap: 8
-- Topics in sitemap: 45
-- Tags in sitemap: 469
-- Profiles in sitemap: 65
-- Important pages in sitemap: 5
+- Topics in sitemap: 7
+- Tags in sitemap: 0
+- Profiles in sitemap: 33
+- Important pages in sitemap: 19
 
 ## Canonical Verification
 

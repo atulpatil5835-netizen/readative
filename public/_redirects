@@ -15,6 +15,15 @@
 /terms /api/legal?slug=terms 200
 /disclaimer /api/legal?slug=disclaimer 200
 /community /api/legal?slug=community 200
+/support /api/legal?slug=support 200
+/projects /api/legal?slug=projects 200
+/mission /api/legal?slug=mission 200
+/editorial-policy /api/legal?slug=editorial-policy 200
+/content-policy /api/legal?slug=content-policy 200
+/corrections-policy /api/legal?slug=corrections-policy 200
+/cookies /api/legal?slug=cookies 200
+/copyright /api/legal?slug=copyright 200
+/dmca /api/legal?slug=dmca 200
 /community-guidelines /community 301
 /smarttalk /api/smarttalk 200
 /smarttalk/ /api/smarttalk 200

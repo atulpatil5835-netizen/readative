@@ -1,98 +1,62 @@
-# Release P1 — Migration Report
+# Release P4 - Migration Report
 
-Status: implemented and validated.
+Status: complete.
 Date: 2026-07-04
 
 ## Migration type
 
-This release is a URL, routing, metadata, and crawlability migration.
+P4 is a code-only discovery and internal-linking migration. It introduces no database, document, index, dependency, or content migration.
 
-No Firestore documents were migrated, copied, rewritten, deleted, or reshaped.
+## Data and cache compatibility
 
-## URL migration
+- Firestore schema is unchanged.
+- Existing post, SmartTalk, profile, category, and tag fields are reused.
+- Client recommendations consume already-loaded component data.
+- Server recommendations consume the existing SEO dataset cache.
+- No listener, poll, timer, interval, or extra recommendation query was added.
 
-| Old surface | New canonical surface | Migration behavior |
-| --- | --- | --- |
-| legal AppPanel sections | `/about`, `/contact`, `/privacy`, `/terms`, `/disclaimer`, `/community` | footer/header links now navigate to public URLs |
-| `/community-guidelines` | `/community` | permanent redirect |
-| `/smarttalk` | `/smarttalks` | server 308 redirect |
-| `/smarttalk?id={questionId}` | `/smarttalks/{questionId}` | server 308 redirect |
-| `/smarttalk/{questionId}` | `/smarttalks/{questionId}` | server 308 redirect |
-| `/category/{slug}?id={questionId}` | `/smarttalks/{questionId}` | preserved as client-resolved compatibility to avoid breaking category routing |
-| `/post/{postId}` SPA shell | `/post/{postId}` server SEO document plus SPA hydration | same public URL, stronger initial HTML |
+## Recommendation migration
 
-## SmartTalk migration
+Repeated post/question matching logic moved to `src/utils/contentGraph.ts`. Callers provide their existing arrays and receive deterministic, bounded, deduplicated recommendations.
 
-Canonical SmartTalk URLs are now:
+The server post SEO loader no longer uses obsolete per-category REST recommendation helpers. Removing those helpers does not change stored data or public URL ownership.
 
-```text
-/smarttalks
-/smarttalks/{questionId}
-```
+## Route migration
 
-Internal SmartTalk question links, SmartTalk schema, Explore schema, discovery output, and sitemap output now point to canonical question URLs.
+No production route was added or removed.
 
-Backward compatibility remains through:
+Existing routes were enriched:
 
-- server redirect for `/smarttalk`
-- server redirect for `/smarttalk?id={questionId}`
-- server redirect for `/smarttalk/{questionId}`
-- SPA parsing for category query aliases
-- SPA parsing for old hash aliases
+- `/post/{id}`
+- `/smarttalks/{questionId}`
+- `/profile/{authorId}`
+- `/topic/{slug}`
+- `/category/{slug}`
+- `/tag/{slug}`
 
-## Legal migration
+Existing canonical redirects and old SmartTalk compatibility behavior remain intact.
 
-The legal side panel is no longer the primary legal experience.
+## Tag normalization
 
-Authoritative legal pages are single-source server-rendered documents in `api/legal.ts`.
+Tag labels now pass through the shared route slug normalizer. Casing and whitespace variants resolve to the same URL slug, and duplicate normalized tags are discarded before recommendations or links render.
 
-The optional `InfoPanel` was reduced to a lightweight preview that links to:
+No stored tag values were rewritten.
 
-- `/about`
-- `/contact`
-- `/privacy`
-- `/terms`
-- `/community`
-- `/disclaimer`
+## Structured-data migration
 
-Duplicated legal content inside the panel was removed.
+Existing SEO schemas were preserved and aligned with the richer discovery surfaces:
 
-## Sitemap migration
-
-The sitemap now contains production URLs only:
-
-- static public pages
-- legal/trust pages
-- public posts
-- public SmartTalk questions
-- public author profiles with public contribution evidence
-- non-empty categories/topics
-
-The sitemap excludes:
-
-- legacy `/smarttalk` URLs
-- query URLs
-- `/tag/` URLs
-- empty/thin taxonomy URLs
-- private/deleted/hidden content
-- fallback timestamps when no reliable lastmod exists
+- Article and BreadcrumbList for posts
+- DiscussionForumPosting, FAQPage, and BreadcrumbList for SmartTalk
+- Person, Organization, BreadcrumbList, and ItemList for authors
+- CollectionPage and BreadcrumbList for categories/topics
 
 ## Rollback
 
-Application rollback restores the previous SPA shell behavior and old footer/panel routing. No database rollback is required.
+Rollback is code-only. No Firestore, index, or dependency rollback is required.
 
-Operational rollback watch items:
-
-- Vercel rewrites for `/about`, `/contact`, `/privacy`, `/terms`, `/disclaimer`, `/community`, `/post/:id`, `/smarttalks`, and `/smarttalks/:id`.
-- Vercel redirect/rewrite for `/smarttalk`.
-- Sitemap dynamic data availability.
-
-## Compatibility note
-
-No server redirect was added for `/category/{slug}?id={questionId}` because that would require query-sensitive category route interception and could introduce breaking category behavior. The old URL shape remains resolved by the existing SPA route parser, preserving user navigation while canonical links and sitemap discovery point to `/smarttalks/{questionId}`.
+If rollback is needed, restore the prior local recommendation selectors and remove the P4 presentation sections. Existing content and URLs require no remediation.
 
 ## Migration status
 
-Complete for P1.
-
-No data migration remains.
+Complete. No data migration remains.

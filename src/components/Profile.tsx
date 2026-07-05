@@ -86,6 +86,11 @@ import {
 } from "../utils/trustSystem";
 import { getSaveMetrics } from "../utils/bookmarks";
 import { useInk } from "../context/InkContext";
+import {
+  buildBreadcrumbSchema,
+  buildItemListSchema,
+  buildOrganizationSchema,
+} from "../utils/seoSchemas";
 
 const ProfileMyNotes = lazy(() => import("./ProfileMyNotes"));
 
@@ -1265,17 +1270,49 @@ export function Profile({
     profile
       ? buildAbsoluteRouteUrl("profile", { profileAuthorId: profile.id })
       : buildAbsoluteRouteUrl("profile");
+  const profileCategories = [
+    ...new Set(
+      sharedEntries
+        .map((entry) => entry.category?.trim())
+        .filter((category): category is string => Boolean(category)),
+    ),
+  ];
+  const latestSmartTalk = [...smartTalkSummary.activityItems].sort(
+    (left, right) => right.createdAt - left.createdAt,
+  )[0] || null;
   const profileSchema = profile
-      ? {
-        "@context": "https://schema.org",
-        "@type": "Person",
-        name: profileDisplayName,
-        alternateName: `@${profile.username}`,
-        description:
-          profile.bio || "A Readative member publishing and curating knowledge.",
-        url: profileUrl,
-        sameAs: Object.values(profile.socialLinks || {}).filter(Boolean),
-      }
+      ? [
+          {
+            "@context": "https://schema.org",
+            "@type": "Person",
+            name: profileDisplayName,
+            alternateName: `@${profile.username}`,
+            description:
+              profile.bio || "A Readative member publishing and curating knowledge.",
+            url: profileUrl,
+            sameAs: Object.values(profile.socialLinks || {}).filter(Boolean),
+            knowsAbout: profileCategories,
+            memberOf: {
+              "@type": "Organization",
+              name: "Readative",
+              url: "https://www.readative.com",
+            },
+          },
+          buildOrganizationSchema(),
+          buildBreadcrumbSchema([
+            { name: "Home", url: "/" },
+            { name: profileDisplayName, url: profileUrl },
+          ]),
+          buildItemListSchema({
+            name: `Latest posts by ${profileDisplayName}`,
+            url: profileUrl,
+            items: sharedEntries.slice(0, 5).map((entry) => ({
+              name: entry.title,
+              url: `/post/${encodeURIComponent(entry.id)}`,
+              description: entry.content.slice(0, 160),
+            })),
+          }),
+        ]
     : undefined;
   const profileTrustInsights = useMemo(
     () =>
@@ -1890,7 +1927,9 @@ export function Profile({
                     expertiseTags={expertiseTags}
                   />
                   <ProfileDiscoverySummary
-                    expertiseTags={expertiseTags}
+                    categories={profileCategories}
+                    latestPosts={sharedEntries.slice(0, 3)}
+                    latestSmartTalk={latestSmartTalk}
                     recentItems={recentContributionItems}
                     mostHelpfulPost={mostHelpfulPost}
                     bestAnswer={smartTalkSummary.bestAnswer}
@@ -1905,7 +1944,7 @@ export function Profile({
             <SectionButton
               active={section === "shared"}
               onClick={() => setSection("shared")}
-              label="Posts"
+              label="Latest Posts"
               count={hasMoreSharedEntries ? `${sharedEntries.length}+` : sharedEntries.length}
             />
             <SectionButton
@@ -2455,13 +2494,17 @@ function ProfileTrustOverview({
 }
 
 function ProfileDiscoverySummary({
-  expertiseTags,
+  categories,
+  latestPosts,
+  latestSmartTalk,
   recentItems,
   mostHelpfulPost,
   bestAnswer,
   onOpenEntry,
 }: {
-  expertiseTags: string[];
+  categories: string[];
+  latestPosts: KnowledgeEntry[];
+  latestSmartTalk: ProfileActivityItem | null;
   recentItems: ProfileActivityItem[];
   mostHelpfulPost: KnowledgeEntry | null;
   bestAnswer: ProfileActivityItem | null;
@@ -2478,10 +2521,10 @@ function ProfileDiscoverySummary({
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-xl bg-slate-50 px-3 py-3">
           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-            Top Topics
+            Categories
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {expertiseTags.slice(0, 4).map((tag) => (
+            {categories.slice(0, 4).map((tag) => (
               <span
                 key={tag}
                 className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-indigo-700 shadow-sm"
@@ -2489,7 +2532,52 @@ function ProfileDiscoverySummary({
                 {tag}
               </span>
             ))}
+            {categories.length === 0 && (
+              <span className="text-xs font-bold text-slate-400">No categories yet</span>
+            )}
           </div>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Latest Posts
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {latestPosts.length > 0 ? latestPosts.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onOpenEntry(entry.id)}
+                className="block w-full truncate text-left text-xs font-bold text-slate-700 hover:text-emerald-700"
+              >
+                {entry.title}
+              </button>
+            )) : (
+              <p className="text-xs font-bold text-slate-400">No posts yet</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Latest SmartTalk
+          </p>
+          <p className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">
+            {latestSmartTalk?.detail || "No SmartTalk activity yet"}
+          </p>
+          {latestSmartTalk && (
+            <p className="mt-1 text-[11px] font-bold text-slate-500">
+              {new Date(latestSmartTalk.createdAt).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Organization
+          </p>
+          <p className="mt-2 text-sm font-black text-slate-950">Readative</p>
+          <p className="mt-1 text-[11px] font-bold text-slate-500">Knowledge community</p>
         </div>
 
         <button

@@ -39,8 +39,10 @@ import {
   navigateToRoute,
   parseRouteFromLocation,
   ROUTE_CHANGE_EVENT,
+  type AppRouteTab,
   type AppTab,
 } from "./utils/routes";
+import type { LegalSlug } from "./content/legalRoutes";
 import { trackPageView } from "./utils/analytics";
 
 const KnowledgeFeed = lazy(() =>
@@ -68,8 +70,14 @@ const Explore = lazy(() =>
 );
 
 const NotificationsPanel = lazy(() =>
-  import("./components/AppPanels").then((module) => ({
+  import("./components/NotificationsPanel").then((module) => ({
     default: module.NotificationsPanel,
+  }))
+);
+
+const LegalPageRoute = lazy(() =>
+  import("./components/LegalPageRoute").then((module) => ({
+    default: module.LegalPageRoute,
   }))
 );
 
@@ -78,7 +86,8 @@ const NOTIFICATION_FALLBACK_LIMIT = 60;
 
 export default function App() {
   const initialRoute = useMemo(parseRouteFromLocation, []);
-  const [activeTab, setActiveTab] = useState<AppTab | "notFound">(initialRoute.tab);
+  const [activeTab, setActiveTab] = useState<AppRouteTab>(initialRoute.tab);
+  const [legalSlug, setLegalSlug] = useState<LegalSlug | null>(initialRoute.legalSlug);
   const [profileAuthorId, setProfileAuthorId] = useState<string | null>(
     initialRoute.profileAuthorId
   );
@@ -118,6 +127,7 @@ export default function App() {
     setExploreTopic(route.tab === "explore" ? route.selectedTopic : null);
     setSmartTalkCategory(route.tab === "smarttalk" ? route.selectedTopic : null);
     setFocusedQuestionId(route.tab === "smarttalk" ? route.focusedEntryId : null);
+    setLegalSlug(route.tab === "legal" ? route.legalSlug : null);
     setRouteErrorPath(route.tab === "notFound" ? route.attemptedLocation : null);
   }, []);
 
@@ -206,7 +216,11 @@ export default function App() {
     const syncAndNormalizeRoute = () => {
       const route = parseRouteFromLocation();
 
-      if (route.source === "hash" && route.tab !== "notFound") {
+      if (
+        route.source === "hash" &&
+        route.tab !== "notFound" &&
+        route.tab !== "legal"
+      ) {
         navigateToRoute(
           route.tab,
           {
@@ -237,7 +251,7 @@ export default function App() {
 
   useEffect(() => {
     trackPageView();
-  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, routeErrorPath]);
+  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, legalSlug, routeErrorPath]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -429,7 +443,11 @@ export default function App() {
             />
           )}
 
-          {!firebaseConfigReady ? (
+          {activeTab === "legal" && legalSlug ? (
+            <Suspense fallback={<SectionSkeleton label="Loading information page..." />}>
+              <LegalPageRoute slug={legalSlug} />
+            </Suspense>
+          ) : !firebaseConfigReady ? (
             <FirebaseSetupRoute missingKeys={firebaseConfigMissingKeys} />
           ) : activeTab === "notFound" ? (
             <NotFoundRoute

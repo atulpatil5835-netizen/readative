@@ -41,7 +41,6 @@ export interface CardHeaderProps {
   onOpenAuthorProfile: (authorId: string) => void;
   onSaveToggle: () => void;
   onShare: () => void;
-  onDownload: () => void;
   setShowEditModal: (show: boolean) => void;
   onDeleteEntry: () => void;
 }
