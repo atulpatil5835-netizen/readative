@@ -81,8 +81,27 @@ const LegalPageRoute = lazy(() =>
   }))
 );
 
+const TrustConsent = lazy(() =>
+  import("./components/TrustConsent").then((module) => ({
+    default: module.TrustConsent,
+  }))
+);
+
 const NOTIFICATION_REALTIME_LIMIT = 20;
 const NOTIFICATION_FALLBACK_LIMIT = 60;
+const COOKIE_CONSENT_STORAGE_KEY = "readativeCookieConsentVersion";
+const COOKIE_CONSENT_VERSION = "2026-07-05.t1";
+const NOTIFICATION_READ_POST_THRESHOLD = 3;
+
+function hasAcceptedCookieConsent() {
+  if (typeof window === "undefined") return true;
+
+  try {
+    return window.localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY) === COOKIE_CONSENT_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
   const initialRoute = useMemo(parseRouteFromLocation, []);
@@ -109,6 +128,9 @@ export default function App() {
   const [identity, setIdentity] = useState<KnowledgeIdentity | null>(() =>
     getKnowledgeIdentity()
   );
+  const [isIdentityHydrated, setIsIdentityHydrated] = useState(
+    !firebaseConfigReady,
+  );
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
@@ -118,6 +140,11 @@ export default function App() {
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
+  const [cookieConsentAccepted, setCookieConsentAccepted] = useState(
+    hasAcceptedCookieConsent,
+  );
+  const [notificationEngagementPostIds, setNotificationEngagementPostIds] =
+    useState<string[]>([]);
 
   const syncRouteState = useCallback(() => {
     const route = parseRouteFromLocation();
@@ -148,6 +175,10 @@ export default function App() {
   }, [handleTabChange]);
 
   const handleOpenEntry = useCallback((entryId: string) => {
+    setNotificationEngagementPostIds((currentIds) => {
+      if (currentIds.includes(entryId)) return currentIds;
+      return [...currentIds, entryId].slice(-NOTIFICATION_READ_POST_THRESHOLD);
+    });
     handleTabChange("knowledge", null, entryId);
   }, [handleTabChange]);
 
@@ -266,8 +297,16 @@ export default function App() {
     };
   }, []);
 
+  const hydratedIdentity = isIdentityHydrated ? identity : null;
+  const hasNotificationEngagement =
+    Boolean(hydratedIdentity?.email) ||
+    notificationEngagementPostIds.length >= NOTIFICATION_READ_POST_THRESHOLD;
+  const notificationPromptEligible =
+    cookieConsentAccepted && isIdentityHydrated && hasNotificationEngagement;
+  const shouldRenderTrustConsent = !cookieConsentAccepted || notificationPromptEligible;
+
   useEffect(() => {
-    if (!firebaseConfigReady || !identity?.authorId) {
+    if (!firebaseConfigReady || !hydratedIdentity?.authorId) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       setNotificationsError(null);
@@ -313,7 +352,7 @@ export default function App() {
         const startBasicNotificationListener = () => {
           const basicNotificationsQuery = firestore.query(
             firestore.collection(db, "notifications"),
-            firestore.where("targetAuthorId", "==", identity.authorId),
+            firestore.where("targetAuthorId", "==", hydratedIdentity.authorId),
             firestore.limit(NOTIFICATION_FALLBACK_LIMIT)
           );
 
@@ -333,7 +372,7 @@ export default function App() {
 
         const orderedNotificationsQuery = firestore.query(
           firestore.collection(db, "notifications"),
-          firestore.where("targetAuthorId", "==", identity.authorId),
+          firestore.where("targetAuthorId", "==", hydratedIdentity.authorId),
           firestore.orderBy("createdAt", "desc"),
           firestore.limit(NOTIFICATION_REALTIME_LIMIT)
         );
@@ -389,22 +428,26 @@ export default function App() {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [identity?.authorId]);
+  }, [hydratedIdentity?.authorId]);
 
   useEffect(() => {
     return subscribeToGoogleIdentity(
       (nextIdentity) => {
         setIdentity(nextIdentity);
+        setIsIdentityHydrated(true);
         setAuthStatusMessage(null);
       },
-      (message) => setAuthStatusMessage(message),
+      (message) => {
+        setIsIdentityHydrated(true);
+        setAuthStatusMessage(message);
+      },
     );
   }, []);
 
   return (
     <HelmetProvider>
       <NotebookProvider
-        identity={identity}
+        identity={hydratedIdentity}
         isKnowledgeActive={activeTab === "knowledge"}
         focusedPostId={activeTab === "knowledge" ? focusedEntryId : null}
       >
@@ -412,7 +455,7 @@ export default function App() {
         <Header
           activeTab={activeTab}
           setActiveTab={handleTabChange}
-          identity={identity}
+          identity={hydratedIdentity}
           onHomeAction={handleHomeAction}
           unreadNotificationCount={unreadNotificationCount}
           onOpenNotifications={handleOpenNotifications}
@@ -455,6 +498,18 @@ export default function App() {
               onGoHome={() => handleTabChange("knowledge")}
               onOpenSmartTalk={() => handleTabChange("smarttalk")}
             />
+          ) : !isIdentityHydrated ? (
+            <SectionSkeleton
+              label={
+                activeTab === "smarttalk"
+                  ? "Loading SmartTalk..."
+                  : activeTab === "profile"
+                    ? "Loading profile..."
+                    : activeTab === "explore"
+                      ? "Loading Explore..."
+                      : "Loading home feed..."
+              }
+            />
           ) : (
             <div
               className={activeTab === "knowledge" ? undefined : "hidden"}
@@ -462,7 +517,7 @@ export default function App() {
             >
               <Suspense fallback={<SectionSkeleton label="Loading home feed..." />}>
                 <KnowledgeFeed
-                  identity={identity}
+                  identity={hydratedIdentity}
                   onIdentityChange={setIdentity}
                   onOpenProfile={handleOpenProfile}
                   focusedEntryId={focusedEntryId}
@@ -474,20 +529,20 @@ export default function App() {
               </Suspense>
             </div>
           )}
-          {firebaseConfigReady && activeTab === "smarttalk" && (
+          {firebaseConfigReady && isIdentityHydrated && activeTab === "smarttalk" && (
             <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
               <SmartTalk
-                currentIdentity={identity}
+                currentIdentity={hydratedIdentity}
                 onIdentityChange={setIdentity}
                 selectedCategory={smartTalkCategory}
                 focusedQuestionId={focusedQuestionId}
               />
             </Suspense>
           )}
-          {firebaseConfigReady && activeTab === "profile" && (
+          {firebaseConfigReady && isIdentityHydrated && activeTab === "profile" && (
             <Suspense fallback={<SectionSkeleton label="Loading profile..." />}>
               <Profile
-                currentIdentity={identity}
+                currentIdentity={hydratedIdentity}
                 viewedAuthorId={profileAuthorId}
                 onIdentityChange={setIdentity}
                 onOpenProfile={handleOpenProfile}
@@ -495,10 +550,10 @@ export default function App() {
               />
             </Suspense>
           )}
-          {firebaseConfigReady && activeTab === "explore" && (
+          {firebaseConfigReady && isIdentityHydrated && activeTab === "explore" && (
             <Suspense fallback={<SectionSkeleton label="Loading Explore..." />}>
               <Explore
-                currentIdentity={identity}
+                currentIdentity={hydratedIdentity}
                 selectedTopic={exploreTopic}
                 onOpenProfile={handleOpenProfile}
                 onOpenEntry={handleOpenEntry}
@@ -518,7 +573,7 @@ export default function App() {
         {showNotificationsPanel && (
           <Suspense fallback={null}>
             <NotificationsPanel
-              identity={identity}
+              identity={hydratedIdentity}
               notifications={notifications}
               unreadNotificationCount={unreadNotificationCount}
               notificationsError={notificationsError}
@@ -603,6 +658,18 @@ export default function App() {
             onConfirm={handleGoogleSignIn}
             onClose={() => setShowGoogleSignInPrompt(false)}
           />
+        )}
+
+        {shouldRenderTrustConsent && (
+          <Suspense fallback={null}>
+            <TrustConsent
+              cookieConsentAccepted={cookieConsentAccepted}
+              consentStorageKey={COOKIE_CONSENT_STORAGE_KEY}
+              consentVersion={COOKIE_CONSENT_VERSION}
+              notificationPromptEligible={notificationPromptEligible}
+              onCookieAccepted={() => setCookieConsentAccepted(true)}
+            />
+          </Suspense>
         )}
 
         <nav

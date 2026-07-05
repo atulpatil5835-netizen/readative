@@ -653,22 +653,41 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     slug: "cookies",
     title: "Cookie Policy",
     eyebrow: "Browser storage",
-    description: "Readative's cookie policy explains cookies, local storage, analytics, advertising technology, authentication persistence, and user controls.",
+    description: "Readative's cookie policy explains essential cookies, preference storage, future analytics or advertising use, authentication persistence, and user controls.",
     schemaType: "WebPage",
     sections: [
       {
-        title: "How browser storage is used",
+        title: "Essential Cookies",
         paragraphs: [
-          "Readative may use cookies, local storage, session storage, IndexedDB, and similar browser technologies to keep the service reliable and useful.",
+          "Readative uses essential browser storage to keep the service reliable, remember consent, support sign-in, protect sessions, and keep reading tools working.",
+        ],
+        items: [
+          "Authentication and session persistence through Google/Firebase services.",
+          "Security, abuse prevention, and basic platform reliability.",
+          "Consent version storage so the first-visit notice does not interrupt reading again.",
         ],
       },
       {
-        title: "Storage purposes",
+        title: "Preference Storage",
+        paragraphs: [
+          "Readative may use local storage, session storage, IndexedDB, and similar browser technologies to remember choices you make in the product.",
+        ],
         items: [
-          "Authentication and session persistence through Google/Firebase services.",
-          "Guest identity, preferences, feed state, performance caches, and Notebook-related local behavior.",
-          "Analytics to understand usage and reliability.",
-          "Advertising measurement or delivery where applicable through Google technologies and user controls.",
+          "Guest identity, profile preferences, saved reading state, and feed convenience state.",
+          "Notebook-related local behavior and performance caches needed for a smoother reading experience.",
+          "Browser notification permission status when you choose whether to enable notifications.",
+        ],
+      },
+      {
+        title: "Future Analytics",
+        paragraphs: [
+          "Readative may add privacy-conscious analytics in the future to understand reliability and improve the service. If analytics storage is not essential, Readative will explain the purpose and use consent controls where required.",
+        ],
+      },
+      {
+        title: "Future Advertising",
+        paragraphs: [
+          "Readative may support advertising in the future. If advertising cookies or similar identifiers are used, Readative will explain the purpose, respect applicable consent requirements, and provide clear controls.",
         ],
       },
       {

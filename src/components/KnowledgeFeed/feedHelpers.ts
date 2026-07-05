@@ -85,6 +85,7 @@ export const CATEGORY_FALLBACK_PAGE_MULTIPLIER = 8;
 export const FIRESTORE_ARRAY_CONTAINS_ANY_LIMIT = 30;
 
 const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
+const knowledgeFeedScrollPositions = new Map<string, number>();
 const pendingFeedStorageWrites = new Map<string, PendingFeedStorageWrite>();
 
 export function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
@@ -536,28 +537,16 @@ export function getKnowledgeFeedScrollKey(feedKey: string) {
 }
 
 export function readKnowledgeFeedScrollPosition(feedKey: string) {
-  if (typeof window === "undefined") return 0;
-
-  try {
-    const rawValue = window.sessionStorage.getItem(getKnowledgeFeedScrollKey(feedKey));
-    const parsedValue = rawValue ? Number.parseInt(rawValue, 10) : 0;
-    return Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0;
-  } catch {
-    return 0;
-  }
+  return knowledgeFeedScrollPositions.get(getKnowledgeFeedScrollKey(feedKey)) || 0;
 }
 
 export function writeKnowledgeFeedScrollPosition(feedKey: string, scrollY: number) {
   if (typeof window === "undefined") return;
 
-  try {
-    window.sessionStorage.setItem(
-      getKnowledgeFeedScrollKey(feedKey),
-      String(Math.max(0, Math.round(scrollY))),
-    );
-  } catch {
-    // Scroll restoration is a convenience only.
-  }
+  knowledgeFeedScrollPositions.set(
+    getKnowledgeFeedScrollKey(feedKey),
+    Math.max(0, Math.round(scrollY)),
+  );
 }
 
 export function normalizeCacheStringArray(value: unknown) {

@@ -1,38 +1,104 @@
-# Release R2 - Safe Cleanup & Final Validation
+# Release T1 Task Checklist
 
-## Status
+Status: implementation complete; final gates passed.
+Date: 2026-07-05
 
-Implementation and validation complete. Production ready.
+## Part 1 - Cookie consent
 
-## Completed Tasks
+- [x] First-visit cookie consent added
+- [x] Shows only when consent version is missing or outdated
+- [x] Acceptance stored locally
+- [x] Versioned consent implemented
+- [x] Non-modal
+- [x] No fullscreen overlay
+- [x] Responsive
+- [x] Lightweight
+- [x] Accessible
+- [x] Premium/calm presentation
+- [x] Copy matches required title, description, and buttons
+- [x] Learn More opens `/cookies`
+- [x] Acceptance suppresses future display on reload
 
-- [x] Remove obsolete root-level migration/import report JSONs and CSVs
-- [x] Remove Python `__pycache__` artifacts under `scripts/`
-- [x] Remove temporary import/migration Python scripts (`scripts/smarttalk_author_migration.py`, `scripts/smarttalk_safe_import.py`)
-- [x] Remove unused `nodemailer` dependency from `package.json` and `package-lock.json`
-- [x] Restore `src/components/KnowledgeFeed/KnowledgeJourney.tsx` to match the Release Z.2 baseline (`cb9a763` reference) exactly
-- [x] Add ESM import extensions (`.js`) in `src/content/legalPages.ts` for Node/ESM compatibility
-- [x] Prevent serverless crashes in `api/discovery.ts`, `api/smarttalks.ts`, and `api/sitemap.xml.ts` by adding resilient static fallbacks and loggers
+## Part 2 - Notification permission
 
-## Verification Checks
+- [x] No immediate browser notification permission request
+- [x] Existing notification system left intact
+- [x] Lightweight permission card added
+- [x] Card requires cookie consent first
+- [x] Card requires meaningful engagement
+- [x] Logged-in identity qualifies as engagement
+- [x] Opening three unique posts qualifies as engagement
+- [x] Enable Notifications button is the only `requestPermission()` path
+- [x] Not Now dismisses the prompt
+- [x] Never asks twice in the same session
+- [x] Granted/denied decisions stored locally when returned by the browser
+- [x] Unsupported browser Notification API suppresses the prompt
+- [x] No polling
+- [x] No timers
+- [x] No new global listeners
 
-- [x] Confirm that all deleted files belong only to safe categories (generated/temporary/cache/unused dependency)
-- [x] Run `npm run build` (Build passes with 1768 modules transformed)
-- [x] Run `npx tsc --noEmit` (Type-check passes with zero errors)
-- [x] Run `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` (Strict checks pass with zero unused variable warnings)
-- [x] Run `git diff --check` (No whitespace or line ending issues found)
-- [x] Run `npm run verify:seo` (All 504 sitemap URLs canonical host verified, zero duplicate groups)
-- [x] Verify layout responsiveness (Desktop 1400px/1600px/1920px rails, center column 780px, mobile 390px, tablet 768px)
-- [x] Verify routes (/about, /contact, /privacy, /terms, /disclaimer, /support, /explore, /smarttalks, /posts, /sitemap.xml, /robots.txt are intact)
-- [x] Verify zero console errors, zero duplicate metadata, zero duplicate canonical tags
+## Part 3 - Cookies page
 
-## Bundle Measurement
+- [x] Essential Cookies wording
+- [x] Preference Storage wording
+- [x] Future Analytics wording
+- [x] Future Advertising wording
+- [x] Clear explanation
+- [x] Simple language
+- [x] No legal duplication added
+- [x] No redesign
 
-- Built assets: 38 files
-- Raw bundle size: ~1272.23 KB
-- Gzipped bundle size: ~347.65 KB (355,995 bytes)
-- Largest gzip chunk: `firebase-firestore-DWlcjqk8.js` (~111.58 KB gzip)
+## Part 4 - Performance
 
-## Conclusion
+- [x] No dependency added
+- [x] No cookie library added
+- [x] No notification library added
+- [x] Consent UI lazy-loaded
+- [x] Startup entry gzip decreased by 681 bytes
+- [x] Third-party script startup removed
 
-All cleanups completed cleanly without modifying runtime product features, routing rules, or SEO indexing contracts.
+## Part 5 - Accessibility
+
+- [x] Keyboard-accessible native controls
+- [x] Labelled consent regions
+- [x] Focus-visible styles
+- [x] Escape support for notification card
+- [x] ARIA labels/labelled regions
+- [x] Color contrast uses existing high-contrast palette
+
+## Part 6 - Validation
+
+- [x] `npm run build` passed before report updates
+- [x] `npx tsc --noEmit` passed before report updates
+- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` passed before report updates
+- [x] Final `npm run build` after report updates
+- [x] Final `npx tsc --noEmit` after report updates
+- [x] Final strict unused TypeScript check after report updates
+- [x] Final `git diff --check`
+- [x] Desktop QA
+- [x] Tablet QA
+- [x] Mobile QA
+- [x] Cookie QA
+- [x] Notification Prompt QA with in-app browser limitation noted
+- [x] Accessibility QA
+- [x] Console QA
+
+## Reports
+
+- [x] `trust_report.md`
+- [x] `performance_report.md`
+- [x] `walkthrough.md`
+- [x] `task.md`
+- [x] `final_report.md`
+
+## Stop conditions
+
+- [x] Push notifications not implemented
+- [x] Backend notification delivery not implemented
+- [x] Firestore not modified
+- [x] SmartTalk not modified
+- [x] Notebook not modified
+- [x] Routing not modified
+- [x] SEO infrastructure not modified
+- [x] Feed behavior not modified for T1
+- [x] Startup bundle did not increase by more than 500 bytes gzip

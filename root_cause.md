@@ -1,95 +1,117 @@
-# Release Y.2.3 Root Cause - Notebook Auto-Scroll
+# Release R3 Root Cause - UX Stability & Deployment Polish
 
-Status: root cause identified and fixed in source.
+Status: root causes identified, fixed, and validated.
+Date: 2026-07-05
 
-## Bug
+## Scope boundary
 
-Scenario:
+R3 is a stabilization release only. No features, UI redesigns, Firestore schema changes, SmartTalk behavior changes, Notebook behavior changes, feed ranking changes, SEO behavior changes, or routing changes were introduced.
 
-```text
-Highlight Post A
--> scroll to Post B
--> enable Notebook Highlight
--> page auto-scrolls
-```
+## Confirmed root cause 1: double loading / hydration restart
 
-Notebook activation must never move the page.
+The production-visible loading restart came from identity hydration, not React StrictMode.
 
-## Root cause
+Before R3, `src/App.tsx` initialized `identity` synchronously with `getKnowledgeIdentity()`. That function can return a local guest knowledge identity before Firebase auth has resolved. After the Firebase auth subscription settles, `subscribeToGoogleIdentity()` updates the identity again: either to the signed-in Google identity or to `null` for signed-out users.
 
-The scroll was route-driven, not Firestore-driven and not caused by the highlight renderer.
-
-Before Y.2.3, `KnowledgeCard.handleToggleNotebookMode()` did this when the visible card was not already route-focused:
+That created this sequence on identity-dependent surfaces:
 
 ```text
-Notebook button click
--> onOpenEntry(entry.id)
--> App navigates to /post/{entry.id}
--> focusedEntryId changes
--> KnowledgeFeed focused-entry effect runs
--> target.scrollIntoView({ behavior: "smooth", block: "center" })
--> viewport jumps
+Initial render
+-> temporary local knowledge identity exists
+-> feed/profile/explore/notebook/notifications can mount or hydrate from that identity
+-> Firebase auth subscription resolves
+-> identity changes to the real auth result
+-> identity-dependent effects restart
+-> users can see content/skeleton/content or repeated hydration work
 ```
 
-Files involved:
+Affected ownership seams:
 
-- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `src/App.tsx`: app identity source and route-surface mounting
+- `NotebookProvider`: received pre-auth identity before auth settlement
+- `KnowledgeFeed`: received pre-auth identity and ownership context
+- `Explore`: reads `currentIdentity?.authorId` in data effects
+- `Profile`: computes active author identity from `currentIdentity`
+- `SmartTalk`: receives identity for reader/user state
+- Notifications listener: subscribed from identity before auth was settled
+
+React StrictMode was audited but is not the deployed root cause. StrictMode can double-invoke effects in development, but production preview and Vercel builds do not rely on that behavior to reproduce the observed loading restart.
+
+## Fix 1
+
+`src/App.tsx` now separates raw identity state from hydrated identity state:
+
+- `isIdentityHydrated` starts as false when Firebase config is available.
+- `hydratedIdentity` is `null` until Firebase auth has resolved.
+- Identity-dependent surfaces mount only after identity hydration is complete.
+- Notifications listen only for `hydratedIdentity?.authorId`.
+- Notebook, Header, Feed, SmartTalk, Profile, Explore, and NotificationsPanel all receive the same hydrated identity boundary.
+
+This preserves product behavior while removing the transient pre-auth identity pass.
+
+## Confirmed root cause 2: refresh restored the feed to the middle
+
+The refresh jump was caused by accidental browser-persistent feed scroll restoration.
+
+Before R3, `src/components/KnowledgeFeed/feedHelpers.ts` stored feed scroll positions in `sessionStorage` under:
+
+```text
+readativeKnowledgeFeedScroll:v1
+```
+
+`KnowledgeFeed` then restored that value on first render. Because `sessionStorage` survives hard refreshes in the same tab, refreshing Home or Explore could restore the page to an old middle-of-feed position.
+
+Reproduction before the fix:
+
+```json
+{
+  "route": "/",
+  "beforeReloadScrollTop": 1150,
+  "afterReloadScrollTop": 2760
+}
+```
+
+## Fix 2
+
+Feed scroll positions are now in-memory only:
+
+- Hard refresh starts with an empty scroll map.
+- Home refresh starts at top.
+- Explore refresh starts at top.
+- Profile refresh starts at top.
+- In-session browser back/forward can still intentionally restore feed scroll.
+- Direct post routes still keep the focused post behavior.
+
+`src/main.tsx` also initializes browser scroll restoration as manual before React mounts, via `src/utils/scrollRestoration.ts`.
+
+## Direct-post note
+
+The route `/post/:id` intentionally scrolls the focused post into view using the existing focused-entry behavior in `KnowledgeFeed`. This is not a refresh bug because the expected behavior for direct post refresh is "same post," not "top."
+
+Validated route:
+
+```text
+/post/4ELsdHoS5ra5PJkDQbgk
+```
+
+After reload, the focused entry remained the same post and occupied the viewport.
+
+## Deployment finding
+
+No deployment blocker was found.
+
+Validated:
+
+- `npx vercel build --yes`: PASS
+- Vercel output: `.vercel/output`
+- Serverless route probe: PASS for sitemap, post, SmartTalk, legal, SPA, and API routes
+- Lazy chunks and dynamic imports emitted successfully
+- Hydration/runtime console checks showed no errors or warnings
+
+## Files changed
+
 - `src/App.tsx`
-- `src/context/NotebookContext.tsx`
+- `src/main.tsx`
+- `src/utils/scrollRestoration.ts`
 - `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
-
-The direct scroll call remains valid for explicit post navigation, but Notebook activation must not create that navigation.
-
-## Audited scroll/focus sources
-
-Searched for:
-
-- `scrollIntoView`
-- `focus()`
-- Selection API
-- Range API
-- `window.scrollTo`
-- element `scrollTo`
-- `requestAnimationFrame` scroll
-- layout restoration
-- virtualization callbacks
-- `IntersectionObserver` callbacks
-
-Relevant findings:
-
-| Source | Finding |
-| --- | --- |
-| `KnowledgeFeed` focused route scroll | Real root cause after Notebook activation changed the route. |
-| `KnowledgeFeed` saved scroll restoration | Only runs when no focused entry exists; not caused by Notebook activation. |
-| `KnowledgeCardList` virtualization `scrollBy` | Only compensates measured height changes above viewport; Notebook margin does not change card height. |
-| `CardContent` Selection/Range | Used only after a paragraph is armed and text is selected; not activation-time scrolling. |
-| `CardContent` `requestAnimationFrame` | Schedules selection capture after mouse/touch/key release; no scroll. |
-| Programmatic focus in comments/composer/header | Unrelated to Notebook activation. |
-| `IntersectionObserver` | Visibility/activity callbacks only; no Notebook activation scroll. |
-
-## Fix
-
-Notebook activation is now passive:
-
-```text
-Notebook button click
--> clear any stale browser selection
--> activate Notebook state for the visible card
--> do not route
--> do not call focus()
--> do not call scrollIntoView()
-```
-
-Provider state was adjusted so Notebook can be active on a visible knowledge-feed card when there is no route-focused post. It still exits when leaving the knowledge surface, opening another focused post, or closing a previously focused post back to the feed.
-
-## Regression risk
-
-Low to medium.
-
-Low because the fix removes an activation-time route change instead of changing highlight storage, rendering, or Firestore.
-
-Medium only around Notebook lifecycle semantics: allowing passive activation on the current visible card required `NotebookProvider` to distinguish "knowledge feed with no focused post" from "left the knowledge surface." A guard preserves auto-exit when closing an actually focused post.
-
-## Production readiness
-
-Automated build/type checks passed. Browser scroll checks showed zero scroll delta across desktop, tablet, and mobile in the available signed-out browser session. Full authenticated "Highlight Post A -> scroll to Post B -> enable Notebook" validation remains pending because the in-app browser is signed out.
+- `src/components/KnowledgeFeed/feedHelpers.ts`

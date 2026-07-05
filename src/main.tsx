@@ -3,8 +3,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { AppErrorBoundary } from "./components/AppErrorBoundary.tsx";
 import "./index.css";
-import { scheduleThirdPartyScripts } from "./utils/loadThirdPartyScripts.ts";
+import { initializeDocumentScrollRestoration } from "./utils/scrollRestoration.ts";
 
+initializeDocumentScrollRestoration();
 const root = createRoot(document.getElementById("root")!);
 
 root.render(
@@ -14,5 +15,3 @@ root.render(
     </AppErrorBoundary>
   </StrictMode>
 );
-
-scheduleThirdPartyScripts();

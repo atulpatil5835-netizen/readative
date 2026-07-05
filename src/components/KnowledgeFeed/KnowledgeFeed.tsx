@@ -1281,7 +1281,11 @@ export function KnowledgeFeed({
   }, [activeFeedPersistenceKey, focusedEntryId, isActive]);
 
   useEffect(() => {
-    if (!isActive || focusedEntryId || typeof window === "undefined") return;
+    if (!isActive) {
+      restoredScrollKeyRef.current = null;
+      return;
+    }
+    if (focusedEntryId || typeof window === "undefined") return;
     if (restoredScrollKeyRef.current === activeFeedPersistenceKey) return;
     if (filteredEntries.length === 0 || shouldHoldEmptyFeedState) return;
 

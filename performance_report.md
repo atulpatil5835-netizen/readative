@@ -1,37 +1,77 @@
-# Release R2 - Performance Report
+# Release T1 Performance Report
 
-Status: implemented and validated.
-Date: 2026-07-04
+Status: passed.
+Date: 2026-07-05
 
-## Client Bundle Impact
+## Performance rule
 
-The build output has been measured to verify that removing dependencies and aligning layout modules preserves our production footprint.
+T1 target:
 
-| Measurement | Result |
-| --- | ---: |
-| Gzipped Bundle Size | 347.65 KB (355,995 bytes) |
-| Raw Bundle Size | 1272.23 KB (1,302,764 bytes) |
-| Total Asset Files | 38 files |
-| Build Time | ~21.38 seconds |
+```text
+Startup increase < 500 bytes gzip
+```
 
-### Key Bundle Chunks (Gzip)
+No dependency, cookie library, notification library, backend service, or polling mechanism was added.
 
-- `firebase-firestore-DWlcjqk8.js`: ~111.58 KB gzip
-- `react-Dp1bPehN.js`: ~51.15 KB gzip
-- `index-B-2RKPHo.js` (entry): ~23.90 KB gzip
-- `firebase-auth-tJi5azUg.js`: ~22.83 KB gzip
-- `KnowledgeFeed-BYv0hyiH.js`: ~23.13 KB gzip
-- `index-s03lI6Rw.css`: ~14.19 KB gzip (80.12 KB raw)
+## Bundle results
 
-## Repository Footprint & Dependency Reductions
+Baseline measured from the R3 production build before T1:
 
-- **Obsolete files removed**: 16 files
-- **Total disk space reclaimed**: ~901 KB (smarttalk run artifacts, migration files, Python caches)
-- **Deleted dependencies**: `nodemailer` (removed from `package.json` and `package-lock.json`)
-- **New runtime dependencies**: 0
-- **New Firestore reads or writes**: 0
-- **New DOM listeners or timers**: 0
+```json
+{ "entry": "index-C9mLALxp.js", "raw": 82501, "gzip": 24047 }
+```
+
+T1 production build:
+
+```json
+{ "entry": "index-CYr8QRAD.js", "raw": 80744, "gzip": 23366 }
+```
+
+Entry chunk delta:
+
+```text
+raw:  -1757 bytes
+gzip:  -681 bytes
+```
+
+The startup entry became smaller because T1 removed immediate third-party script startup from the main path while lazy-loading the consent UI.
+
+## Startup assets after T1
+
+```json
+{ "file": "dist/index.html", "raw": 4730, "gzip": 1274 }
+{ "file": "dist/assets/index-CYr8QRAD.js", "raw": 80744, "gzip": 23366 }
+{ "file": "dist/assets/index-DCPn6uSi.css", "raw": 81563, "gzip": 14322 }
+```
+
+## Consent UI chunk
+
+The consent UI is split into its own lazy chunk:
+
+```json
+{ "file": "TrustConsent-DtKkjE7I.js", "raw": 4735, "gzip": 1601 }
+```
+
+This chunk is not part of the core entry chunk. It loads only when the cookie consent is needed or when the notification-permission card becomes eligible after consent and engagement.
+
+## Third-party startup reduction
+
+Removed immediate startup loading for:
+
+- Google Analytics script in `index.html`
+- Startup scheduling of Google Analytics / Google ads in `src/main.tsx`
+
+Runtime QA confirmed no `googletagmanager` or `googlesyndication` scripts were present during first-visit, post-acceptance, or reload checks.
+
+## Dependency audit
+
+No changes were made to:
+
+- `package.json`
+- `package-lock.json`
+
+No cookie or notification package was added.
 
 ## Conclusion
 
-The release maintains the highly optimized bundle footprint (~347.65 KB gzip) while cleaning up unnecessary dependencies and local development/migration bloat from the repository.
+T1 passes the startup performance rule. The entry chunk decreased by 681 bytes gzip, and the consent UI is isolated in a small lazy chunk.

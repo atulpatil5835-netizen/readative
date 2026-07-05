@@ -1,42 +1,69 @@
-# Release R2 - Final Report
+# Release T1 Final Report
 
-Status: complete and production-ready.
-Date: 2026-07-04
+Status: production-ready.
+Date: 2026-07-05
 
-## Summary
+## Release verdict
 
-Release R2 has successfully cleaned up all temporary migration artifacts, Python cache directories, obsolete import scripts, and the unused `nodemailer` dependency. It also ensures 100% parity with the Release Z.2 grid/rails layout by restoring `KnowledgeJourney.tsx` to match commit `cb9a763`. Resiliency improvements are introduced in serverless API handlers to prevent crash scenarios when SEO data sources fail, and import paths on legal content are updated for standard Node ESM compatibility.
+Release T1 delivers trust, cookie, and browser notification consent polish without turning into a feature release or backend release.
 
-## Changes Delivered
+Implemented:
 
-1. **Repository Cleanups**: Deleted 16 generated migration CSV/JSON logs, Python pycache directories, and temporary import scripts.
-2. **Dependency Cleanups**: Deleted unused `nodemailer` dependency from `package.json` and `package-lock.json`.
-3. **Layout Restoration**: Restored `src/components/KnowledgeFeed/KnowledgeJourney.tsx` to match the baseline Release Z.2 (`cb9a763`) exactly.
-4. **ESM Import Fix**: Resolved Node JS import paths inside `src/content/legalPages.ts` by appending `.js` extensions.
-5. **API Resiliency**: Refactored `api/discovery.ts`, `api/sitemap.xml.ts`, and `api/smarttalks.ts` to log and use static fallbacks rather than failing requests when external SEO data sources are down.
+- Premium first-visit cookie consent
+- Lightweight browser notification permission card
+- Cookie policy copy polish
+- Immediate third-party analytics/ad startup removal
+- No dependencies
+- No Firestore/backend changes
+- No push notification delivery
+- No routing changes
+- No SmartTalk changes
+- No Notebook changes
+- No feed changes for T1
 
-## Validation Matrix
+## Validation matrix
 
-| Verification Gate | Result | Notes |
+| Gate | Result | Notes |
 | --- | --- | --- |
-| `npm run build` | **PASS** | 1,768 modules transformed, built in 21.38s |
-| `npx tsc --noEmit` | **PASS** | Completed with zero errors |
-| `npx tsc strict unused check` | **PASS** | Zero unused variables or parameters |
-| `git diff --check` | **PASS** | No whitespace, indentation, or EOF issues |
-| `npm run verify:seo` | **PASS** | 504 sitemap URLs verified, 100% canonical host parity |
-| Desktop Layout QA | **PASS** | 240 / 780 / 280 grid and rails verified at 1400px, 1600px, and 1920px |
-| Mobile & Tablet Responsive QA | **PASS** | Correctly collapsing layouts verified at 768px and 390px widths |
-| Route Integrity | **PASS** | All routes mapped in Vercel configs are intact |
-| Console Warnings/Errors | **PASS** | Zero runtime errors or warnings detected |
+| `npm run build` | PASS | 1769 modules transformed after final report updates. |
+| `npx tsc --noEmit` | PASS | Zero TypeScript errors after final report updates. |
+| `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` | PASS | Zero unused-local/parameter errors after final report updates. |
+| `git diff --check` | PASS | No whitespace errors after final cleanup. |
+| Desktop QA | PASS | 1280x720 cookie/trust check, overflow 0. |
+| Tablet QA | PASS | 900x800 cookie/trust check, overflow 0. |
+| Mobile QA | PASS | 390x844 cookie/trust check, overflow 0. |
+| Cookie QA | PASS | First visit, Learn More, acceptance, reload persistence. |
+| Notification Prompt QA | PASS with limitation | In-app browser has unsupported Notification API; suppression verified and source request path verified. |
+| Accessibility QA | PASS | Labelled region, native controls, unique accessible names, focus-visible styles. |
+| Console QA | PASS | No warnings/errors observed. |
+| Dependency audit | PASS | `package.json` and `package-lock.json` unchanged. |
+| Third-party startup audit | PASS | No Google Analytics/ad script tags observed in runtime QA. |
 
-## Bundle Size
+## Performance verdict
 
-- **Total raw assets**: ~1272.23 KB
-- **Total gzip assets**: ~347.65 KB (355,995 bytes)
-- **Asset files count**: 38 files
+T1 passes the startup budget.
 
-## Deployment Readiness
+```text
+Baseline entry gzip: 24,047 bytes
+T1 entry gzip:       23,366 bytes
+Delta:                -681 bytes
+```
 
-✅ **SAFE TO DEPLOY**
+The consent UI is lazy-loaded as `TrustConsent-DtKkjE7I.js` at 1,601 bytes gzip and is not part of the core entry chunk.
 
-All validation gates passed successfully. The workspace has been cleanly verified against Release Z.2, and there are no regressions or unresolved failures.
+## Files changed for T1
+
+- `index.html`
+- `src/App.tsx`
+- `src/main.tsx`
+- `src/components/TrustConsent.tsx`
+- `src/content/legalPages.ts`
+- `trust_report.md`
+- `performance_report.md`
+- `walkthrough.md`
+- `task.md`
+- `final_report.md`
+
+## Production readiness
+
+T1 is production-ready. No stop condition has been triggered.
