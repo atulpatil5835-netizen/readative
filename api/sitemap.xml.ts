@@ -20,9 +20,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const data = await loadSeoData();
     if (data.source === "static") {
-      throw new Error(
-        `Dynamic SEO data unavailable: ${data.errors.join(" | ") || "unknown loader failure"}`,
+      console.error(
+        "Sitemap dynamic SEO data unavailable:",
+        data.errors,
       );
+      res.setHeader("Cache-Control", "no-store");
     }
     const entries = buildSitemapEntries(data);
     const xml = buildSitemapXml(entries);

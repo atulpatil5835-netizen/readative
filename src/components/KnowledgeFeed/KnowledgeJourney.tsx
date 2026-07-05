@@ -16,13 +16,27 @@ import {
   type RouteOptions,
 } from "../../utils/routes";
 import { getCategoryBySlug } from "../../utils/seoTaxonomy";
-import {
-  getRelatedPosts,
-  getRelatedQuestions,
-  normalizeContentGraphTags,
-} from "../../utils/contentGraph";
+import { tokenizeSearch } from "../../utils/searchHelpers";
 
 const MAX_JOURNEY_ACTIONS = 5;
+
+const TERM_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "also",
+  "because",
+  "before",
+  "from",
+  "have",
+  "into",
+  "more",
+  "that",
+  "their",
+  "there",
+  "this",
+  "with",
+  "your",
+]);
 
 export interface KnowledgeJourneyQuestion {
   id: string;
@@ -62,6 +76,199 @@ interface KnowledgeJourneyProps extends KnowledgeJourneyInput {
   variant?: "inline" | "rail";
 }
 
+function normalizeJourneyToken(value: string | null | undefined) {
+  const normalized = value
+    ?.replace(/^#/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9+#-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || null;
+}
+
+function getEntryCategoryId(entry: Pick<KnowledgeEntry, "category">) {
+  const category = getCategoryBySlug(entry.category);
+  return category?.id || normalizeJourneyToken(entry.category);
+}
+
+function getEntryTagSet(entry: Pick<KnowledgeEntry, "hashtags">) {
+  return new Set(
+    entry.hashtags
+      .map((tag) => normalizeJourneyToken(tag))
+      .filter((tag): tag is string => Boolean(tag)),
+  );
+}
+
+function sanitizeSearchTerm(term: string) {
+  return term
+    .replace(/^#/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#-]+/g, "")
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textIncludesJourneyTerm(text: string, term: string) {
+  const normalizedTerm = term.replace(/-/g, " ").trim().toLowerCase();
+  if (!normalizedTerm) return false;
+
+  if (/^[a-z0-9+#]{1,3}$/.test(normalizedTerm)) {
+    return new RegExp(
+      `(^|[^a-z0-9])${escapeRegExp(normalizedTerm)}([^a-z0-9]|$)`,
+    ).test(text);
+  }
+
+  return text.includes(normalizedTerm);
+}
+
+function getMeaningfulTerms(value: string, maxTerms = 18) {
+  return tokenizeSearch(value, maxTerms)
+    .map(sanitizeSearchTerm)
+    .filter(
+      (term): term is string =>
+        Boolean(term) &&
+        (term.length > 3 || term === "ai") &&
+        !TERM_STOP_WORDS.has(term),
+    );
+}
+
+function getRelatedEntryScore(entry: KnowledgeEntry, candidate: KnowledgeEntry) {
+  let score = 0;
+  const entryCategory = getEntryCategoryId(entry);
+  const candidateCategory = getEntryCategoryId(candidate);
+
+  if (entryCategory && candidateCategory && entryCategory === candidateCategory) {
+    score += 8;
+  }
+
+  const entryTags = getEntryTagSet(entry);
+  candidate.hashtags.forEach((tag) => {
+    const normalizedTag = normalizeJourneyToken(tag);
+    if (normalizedTag && entryTags.has(normalizedTag)) {
+      score += 4;
+    }
+  });
+
+  return score;
+}
+
+function getQuestionRelationScore(
+  entry: KnowledgeEntry,
+  question: KnowledgeJourneyQuestion,
+) {
+  let score = 0;
+  const entryCategory = getEntryCategoryId(entry);
+  const questionCategory = getCategoryBySlug(question.category)?.id ||
+    normalizeJourneyToken(question.category);
+
+  if (entryCategory && questionCategory && entryCategory === questionCategory) {
+    score += 10;
+  }
+
+  const questionText = [
+    question.content,
+    question.author,
+    question.category || "",
+    ...question.answerText,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const entryTags = getEntryTagSet(entry);
+
+  entryTags.forEach((tag) => {
+    if (textIncludesJourneyTerm(questionText, tag)) {
+      score += 3;
+    }
+  });
+
+  getMeaningfulTerms(`${entry.title} ${entry.content}`, 14).forEach((term) => {
+    if (textIncludesJourneyTerm(questionText, term)) {
+      score += 1;
+    }
+  });
+
+  return score;
+}
+
+function getBestRelatedEntry(
+  entry: KnowledgeEntry,
+  entries: KnowledgeEntry[],
+  excludedEntryIds: Set<string>,
+) {
+  return entries
+    .filter(
+      (candidate) =>
+        candidate.id !== entry.id && !excludedEntryIds.has(candidate.id),
+    )
+    .map((candidate) => ({
+      entry: candidate,
+      score: getRelatedEntryScore(entry, candidate),
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        (right.entry.updatedAt || right.entry.createdAt) -
+          (left.entry.updatedAt || left.entry.createdAt),
+    )[0]?.entry || null;
+}
+
+function getContinueEntry(entry: KnowledgeEntry, entries: KnowledgeEntry[]) {
+  const entryIndex = entries.findIndex((candidate) => candidate.id === entry.id);
+  if (entryIndex >= 0) {
+    const nextEntry = entries
+      .slice(entryIndex + 1)
+      .find((candidate) => candidate.id !== entry.id);
+    if (nextEntry) return nextEntry;
+  }
+
+  return entries.find((candidate) => candidate.id !== entry.id) || null;
+}
+
+function getAuthorEntry(
+  entry: KnowledgeEntry,
+  entries: KnowledgeEntry[],
+  excludedEntryIds: Set<string>,
+) {
+  if (!entry.authorId) return null;
+
+  return entries
+    .filter(
+      (candidate) =>
+        candidate.id !== entry.id &&
+        !excludedEntryIds.has(candidate.id) &&
+        candidate.authorId === entry.authorId,
+    )
+    .sort(
+      (left, right) =>
+        (right.updatedAt || right.createdAt) - (left.updatedAt || left.createdAt),
+    )[0] || null;
+}
+
+function getRelatedQuestion(
+  entry: KnowledgeEntry,
+  questions: KnowledgeJourneyQuestion[],
+) {
+  return questions
+    .map((question) => ({
+      question,
+      score: getQuestionRelationScore(entry, question),
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        right.question.answerCount - left.question.answerCount ||
+        right.question.createdAt - left.question.createdAt,
+    )[0]?.question || null;
+}
+
 function createPostAction(
   id: string,
   label: string,
@@ -92,27 +299,41 @@ export function getKnowledgeJourneyActions({
   questions,
 }: KnowledgeJourneyInput) {
   const actions: KnowledgeJourneyAction[] = [];
+  const usedEntryIds = new Set<string>();
+
   const addAction = (action: KnowledgeJourneyAction | null) => {
     if (!action || actions.length >= MAX_JOURNEY_ACTIONS) return;
     actions.push(action);
+    if (action.entryId) usedEntryIds.add(action.entryId);
   };
 
-  const relatedEntry =
-    getRelatedPosts(entry, entries, 1)[0] ||
-    entries.find((candidate) => candidate.id !== entry.id);
+  const continueEntry = getContinueEntry(entry, entries);
+  if (continueEntry) {
+    addAction(
+      createPostAction(
+        "continue",
+        "Continue Reading",
+        continueEntry,
+        BookOpenText,
+        "Next in your feed",
+      ),
+    );
+  }
+
+  const relatedEntry = getBestRelatedEntry(entry, entries, usedEntryIds);
   if (relatedEntry) {
     addAction(
       createPostAction(
         "related-post",
         "Related Posts",
         relatedEntry,
-        BookOpenText,
-        "Matched from loaded posts",
+        Hash,
+        "Same category or tags",
       ),
     );
   }
 
-  const relatedQuestion = getRelatedQuestions(entry, questions, 1)[0];
+  const relatedQuestion = getRelatedQuestion(entry, questions);
   if (relatedQuestion) {
     const route = {
       tab: "smarttalk" as const,
@@ -137,6 +358,19 @@ export function getKnowledgeJourneyActions({
     });
   }
 
+  const authorEntry = getAuthorEntry(entry, entries, usedEntryIds);
+  if (authorEntry) {
+    addAction(
+      createPostAction(
+        "author",
+        "More from this Author",
+        authorEntry,
+        UserRound,
+        entry.author || "Same author",
+      ),
+    );
+  }
+
   const category = getCategoryBySlug(entry.category);
   if (category) {
     const route = {
@@ -145,45 +379,12 @@ export function getKnowledgeJourneyActions({
     };
 
     addAction({
-      id: "same-category",
-      label: "Same Category",
+      id: "category",
+      label: "Browse Category",
       title: category.label,
       description: "More posts in this pillar",
       href: buildPublicPath(route.tab, route.options),
       icon: Compass,
-      route,
-    });
-  }
-
-  if (entry.authorId) {
-    const route = {
-      tab: "profile" as const,
-      options: { profileAuthorId: entry.authorId },
-    };
-    addAction({
-      id: "same-author",
-      label: "Same Author",
-      title: entry.author || "Readative contributor",
-      description: "Latest from this contributor",
-      href: buildPublicPath(route.tab, route.options),
-      icon: UserRound,
-      route,
-    });
-  }
-
-  const similarTopic = normalizeContentGraphTags(entry.hashtags)[0];
-  if (similarTopic) {
-    const route = {
-      tab: "knowledge" as const,
-      options: { selectedHashtag: similarTopic },
-    };
-    addAction({
-      id: "similar-topic",
-      label: "Similar Topics",
-      title: `#${similarTopic.replace(/-/g, " ")}`,
-      description: "Explore this topic",
-      href: buildPublicPath(route.tab, route.options),
-      icon: Hash,
       route,
     });
   }

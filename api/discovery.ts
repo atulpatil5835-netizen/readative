@@ -182,7 +182,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (data.source === "static") {
     console.error("Discovery SEO data unavailable:", data.errors);
     res.setHeader("Cache-Control", "no-store");
-    return res.status(503).send("Discovery index is temporarily unavailable.");
   }
   const recentPosts = [...data.posts].slice(0, 24);
   const recentPostIds = new Set(recentPosts.map((post) => post.id));

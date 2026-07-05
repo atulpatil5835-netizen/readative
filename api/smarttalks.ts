@@ -205,7 +205,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (data.source === "static") {
     console.error("SmartTalk SEO data unavailable:", data.errors);
     res.setHeader("Cache-Control", "no-store");
-    return res.status(503).send("SmartTalk is temporarily unavailable.");
   }
   const questions = [...data.smartTalks].sort(
     (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),

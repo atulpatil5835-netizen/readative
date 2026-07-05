@@ -1,55 +1,37 @@
-# Release P3.2 - Performance Report
+# Release R2 - Performance Report
 
 Status: implemented and validated.
 Date: 2026-07-04
 
-## Dependency and runtime impact
+## Client Bundle Impact
 
-- Dependencies added: 0.
-- Firestore reads or writes added: 0.
-- Listeners added: 0.
-- Polling added: 0.
-- Timers or intervals added: 0.
+The build output has been measured to verify that removing dependencies and aligning layout modules preserves our production footprint.
 
-The footer is now simpler than the P3 multi-column version. The About content is server-rendered and adds no client runtime work.
-
-## Bundle impact
-
-| Measurement | JavaScript gzip bytes |
+| Measurement | Result |
 | --- | ---: |
-| Preserved P4 baseline | 330,548 |
-| P3.2 final build | 330,136 |
-| Net impact | -412 |
+| Gzipped Bundle Size | 347.65 KB (355,995 bytes) |
+| Raw Bundle Size | 1272.23 KB (1,302,764 bytes) |
+| Total Asset Files | 38 files |
+| Build Time | ~21.38 seconds |
 
-Final build highlights:
+### Key Bundle Chunks (Gzip)
 
-- transformed modules: 1,765
-- main application chunk: 23.62 kB gzip
-- CSS: 14.10 kB gzip
-- build time: 18.18 seconds
+- `firebase-firestore-DWlcjqk8.js`: ~111.58 KB gzip
+- `react-Dp1bPehN.js`: ~51.15 KB gzip
+- `index-B-2RKPHo.js` (entry): ~23.90 KB gzip
+- `firebase-auth-tJi5azUg.js`: ~22.83 KB gzip
+- `KnowledgeFeed-BYv0hyiH.js`: ~23.13 KB gzip
+- `index-s03lI6Rw.css`: ~14.19 KB gzip (80.12 KB raw)
 
-P3.2 produces a small bundle reduction because the grouped corporate-footer data and rendering branches were removed.
+## Repository Footprint & Dependency Reductions
 
-## Responsive impact
+- **Obsolete files removed**: 16 files
+- **Total disk space reclaimed**: ~901 KB (smarttalk run artifacts, migration files, Python caches)
+- **Deleted dependencies**: `nodemailer` (removed from `package.json` and `package-lock.json`)
+- **New runtime dependencies**: 0
+- **New Firestore reads or writes**: 0
+- **New DOM listeners or timers**: 0
 
-Desktop, tablet, and mobile browser QA found no horizontal overflow in the footer or About page. The footer links wrap naturally at smaller widths, and the existing About grid collapses to one column below its established breakpoint.
+## Conclusion
 
-## Validation
-
-- `npm run build` - passed.
-- `npx tsc --noEmit` - passed with zero errors.
-- `git diff --check` - passed.
-- Desktop QA - passed.
-- Tablet QA - passed.
-- Mobile QA - passed.
-- Console QA - passed with zero errors and warnings.
-
-## Regression risk
-
-Risk level: very low.
-
-The change is limited to static footer markup and one server-rendered About section. Routes, metadata, schemas, data access, and product logic remain unchanged.
-
-## Production readiness
-
-Ready for production within the P3.2 performance and scope constraints.
+The release maintains the highly optimized bundle footprint (~347.65 KB gzip) while cleaning up unnecessary dependencies and local development/migration bloat from the repository.

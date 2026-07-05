@@ -1,6 +1,6 @@
-import { LEGAL_PAGE_SLUGS, type LegalSlug } from "./legalRoutes";
+import { LEGAL_PAGE_SLUGS, type LegalSlug } from "./legalRoutes.js";
 
-export type { LegalSlug } from "./legalRoutes";
+export type { LegalSlug } from "./legalRoutes.js";
 
 export interface LegalLink {
   label: string;
@@ -742,4 +742,3 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
 };
 
 export const PAGE_ORDER: LegalSlug[] = [...LEGAL_PAGE_SLUGS];
-

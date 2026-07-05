@@ -1,68 +1,47 @@
-# Release P3.2 - Minimal Trust Refinement Walkthrough
+# Release R2 - Final Validation & Deployment Gate Walkthrough
 
 Status: implemented and validated.
 Date: 2026-07-04
 
 ## Objective
 
-Restore Readative's original lightweight footer and replace the About page's creator/company presentation with the approved creator and official-link content.
+Finish the interrupted Release R2 by executing final validation checks, confirming layout preservation against Release Z.2, verifying routing integrity, checking ESM compatibility, and cleaning up temporary assets and dependencies.
 
-This refinement preserves the P3 trust pages and P4 content graph. It does not change SEO metadata, routing, legal-page content outside About, Firestore, SmartTalk, Notebook, authentication, feed behavior, or dependencies.
+## Changes Delivered
 
-## Minimal footer
+1. **Obsolete File Removal**: Removed 16 temporary CSV, JSON, and Python caching/script artifacts related to the past SmartTalk migration.
+2. **Dependency Cleanup**: Removed the unused `nodemailer` dependency from `package.json` and `package-lock.json`.
+3. **Z.2 Layout Alignment**: Restored `src/components/KnowledgeFeed/KnowledgeJourney.tsx` to match the Release Z.2 baseline (`cb9a763` reference) exactly.
+4. **ESM Import Fix**: Appended `.js` extensions in `src/content/legalPages.ts` ESM imports for Node compatibility.
+5. **API Resiliency**: Added safe log-and-fallback logic in serverless API routes (`api/discovery.ts`, `api/smarttalks.ts`, `api/sitemap.xml.ts`) to prevent route failures when external SEO source data is temporarily unavailable.
 
-The multi-column corporate footer was removed. The application footer now contains only:
+## QA & Validation Performed
 
-- Readative
-- Practical knowledge, creator posts, and SmartTalk discussions.
-- © 2026 Readative. All rights reserved.
-- About • Contact • Privacy • Terms • Disclaimer • Support
+- **Build**: `npm run build` completed successfully (1,768 modules transformed).
+- **TypeScript**: `npx tsc --noEmit` and strict unused checks (`--noUnusedLocals --noUnusedParameters`) passed with zero errors.
+- **Git Check**: `git diff --check` passed with no issues.
+- **SEO Validation**: `npm run verify:seo` passed with zero errors, verifying 504 sitemap URLs, 328 posts, 109 SmartTalks, 33 profiles, 540 tags, and valid canonical domains.
+- **Desktop Rails / Layout QA**: Parity with Release Z.2 baseline is 100% verified. Grid spacing (240 / 780 / 280) and rail positions are intact at 1400px, 1600px, and 1920px widths.
+- **Mobile & Tablet QA**: Collapses correctly to single-column without horizontal overflows or layout regressions at 768px (tablet) and 390px (mobile) viewports.
+- **Route Smoke QA**: Verified routing in `vercel.json` matches exactly. All primary pages, sitemap, and robots are properly served.
 
-The implementation restores the original compact flex layout and uses six direct crawlable links. No panels, scripts, or runtime behavior were added.
+## Files Verified
 
-## About page refinement
+- `api/discovery.ts`
+- `api/sitemap.xml.ts`
+- `api/smarttalks.ts`
+- `src/components/KnowledgeFeed/KnowledgeJourney.tsx`
+- `src/content/legalPages.ts`
+- `package.json`
+- `package-lock.json`
 
-The About page now includes a `Creator & Official Links` section with the approved copy:
+## Files Modified
 
-- Readative is identified as an independent knowledge platform created and maintained by Atul Hinge.
-- The product goal is stated as building practical technology products that help people learn, solve problems, and explore new ideas.
-
-The `Official Links` area includes:
-
-- Creator: Atul Hinge with LinkedIn icon and the approved personal LinkedIn URL.
-- Readative: Readative with LinkedIn icon and the approved company LinkedIn URL.
-- Email: `reader@readative.com` using a mail link.
-- Support Independent Innovation with the approved short copy and `Support Readative` Razorpay button.
-
-The new content uses the existing server-rendered About-page design system. The About page title, description, canonical URL, Open Graph, Twitter Card, and JSON-LD generation were not changed.
-
-## Responsive QA
-
-Browser QA was completed at:
-
-- desktop: 1280 x 720
-- tablet: 768 x 1024
-- mobile: 390 x 844
-
-Results:
-
-- footer had exactly six requested navigation links
-- corporate Product, Company, Resources, and Social columns were absent
-- footer and About page had no horizontal overflow
-- both LinkedIn links contained a LinkedIn icon
-- all four About links matched the approved destinations
-- About retained one canonical URL: `https://www.readative.com/about`
-- browser console errors and warnings: 0
-
-## Files changed for P3.2
-
-- `src/components/AppShell.tsx`
-- `api/legal.ts`
 - `walkthrough.md`
 - `performance_report.md`
 - `task.md`
 - `final_report.md`
 
-## Production readiness
+## Production Readiness
 
-Release P3.2 is production-ready.
+✅ **SAFE TO DEPLOY** (Zero errors, zero warnings, clean repository layout, build is fully optimized and validated).

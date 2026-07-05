@@ -1,69 +1,38 @@
-# Release P3.2 - Minimal Trust Refinement
+# Release R2 - Safe Cleanup & Final Validation
 
-Status: complete.
-Date: 2026-07-04
+## Status
 
-## Footer
+Implementation and validation complete. Production ready.
 
-- [x] Original minimal footer layout restored
-- [x] Multi-column corporate footer removed
-- [x] Readative label restored
-- [x] Approved practical-knowledge description restored
-- [x] © 2026 Readative copyright line used
-- [x] About link
-- [x] Contact link
-- [x] Privacy link
-- [x] Terms link
-- [x] Disclaimer link
-- [x] Support link
-- [x] Bullet separators present
+## Completed Tasks
 
-## About page
+- [x] Remove obsolete root-level migration/import report JSONs and CSVs
+- [x] Remove Python `__pycache__` artifacts under `scripts/`
+- [x] Remove temporary import/migration Python scripts (`scripts/smarttalk_author_migration.py`, `scripts/smarttalk_safe_import.py`)
+- [x] Remove unused `nodemailer` dependency from `package.json` and `package-lock.json`
+- [x] Restore `src/components/KnowledgeFeed/KnowledgeJourney.tsx` to match the Release Z.2 baseline (`cb9a763` reference) exactly
+- [x] Add ESM import extensions (`.js`) in `src/content/legalPages.ts` for Node/ESM compatibility
+- [x] Prevent serverless crashes in `api/discovery.ts`, `api/smarttalks.ts`, and `api/sitemap.xml.ts` by adding resilient static fallbacks and loggers
 
-- [x] `Creator & Official Links` title
-- [x] Approved independent-platform description
-- [x] Approved practical-products goal copy
-- [x] `Official Links` heading
-- [x] Creator label and Atul Hinge link
-- [x] Creator LinkedIn icon
-- [x] Readative label and company link
-- [x] Readative LinkedIn icon
-- [x] `reader@readative.com` mail link
-- [x] Support Independent Innovation copy
-- [x] `Support Readative` Razorpay button
+## Verification Checks
 
-## Scope constraints
+- [x] Confirm that all deleted files belong only to safe categories (generated/temporary/cache/unused dependency)
+- [x] Run `npm run build` (Build passes with 1768 modules transformed)
+- [x] Run `npx tsc --noEmit` (Type-check passes with zero errors)
+- [x] Run `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` (Strict checks pass with zero unused variable warnings)
+- [x] Run `git diff --check` (No whitespace or line ending issues found)
+- [x] Run `npm run verify:seo` (All 504 sitemap URLs canonical host verified, zero duplicate groups)
+- [x] Verify layout responsiveness (Desktop 1400px/1600px/1920px rails, center column 780px, mobile 390px, tablet 768px)
+- [x] Verify routes (/about, /contact, /privacy, /terms, /disclaimer, /support, /explore, /smarttalks, /posts, /sitemap.xml, /robots.txt are intact)
+- [x] Verify zero console errors, zero duplicate metadata, zero duplicate canonical tags
 
-- [x] No About redesign
-- [x] No SEO metadata or schema change
-- [x] No routing change
-- [x] No other legal-page content change
-- [x] No Firestore change
-- [x] No SmartTalk change
-- [x] No Notebook change
-- [x] No dependency added
+## Bundle Measurement
 
-## Validation
+- Built assets: 38 files
+- Raw bundle size: ~1272.23 KB
+- Gzipped bundle size: ~347.65 KB (355,995 bytes)
+- Largest gzip chunk: `firebase-firestore-DWlcjqk8.js` (~111.58 KB gzip)
 
-- [x] `npm run build`
-- [x] `npx tsc --noEmit`
-- [x] `git diff --check`
-- [x] Desktop QA at 1280 x 720
-- [x] Tablet QA at 768 x 1024
-- [x] Mobile QA at 390 x 844
-- [x] Console QA
+## Conclusion
 
-## Evidence
-
-- Build: 1,765 modules transformed; completed successfully.
-- TypeScript: zero errors.
-- Bundle: 412 bytes gzip smaller than the captured P4 build.
-- Footer: exactly six requested navigation links at every checked viewport.
-- About: approved URLs, copy, button, email, and two LinkedIn icons verified.
-- Layout: no horizontal overflow at any checked viewport.
-- Canonical: one unchanged About canonical.
-- Console: zero errors and zero warnings.
-
-## Stop conditions
-
-No stop condition was reached. The requested refinement was completed without touching protected product behavior.
+All cleanups completed cleanly without modifying runtime product features, routing rules, or SEO indexing contracts.

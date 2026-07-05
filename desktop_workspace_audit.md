@@ -1,288 +1,99 @@
-# Release Z.1.1 — Living Desktop Workspace Audit
+# Release R1 Final Refinement - Desktop Workspace Audit
 
-Status: architecture audit complete. No production implementation has started.
+## Scope lock
 
-## Scope inspected
+This document audits the desktop workspace only. It does not authorize UI redesign, layout changes, route changes, feed behavior changes, Notebook changes, SmartTalk changes, or implementation work.
 
-- `src/App.tsx`
-- `src/components/AppShell.tsx`
-- `src/components/Header.tsx`
-- `src/components/KnowledgeFeed/FeedRenderer.tsx`
-- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
-- `src/components/KnowledgeFeed/KnowledgeJourney.tsx`
-- `src/components/KnowledgeCardList.tsx`
-- `src/components/KnowledgeCard/KnowledgeCard.tsx`
-- `src/components/KnowledgeCard/cardHelpers.ts`
+## Baseline
 
-## Current desktop shell
+The stable desktop workspace reference used for this audit is commit `cb9a763`, the same Release Z.2 reference used during production recovery.
 
-The desktop workspace is activated only for the Knowledge tab at `min-[1400px]`.
+Static comparison was run against the restored desktop files:
 
-- `App.tsx` gives the Knowledge route `max-w-[1400px]` and `px-6` only at `min-[1400px]`.
-- `Header.tsx` and `AppShell.tsx` also use `min-[1400px]:max-w-[1400px]`.
-- `FeedRenderer.tsx` creates the desktop grid:
-  - left rail: `240px`
-  - center: `780px`
-  - right rail: `280px`
-  - gap: `24px`
-- Tablet and mobile use the existing single-column feed because both rails are hidden with `hidden min-[1400px]:block`.
+```text
+git diff --exit-code cb9a763 -- src/components/KnowledgeFeed/FeedRenderer.tsx src/components/KnowledgeFeed/KnowledgeJourney.tsx
+```
 
-## Current rail architecture
+Result: no source diff for the restored desktop workspace files. Git emitted only a line-ending warning for `KnowledgeJourney.tsx`.
 
-### Shared rail primitives
+## Current desktop workspace implementation
 
-`DesktopRailSection` is a small local component inside `FeedRenderer.tsx`.
+| Requirement | Current source evidence | Audit result |
+| --- | --- | --- |
+| Left rail | `FeedRenderer.tsx` renders `aria-label="Desktop reading workspace"` | Present |
+| Center reading column | `FeedRenderer.tsx` uses `min-[1400px]:w-[780px]` for the feed column | Present |
+| Right rail | `FeedRenderer.tsx` renders `aria-label="Desktop learning context"` | Present |
+| Sticky behavior | Both rail wrappers use `sticky top-24` | Present |
+| Desktop breakpoint | Rails use `hidden min-[1400px]:block` | Present |
+| Desktop grid | Main workspace uses `min-[1400px]:grid-cols-[240px_780px_280px]` | Present |
+| Route wrapper width | `App.tsx` uses `min-[1400px]:max-w-[1400px] min-[1400px]:px-6` for knowledge route | Present |
 
-Current behavior:
+## Breakpoint behavior
 
-- Always renders a card-like section.
-- Uses fixed visual rhythm: rounded section, border, white background, shadow.
-- Has no built-in empty-state filtering.
+| Width | Expected behavior | Static audit result |
+| --- | --- | --- |
+| Below 1400px | Single-column reading experience; desktop rails hidden | Supported by `hidden min-[1400px]:block` |
+| 1400px and above | Left rail, 780px center, right rail visible | Supported by explicit desktop grid |
+| 1600px | Same restored workspace with extra viewport breathing room | Supported by fixed desktop grid inside max-width shell |
+| 1920px | Same restored workspace centered, rails sticky | Supported by fixed grid and `max-w-[1400px]` shell |
 
-`DesktopRailList` also lives inside `FeedRenderer.tsx`.
+## Reading width
 
-Current behavior:
-
-- If items exist, renders links/buttons.
-- If items are empty, renders placeholder text: `More context will appear as posts load.`
-- This violates the Z.1.1 rule to never render empty cards or placeholders.
-
-### Left rail
-
-`DesktopLeftRail` currently renders:
-
-1. Quick Navigation
-2. Reading Progress
-3. Continue Reading
-4. Trending Categories
-
-Current data sources:
-
-- `desktopEntries`
-- `desktopContextEntry`
-- `desktopProgressLabel`
-- `todayLoadedCount`
-- `desktopTagStats`
-
-Current limitations:
-
-- The module order is static.
-- `Continue Reading` uses `entries.slice(0, 3)`, which can duplicate the current center article.
-- There is no Recently Viewed module.
-- There is no Knowledge Stats module.
-- There is no reliable Reading Streak signal from existing local data.
-- Trending Categories renders placeholder copy when no tags exist.
-- The rail is finite and usually shorter than long articles, leaving blank desktop column space below the module stack.
-
-### Right rail
-
-`DesktopRightRail` currently renders:
-
-1. Knowledge Journey
-2. Related Posts
-3. Same Author
-4. Popular Tags
-
-Current data sources:
-
-- `contextEntry`
-- `journeyEntries`
-- `journeyQuestions`
-- `desktopRelatedEntries`
-- `desktopSameAuthorEntries`
-- `desktopTagStats`
-
-Current limitations:
-
-- The context entry is `focusedEntry || desktopEntries[0] || null`.
-- During normal feed scrolling, the rail context does not follow the currently read post unless a focused route is open.
-- Related Posts and Same Author render placeholder copy when empty.
-- Popular Tags can duplicate the left rail.
-- There is no lifecycle from contextual modules to next-step modules.
-- There is no distinction between "before article end" and "after article end."
-- Some modules can duplicate visible center content.
+The restored center reading column is fixed at `780px` at the desktop workspace breakpoint. This matches the Release Z.2 desktop workspace intent and should not be changed during cleanup.
 
 ## Sticky behavior
 
-Both rails use:
+Both rails use the same sticky offset:
 
-```tsx
-<div className="sticky top-24 space-y-4">
-```
+- Left rail: `sticky top-24`
+- Right rail: `sticky top-24`
 
-Current behavior:
+No sticky mismatch was found in the restored desktop source.
 
-- The whole rail stack sticks near the top of the viewport.
-- There is no rail max-height.
-- There is no internal rail scroll.
-- There is no module replacement as the user scrolls.
-- If the rail stack is shorter than the article, the rest of the left/right columns are visually empty.
+## Regression list
 
-Root cause of the reported problem:
+### Critical
 
-- The center feed can contain long articles and virtualized content far taller than the rail stacks.
-- The rails are static finite stacks.
-- No lifecycle or replenishment logic exists to keep useful modules visible through long reading sessions.
+None confirmed.
 
-## Scroll containers
+### High
 
-The feed uses the window as the primary scroll container.
+None confirmed against the restored Release Z.2 desktop files.
 
-Existing scroll-related behavior:
+### Medium
 
-- `KnowledgeFeed.tsx` has a scroll listener for the Back-to-Top/Refresh affordance.
-- `KnowledgeFeed.tsx` persists feed scroll position with a scroll listener and `requestAnimationFrame`.
-- `KnowledgeCardList.tsx` listens to window scroll/resize for virtualization.
-- `KnowledgeCardList.tsx` uses `ResizeObserver` to measure card rows.
-- The desktop rails do not have their own scroll lifecycle.
+#### D1 - Desktop layout depends on hard-coded grid numbers
 
-Z.1.1 implication:
+The desktop workspace currently depends on explicit `240px / 780px / 280px` columns and a `1400px` shell. This is stable and intentional, but any future cleanup that extracts layout primitives must preserve these exact numbers unless a separate UI release approves otherwise.
 
-- Adding new scroll listeners, polling, timers, or intervals would violate the release rules.
-- A safe implementation must reuse existing loaded data and existing visibility signals instead of adding another scroll-observation system.
+Regression risk if touched: High.
 
-## Virtualization
+#### D2 - Desktop rail content is coupled to feed renderer state
 
-The center feed is virtualized by `KnowledgeCardList`.
+`FeedRenderer.tsx` owns the desktop rail rendering and receives a large prop surface from `KnowledgeFeed.tsx`. The layout is restored, but extracting rail components later must avoid changing which entries, journey actions, or status states appear.
 
-Important details:
+Regression risk if touched: Medium to High.
 
-- Rows are absolutely positioned.
-- Row height is estimated first, then measured.
-- `renderAfterCard` inserts an inline `KnowledgeJourney` after each card.
-- `estimateAfterCardHeight` includes the estimated Knowledge Journey height.
-- When measured height changes above the viewport, `KnowledgeCardList` scroll-compensates with `window.scrollBy`.
+### Low
 
-Z.1.1 implication:
+#### D3 - Rail card rhythm could be documented as tokens
 
-- Rails live outside the virtualized center column and can be improved without changing virtualizer internals.
-- Do not move rail content into virtualized rows.
-- Do not change `KnowledgeCardList` measuring, offsets, overscan, or row positioning.
+Spacing, radius, borders, and accent treatments are consistent by convention. This is a future polish/documentation opportunity only, not a defect.
 
-## Existing cached and loaded data
+#### D4 - Browser QA should be repeated before any implementation release
 
-Safe available data:
+This audit confirms source parity and static breakpoint behavior. Any future code change touching desktop files should repeat visual QA at 1400px+, 1600px, and 1920px.
 
-- `filteredEntries`
-- `visibleEntries`
-- `desktopEntries`
-- `focusedEntry`
-- `journeyEntries`
-- `journeyQuestions`
-- `profiles`
-- `activeFeedTopic`
-- `activeCategory`
-- `selectedHashtag`
-- loaded entry metadata: author, authorId, category, hashtags, comments, createdAt, updatedAt
+## Desktop polish opportunities only
 
-Potential derived modules from existing data:
+These are not implementation tasks for this audit phase:
 
-- Recently Viewed: can be derived from the existing `onVisibleEntry` path if we store a tiny in-memory list of recently visible entry ids.
-- Knowledge Stats: can be derived from loaded entry counts, unique authors, tag count, and topic/category count.
-- More From Author: already derivable from loaded entries.
-- Related Posts: already derivable from loaded entries.
-- Popular Discussions: derivable from loaded `journeyQuestions`.
-- Top Contributors: derivable from loaded entries plus already loaded profiles.
-- Explore Category: derivable from `activeCategory` or the current entry category.
-- Recommended Reading / Continue Learning / What's Next: derivable from loaded entries excluding the current center/context entry.
+- Preserve the current 780px reading rhythm.
+- Preserve `top-24` sticky offsets unless a separate desktop release approves a change.
+- Keep left and right rail card density balanced.
+- Avoid introducing new cards or desktop-only features.
+- If extracting components later, keep class output and DOM order stable.
 
-Unsafe or unavailable without changing scope:
+## Desktop audit conclusion
 
-- True reading streak across days, unless an existing reliable local/account activity signal is already available.
-- Exact article-section progress or article-end detection, unless adding new observation logic.
-- Any recommendations requiring Firestore reads or external data.
-
-## Existing visibility lifecycle
-
-`KnowledgeCard` already observes card visibility once:
-
-- `KnowledgeCard` calls `observeEntryVisibilityOnce`.
-- It calls `onVisible(entry)` the first time the card becomes visible.
-- `KnowledgeCardList` passes that up.
-- `FeedRenderer` passes `onVisibleEntry` down.
-- `KnowledgeFeed.handleVisibleEntry` currently uses it for:
-  - marking an entry seen
-  - deciding whether to auto-load more entries
-
-Z.1.1 opportunity:
-
-- The existing visibility callback can be reused to update a small desktop context/recently-viewed state without adding new listeners.
-
-Z.1.1 limitation:
-
-- The callback is card-level and fires once per card.
-- It cannot precisely detect lower sections of a long article.
-- Precise paragraph/section progress would require new scroll/IntersectionObserver work and should not be implemented under the strict performance rules.
-
-## Root causes
-
-1. Rails are static finite stacks.
-2. Rail content is not driven by the currently visible/reading context.
-3. Empty data paths render placeholder text instead of hiding modules.
-4. Right rail duplicates or exhausts context quickly.
-5. Left rail lacks progressive modules such as recently viewed and stats.
-6. Sticky rails have no lifecycle or replenishment strategy.
-7. The current implementation has no safe article-lower-section signal.
-
-## Recommended minimal architecture
-
-After approval, implement Z.1.1 as a desktop-only rail composition improvement.
-
-Core principles:
-
-- Keep the existing `min-[1400px]` gate.
-- Keep the 240 / 780 / 280 desktop grid.
-- Keep the center feed and virtualization untouched.
-- Reuse already loaded entries, questions, profiles, and current feed state.
-- Reuse the existing card visibility callback if dynamic context is required.
-- Filter out empty modules instead of rendering placeholders.
-- Exclude the current context entry from recommendation lists.
-- Avoid duplicate modules between left and right rails.
-- Do not implement precise article-end tracking if it requires new listeners or observers.
-
-## Recommended module strategy
-
-Left rail:
-
-1. Quick Navigation
-2. Reading Progress
-3. Continue Reading
-4. Recently Viewed
-5. Trending Categories
-6. Knowledge Stats
-
-Conditionally skip:
-
-- Recently Viewed when no recent visible entries exist.
-- Trending Categories when no tag/category stats exist.
-- Knowledge Stats only if fewer than two stats are available.
-- Reading Streak unless a real existing signal is found.
-
-Right rail:
-
-Primary contextual modules:
-
-1. Knowledge Journey
-2. Related Posts
-3. More From Author
-4. Related SmartTalk / Popular Discussions
-
-Follow-up modules:
-
-1. What's Next
-2. Continue Learning
-3. Explore Category
-4. Recommended Reading
-5. Top Contributors
-
-Conditionally skip:
-
-- Any module with no real loaded data.
-- Modules duplicating the current center article.
-- Modules duplicating an already rendered rail section.
-
-## Audit conclusion
-
-The desktop workspace can be made to feel alive without new Firestore reads, listeners, polling, timers, routing changes, or virtualization changes.
-
-The safest implementation is a desktop-only rail module composition pass in `FeedRenderer.tsx`, with an optional small recently-viewed/context state addition in `KnowledgeFeed.tsx` that reuses the existing card visibility callback.
+The desktop workspace source is restored to the Release Z.2 baseline for the files that own the rail layout and knowledge journey. No current desktop regression was confirmed in this audit. Future cleanup should treat `FeedRenderer.tsx`, `KnowledgeJourney.tsx`, and the knowledge route shell in `App.tsx` as high-sensitivity files.
