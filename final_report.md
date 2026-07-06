@@ -19,7 +19,15 @@ No live Firestore write error code/message was captured because authenticated wr
 
 ## 2. Firestore Read Reduction
 
-No broad read reduction was claimed. Existing main reads are bounded or cached: feed initial listener limit 10, feed pagination 5, one idle background prefetch page, SmartTalk listener limit 50, notification listener limit 20, and guarded feed/profile/SmartTalk cache refs. Broader profile/stat read reductions are deferred because they need a separate data-model pass.
+Live read containment was added for the public feed:
+
+- Public home feed no longer opens an `onSnapshot` listener for every visitor; it uses a one-shot first page load.
+- Fresh feed cache now prevents the immediate initial server read for returning visitors.
+- Automatic background feed prefetch was disabled.
+- SmartTalk journey preview was reduced from 50 reads to 12 and cached for 6 hours.
+- The 80-profile mention directory query now runs only after the composer opens.
+
+Broader profile/stat migration scans remain deferred because they need a separate data-model pass.
 
 ## 3. Firestore Write Reduction
 
@@ -36,6 +44,7 @@ H2 reduced unsafe and duplicate writes:
 - `src/App.tsx`
 - `src/components/KnowledgeCard/KnowledgeCard.tsx`
 - `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+- `src/components/KnowledgeFeed/feedHelpers.ts`
 - `src/components/SmartTalk.tsx`
 - `src/firebase/firebase.ts`
 - `src/utils/bookmarks.ts`
@@ -75,6 +84,8 @@ Local gates passed:
 - `git diff --check`
 
 Production preview smoke QA passed on desktop, tablet, and mobile for Home, SmartTalk, Explore, and Profile with no console errors and no horizontal overflow.
+
+Production deploy completed on 2026-07-06 through Vercel prebuilt output. `https://readative.com/` resolves to `https://www.readative.com/` and serves the new production asset names. Live smoke QA confirmed the Home feed hydrated with search, feed content, both desktop rails, and no horizontal overflow.
 
 ## 7. Remaining Recommendations
 

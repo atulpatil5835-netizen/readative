@@ -13,7 +13,6 @@ import {
   doc,
   getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   setDoc,
@@ -87,8 +86,6 @@ import {
   normalizeKnowledgeEntry,
   normalizeStoredHashtagValue,
   getHelpfulAwareVisibleEntries,
-  reconcileRealtimeKnowledgeFeedOrder,
-  mergeRealtimeKnowledgePage,
   mergeKnowledgeEntryPages,
   loadIndependentKnowledgeFeedEntries,
   mergeIndependentKnowledgeFeedEntries,
@@ -113,7 +110,16 @@ import { type KnowledgeJourneyQuestion } from "./KnowledgeJourney";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
-const JOURNEY_SMARTTALK_LIMIT = 50;
+const JOURNEY_SMARTTALK_LIMIT = 12;
+const JOURNEY_SMARTTALK_CACHE_KEY = "readativeJourneySmartTalkPreview:v1";
+const JOURNEY_SMARTTALK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface CachedJourneySmartTalkPreview {
+  questions: KnowledgeJourneyQuestion[];
+  cachedAt: number;
+}
+
+let journeySmartTalkMemoryCache: CachedJourneySmartTalkPreview | null = null;
 
 const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
   entries: [],
@@ -166,6 +172,110 @@ function normalizeJourneySmartTalkQuestion(
   };
 }
 
+function normalizeCachedJourneySmartTalkPreview(
+  value: unknown,
+): CachedJourneySmartTalkPreview | null {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as Partial<CachedJourneySmartTalkPreview>;
+  const cachedAt =
+    typeof candidate.cachedAt === "number" && Number.isFinite(candidate.cachedAt)
+      ? candidate.cachedAt
+      : 0;
+
+  if (!cachedAt || Date.now() - cachedAt > JOURNEY_SMARTTALK_CACHE_TTL_MS) {
+    return null;
+  }
+
+  const questions = Array.isArray(candidate.questions)
+    ? candidate.questions
+        .map((question) => {
+          const data = question as Partial<KnowledgeJourneyQuestion>;
+          const id = typeof data.id === "string" ? data.id.trim() : "";
+          const content =
+            typeof data.content === "string" ? data.content.trim() : "";
+          if (!id || !content) return null;
+
+          return {
+            id,
+            author:
+              typeof data.author === "string" && data.author
+                ? data.author
+                : "Unknown",
+            authorId: typeof data.authorId === "string" ? data.authorId : "",
+            content,
+            category: typeof data.category === "string" ? data.category : null,
+            createdAt:
+              typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
+                ? data.createdAt
+                : Date.now(),
+            answerCount:
+              typeof data.answerCount === "number" && Number.isFinite(data.answerCount)
+                ? data.answerCount
+                : 0,
+            answerText: Array.isArray(data.answerText)
+              ? data.answerText.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+          };
+        })
+        .filter((question): question is KnowledgeJourneyQuestion => Boolean(question))
+    : [];
+
+  return questions.length > 0 ? { questions, cachedAt } : null;
+}
+
+function readJourneySmartTalkPreviewCache() {
+  const memoryCache = normalizeCachedJourneySmartTalkPreview(
+    journeySmartTalkMemoryCache,
+  );
+  if (memoryCache) {
+    journeySmartTalkMemoryCache = memoryCache;
+    return memoryCache.questions;
+  }
+
+  journeySmartTalkMemoryCache = null;
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(JOURNEY_SMARTTALK_CACHE_KEY);
+    if (!raw) return null;
+
+    const storageCache = normalizeCachedJourneySmartTalkPreview(JSON.parse(raw));
+    if (!storageCache) {
+      window.localStorage.removeItem(JOURNEY_SMARTTALK_CACHE_KEY);
+      return null;
+    }
+
+    journeySmartTalkMemoryCache = storageCache;
+    return storageCache.questions;
+  } catch {
+    return null;
+  }
+}
+
+function writeJourneySmartTalkPreviewCache(questions: KnowledgeJourneyQuestion[]) {
+  if (questions.length === 0) return;
+
+  const cache: CachedJourneySmartTalkPreview = {
+    questions,
+    cachedAt: Date.now(),
+  };
+  journeySmartTalkMemoryCache = cache;
+
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      JOURNEY_SMARTTALK_CACHE_KEY,
+      JSON.stringify(cache),
+    );
+  } catch {
+    // Preview cache is best-effort and should never block the feed.
+  }
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface KnowledgeFeedProps {
@@ -178,6 +288,8 @@ interface KnowledgeFeedProps {
   refreshSignal: number;
   isActive: boolean;
 }
+
+type KnowledgeFeedPaginationCursor = QueryDocumentSnapshot<DocumentData> | number;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -278,10 +390,9 @@ export function KnowledgeFeed({
   const refreshFeedbackTimeoutRef = useRef<number | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
-    useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+    useRef<KnowledgeFeedPaginationCursor | null>(null);
   const hasMoreServerEntriesRef = useRef(hasMoreServerEntries);
   const hasPaginatedPastFirstPageRef = useRef(false);
-  const hasAppliedInitialRealtimeRankRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const independentLoadingKeysRef = useRef(new Set<string>());
   const hasLoadedProfilesDirectoryRef = useRef(false);
@@ -403,6 +514,16 @@ export function KnowledgeFeed({
     isLoadingJourneySmartTalkRef.current = true;
 
     const loadJourneySmartTalkPreview = async () => {
+      const cachedQuestions = readJourneySmartTalkPreviewCache();
+      if (cachedQuestions) {
+        if (!cancelled) {
+          setJourneyQuestions(cachedQuestions);
+          hasLoadedJourneySmartTalkRef.current = true;
+        }
+        isLoadingJourneySmartTalkRef.current = false;
+        return;
+      }
+
       try {
         const snapshot = await getDocs(
           query(
@@ -414,9 +535,11 @@ export function KnowledgeFeed({
 
         if (cancelled) return;
 
-        setJourneyQuestions(
-          snapshot.docs.map((item) => normalizeJourneySmartTalkQuestion(item)),
+        const questions = snapshot.docs.map((item) =>
+          normalizeJourneySmartTalkQuestion(item),
         );
+        setJourneyQuestions(questions);
+        writeJourneySmartTalkPreviewCache(questions);
         hasLoadedJourneySmartTalkRef.current = true;
       } catch (error) {
         console.warn("SmartTalk journey preview failed:", error);
@@ -493,7 +616,6 @@ export function KnowledgeFeed({
   useEffect(() => {
     const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
     feedRefreshSeedRef.current = nextRefreshSeed;
-    hasAppliedInitialRealtimeRankRef.current = false;
 
     const cachedFeed = readKnowledgeFeedCache(identity?.authorId);
     visibleLikedEntryIdsRef.current = [];
@@ -611,6 +733,24 @@ export function KnowledgeFeed({
       return;
     }
 
+    const cachedFeed =
+      feedRetrySignal === 0 ? readKnowledgeFeedCache(identity?.authorId) : null;
+    if (cachedFeed && entriesRef.current.length > 0) {
+      const cursorEntry =
+        cachedFeed.entries[Math.min(cachedFeed.entries.length, FEED_INITIAL_PAGE_SIZE) - 1] ||
+        cachedFeed.entries[cachedFeed.entries.length - 1] ||
+        null;
+
+      paginationCursorRef.current =
+        cursorEntry && Number.isFinite(cursorEntry.createdAt)
+          ? cursorEntry.createdAt
+          : null;
+      updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
+      setIsLoading(false);
+      setFeedLoadError(null);
+      return;
+    }
+
     if (entriesRef.current.length === 0) {
       setIsLoading(true);
     }
@@ -620,6 +760,7 @@ export function KnowledgeFeed({
       orderBy("createdAt", "desc"),
       limit(FEED_INITIAL_PAGE_SIZE),
     );
+    let cancelled = false;
     let didReceiveFeedResponse = false;
     const timeoutId =
       entriesRef.current.length === 0
@@ -633,22 +774,15 @@ export function KnowledgeFeed({
           }, FEED_LOAD_TIMEOUT_MS)
         : null;
 
-    const unsubscribe = onSnapshot(
-      knowledgeQuery,
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (
-          snapshot.metadata.fromCache &&
-          snapshot.docs.length === 0 &&
-          entriesRef.current.length === 0
-        ) {
-          return;
-        }
-
+    const loadInitialFeedPage = async () => {
+      try {
+        const snapshot = await getDocs(knowledgeQuery);
+        if (cancelled) return;
         didReceiveFeedResponse = true;
         if (timeoutId !== null) {
           window.clearTimeout(timeoutId);
         }
+
         const data = snapshot.docs.map((item) =>
           normalizeKnowledgeEntry(
             item.id,
@@ -666,45 +800,32 @@ export function KnowledgeFeed({
           );
         }
 
-        const previousEntryIds = new Set(
-          entriesRef.current.map((entry) => entry.id),
-        );
-        const newEntryIds = new Set(
-          data
-            .filter((entry) => !previousEntryIds.has(entry.id))
-            .map((entry) => entry.id),
-        );
-        const nextFeedEntries = mergeRealtimeKnowledgePage(
+        const nextFeedEntries = mergeKnowledgeEntryPages(
           entriesRef.current,
           data,
         );
-        const shouldApplyFreshSnapshotOrder =
-          !hasAppliedInitialRealtimeRankRef.current;
-        hasAppliedInitialRealtimeRankRef.current = true;
         entriesRef.current = nextFeedEntries;
         setEntries(nextFeedEntries);
         setFeedEntryOrder((currentOrder) => {
           const personalizationSnapshot = getKnowledgeFeedSnapshot();
-
-          if (shouldApplyFreshSnapshotOrder) {
+          if (currentOrder.length === 0) {
             return rankKnowledgeEntries(
               nextFeedEntries,
               personalizationSnapshot,
             ).map((entry) => entry.id);
           }
 
-          return reconcileRealtimeKnowledgeFeedOrder({
-            entries: nextFeedEntries,
+          return reconcileKnowledgeFeedOrder(
+            nextFeedEntries,
             currentOrder,
-            snapshot: personalizationSnapshot,
-            newEntryIds,
-          });
+            personalizationSnapshot,
+          );
         });
 
         setIsLoading(false);
         setFeedLoadError(null);
-      },
-      (error) => {
+      } catch (error) {
+        if (cancelled) return;
         didReceiveFeedResponse = true;
         if (timeoutId !== null) {
           window.clearTimeout(timeoutId);
@@ -714,18 +835,21 @@ export function KnowledgeFeed({
         setFeedLoadError(
           "Could not load the latest posts right now. Please refresh in a moment.",
         );
-      },
-    );
+      }
+    };
+
+    void loadInitialFeedPage();
 
     return () => {
+      cancelled = true;
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
       }
-      unsubscribe();
     };
   }, [
     feedRetrySignal,
     focusedEntryId,
+    identity?.authorId,
     isActive,
     selectedFeedTopic,
     selectedHashtag,
@@ -754,12 +878,25 @@ export function KnowledgeFeed({
       }
 
       try {
-        const nextPageQuery = query(
-          collection(db, "knowledge"),
-          orderBy("createdAt", "desc"),
-          startAfter(paginationCursorRef.current),
-          limit(FEED_NEXT_PAGE_SIZE),
-        );
+        const paginationCursor = paginationCursorRef.current;
+        if (paginationCursor === null) {
+          return "done";
+        }
+
+        const nextPageQuery =
+          typeof paginationCursor === "number"
+            ? query(
+                collection(db, "knowledge"),
+                orderBy("createdAt", "desc"),
+                startAfter(paginationCursor),
+                limit(FEED_NEXT_PAGE_SIZE),
+              )
+            : query(
+                collection(db, "knowledge"),
+                orderBy("createdAt", "desc"),
+                startAfter(paginationCursor),
+                limit(FEED_NEXT_PAGE_SIZE),
+              );
         const snapshot = await getDocs(nextPageQuery);
         const data = snapshot.docs.map((item) =>
           normalizeKnowledgeEntry(
@@ -904,6 +1041,7 @@ export function KnowledgeFeed({
     if (
       typeof window === "undefined" ||
       !isActive ||
+      !showComposer ||
       hasLoadedProfilesDirectoryRef.current
     ) {
       return;
@@ -964,7 +1102,7 @@ export function KnowledgeFeed({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [isActive]);
+  }, [isActive, showComposer]);
 
   useEffect(() => {
     if (!focusedEntryId) return;

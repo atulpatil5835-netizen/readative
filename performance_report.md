@@ -1,6 +1,6 @@
 # Release H2 Performance Report
 
-Status: build/runtime smoke clean; no broad performance redesign.
+Status: build/runtime smoke clean; live Firestore read containment applied.
 Date: 2026-07-06
 
 ## Scope
@@ -24,7 +24,11 @@ No new libraries, workers, polling loops, or background services were added.
 - SmartTalk total count quota failure no longer creates a console error; the page continues with loaded question count.
 - Notification side effects are decoupled from primary comment/publish success.
 - Test helper cleanup prevents future temporary post write artifacts.
-- No broad feed/listener/cache behavior was changed.
+- Public home feed no longer keeps an `onSnapshot` listener open for every visitor.
+- Automatic background feed prefetch is disabled.
+- Fresh feed cache can skip the initial server reread for returning visitors.
+- SmartTalk journey preview is reduced from 50 docs to 12 and cached for 6 hours.
+- Profile directory loading is deferred until the composer opens.
 
 ## Build Evidence
 
@@ -52,4 +56,6 @@ Production preview at `http://127.0.0.1:4173/`:
 
 ## Verdict
 
-No H2 build or smoke-test performance regression was identified. Firestore read reduction is limited to existing bounded/cached behavior; larger read-model optimizations should be handled as a separate schema/data-access release.
+No H2 build or smoke-test performance regression was identified. The live home/feed read path is now materially lower risk; larger schema-level read optimizations should still be handled as a separate data-access release.
+
+Production deploy completed on 2026-07-06 through Vercel prebuilt output and was smoke-checked on `https://www.readative.com/`.

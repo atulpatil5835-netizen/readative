@@ -21,7 +21,8 @@ Date: 2026-07-06
 - [x] Verify notification listener limit and fallback behavior.
 - [x] Verify notebook read paths.
 - [x] Verify profile read paths.
-- [x] Leave broad read/cache redesign as recommendation only.
+- [x] Apply live-safe home feed read containment.
+- [x] Leave schema-level read/cache redesign as recommendation only.
 
 ## Firestore write audit
 

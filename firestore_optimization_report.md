@@ -1,16 +1,16 @@
 # Release H2 Firestore Optimization Report
 
-Status: audit complete; safe write reductions applied; broad read redesign deferred as recommendation only.
+Status: audit complete; safe write reductions and live read containment applied.
 Date: 2026-07-06
 
 ## Read Audit Summary
 
 | Area | Current read/listener behavior | H2 action |
 | --- | --- | --- |
-| Home feed | One realtime listener on `knowledge`, ordered by `createdAt`, limited to 10 initial docs. Pagination reads 5 docs per page. One background prefetch page may read 5 extra docs after idle delay. | Left unchanged. It is bounded and product-visible. Removing prefetch would change perceived feed behavior. |
-| Feed cache | Memory/localStorage feed cache is already used before waiting on fresh data. Cache writes are delayed. | Left unchanged. |
-| Journey SmartTalk preview | One `getDocs` call to `smarttalk`, limit 50, guarded by `hasLoadedJourneySmartTalkRef`. | Left unchanged. |
-| Profile directory for mentions | One idle `getDocs` call to `userProfiles`, limit 80, guarded by `hasLoadedProfilesDirectoryRef`. | Left unchanged. |
+| Home feed | Previously kept one realtime listener on `knowledge`, ordered by `createdAt`, limited to 10 initial docs. Pagination reads 5 docs per page. One background prefetch page could read 5 extra docs after idle delay. | Replaced the public home listener with a one-shot `getDocs` page load, reused fresh feed cache instead of immediately rereading, and disabled automatic background prefetch. |
+| Feed cache | Memory/localStorage feed cache existed, but the home listener still opened even when fresh cache was available. | Fresh cache now prevents the initial server read for returning visitors while preserving pagination through a cached cursor. |
+| Journey SmartTalk preview | One `getDocs` call to `smarttalk`, limit 50, guarded by `hasLoadedJourneySmartTalkRef`. | Reduced to 12 docs and added a 6-hour memory/localStorage preview cache. |
+| Profile directory for mentions | One idle `getDocs` call to `userProfiles`, limit 80, guarded by `hasLoadedProfilesDirectoryRef`. | Deferred until the composer is opened, so normal readers no longer pay this read cost on landing. |
 | SmartTalk list | One realtime listener on first page, limit 50. Category ordered-query fallback uses a single fallback listener if an index is missing. | Left unchanged. |
 | SmartTalk total count | One `getCountFromServer()` call for total count. Quota failure does not block the list because the UI can fall back to loaded question count. | Hardened: count failure now logs a warning instead of a console error and leaves pagination/list rendering intact. |
 | SmartTalk pagination | `getDocs` reads next 50 docs only on load-more. | Left unchanged. |
@@ -35,7 +35,15 @@ Date: 2026-07-06
 
 ## Reduction Estimate
 
-Read reduction: no broad read reduction was claimed. Existing reads are already bounded in the main feed/SmartTalk/notification surfaces, and the remaining heavier profile/stat paths need a separate design-safe data model pass.
+Read reduction: live home/feed reads were reduced without changing routing or interaction behavior.
+
+- Removed the always-open public home feed listener.
+- Disabled the automatic background prefetch page.
+- Made fresh feed cache skip the immediate initial server read for returning visitors.
+- Reduced SmartTalk journey preview reads from 50 to 12 and cached the preview for 6 hours.
+- Deferred the 80-profile mention directory query until the composer is opened.
+
+Remaining heavier profile/stat paths still need a separate design-safe data model pass.
 
 Write reduction: duplicate and unnecessary writes were reduced in interaction failure paths:
 
