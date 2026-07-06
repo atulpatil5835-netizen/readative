@@ -1462,7 +1462,7 @@ export function KnowledgeFeed({
     (entry: KnowledgeEntry) => {
       markKnowledgeEntrySeen(entry);
 
-      if (typeof window !== "undefined" && window.innerWidth >= 1400) {
+      if (typeof window !== "undefined" && window.innerWidth >= 1280) {
         setDesktopContextEntryId((current) =>
           current === entry.id ? current : entry.id,
         );

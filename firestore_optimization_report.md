@@ -23,9 +23,9 @@ Date: 2026-07-06
 
 | Area | Before | H2 result |
 | --- | --- | --- |
-| Helpful | One post transaction plus a separate best-effort profile update. UI changed before persistence. | Profile tracking moved into the same transaction. UI updates only from transaction-returned arrays. Duplicate clicks blocked while trust write is in flight. |
+| Helpful | UI changed before persistence. Profile tracking was coupled tightly enough to block the primary interaction. | UI updates only from transaction-returned post arrays. Profile tracking is best-effort after the post transaction. Duplicate clicks blocked while trust write is in flight. |
 | Helpful remove | Post transaction plus separate profile update. UI changed before persistence. | Same transaction handles post arrays and profile removal. UI updates only from transaction result. |
-| Misleading | Post transaction could remove Helpful from post while profile cleanup happened separately. UI changed before persistence. | Helpful cleanup in post arrays and profile cleanup happen in the transaction when needed. UI updates only from transaction result. |
+| Misleading | UI changed before persistence. Profile cleanup could block the primary interaction if coupled to the transaction. | Helpful cleanup in post arrays happens in the post transaction. Profile cleanup is best-effort after the transaction. UI updates only from transaction result. |
 | Save | UI/count changed before the save transaction returned. | Transaction returns persisted `savedBy` and `saveCount`; UI updates from committed values only. |
 | SmartTalk save | Save failures could be swallowed and duplicate submits were possible. | Shared awaited save helper blocks duplicate writes and surfaces visible failure messages. |
 | SmartTalk vote | Missing docs silently returned; duplicate clicks could run concurrent transactions. | Missing docs throw, duplicate vote clicks are disabled, and failed persistence shows visible messaging. |
@@ -39,8 +39,8 @@ Read reduction: no broad read reduction was claimed. Existing reads are already 
 
 Write reduction: duplicate and unnecessary writes were reduced in interaction failure paths:
 
-- Helpful no longer performs a second independent profile write after a successful post transaction; profile tracking is part of the transaction boundary.
-- Misleading no longer performs profile Helpful cleanup outside the transaction.
+- Helpful/Misleading no longer let profile tracking failures roll back the primary post trust transaction.
+- Misleading post Helpful cleanup remains synchronized on the post document; profile cleanup is best-effort.
 - Duplicate trust/vote/save clicks are blocked while the write is in flight.
 - Notification writes no longer determine primary comment/publish success and cannot create false retries of the primary interaction.
 - The temporary notification test helper no longer leaves a permanent test post behind.

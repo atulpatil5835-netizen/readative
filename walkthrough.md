@@ -12,7 +12,7 @@ Restore interaction-based Firestore integrity without redesigning UI, routing, S
 Posts:
 
 - Helpful and Misleading now update UI only after the Firestore transaction returns persisted arrays.
-- Helpful profile tracking now happens inside the same transaction as post trust updates.
+- Helpful profile tracking now runs best-effort after post trust updates, so profile-rule failures cannot break the button.
 - Save now updates UI only after the Firestore transaction returns persisted saved state.
 - Comments appear only after the `knowledge/{postId}` write succeeds.
 - Comment and publish notifications now run best-effort after primary persistence.

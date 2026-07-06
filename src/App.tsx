@@ -477,7 +477,7 @@ export default function App() {
         <main
           className={`mx-auto px-3 pb-28 pt-20 sm:px-4 ${
             activeTab === "knowledge"
-              ? "max-w-3xl min-[1400px]:max-w-[1400px] min-[1400px]:px-6"
+              ? "max-w-3xl min-[1280px]:max-w-[1328px] min-[1280px]:px-4"
               : "max-w-3xl"
           }`}
         >

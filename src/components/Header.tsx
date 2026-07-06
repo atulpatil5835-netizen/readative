@@ -91,7 +91,7 @@ export const Header = memo(function Header({
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6 min-[1400px]:max-w-[1400px]">
+      <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6 min-[1280px]:max-w-[1328px]">
         <div className="flex items-center gap-3">
           <a
             href="/"

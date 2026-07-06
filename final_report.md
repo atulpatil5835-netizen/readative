@@ -8,7 +8,7 @@ Date: 2026-07-06
 Confirmed root causes:
 
 - Helpful/Misleading UI updated counts before Firestore transaction success.
-- Helpful profile tracking wrote outside the trust transaction, allowing post/profile desync.
+- Helpful/Misleading profile tracking was coupled to the trust transaction, so a production rules rejection on `userProfiles/{uid}` could make the primary post trust update fail.
 - Save UI updated before Firestore transaction success.
 - Comment and publish flows awaited notification writes in the primary success path, causing false interaction failures.
 - SmartTalk vote/save paths allowed duplicate clicks and had silent failure branches.
@@ -25,8 +25,8 @@ No broad read reduction was claimed. Existing main reads are bounded or cached: 
 
 H2 reduced unsafe and duplicate writes:
 
-- Helpful profile tracking moved into the post trust transaction.
-- Misleading profile cleanup moved into the same transaction when needed.
+- Helpful/Misleading post trust writes now succeed or fail on `knowledge/{postId}` only.
+- Profile tracking/cleanup now runs best-effort after the primary post trust transaction.
 - Helpful/Misleading/save/SmartTalk vote/save buttons block duplicate writes while in flight.
 - Notification side effects no longer cause primary comment/publish retry paths.
 - Future temporary test posts are deleted by the test helper.
@@ -56,10 +56,10 @@ H2 reduced unsafe and duplicate writes:
 Build passed with 1769 transformed modules. Key built assets:
 
 ```text
-index-Xr2vxUEt.js                  81.12 kB | gzip:  23.49 kB
-KnowledgeFeed-BSu-hThf.js          74.54 kB | gzip:  23.15 kB
-KnowledgeCard-BQa99Z8N.js          39.70 kB | gzip:  12.09 kB
-SmartTalk-BtwTa5y8.js              37.89 kB | gzip:  11.13 kB
+index-CvG3Nmt5.js                  81.12 kB | gzip:  23.50 kB
+KnowledgeFeed-CT3F-36d.js          74.54 kB | gzip:  23.15 kB
+KnowledgeCard-DB0ECkWa.js          39.97 kB | gzip:  12.13 kB
+SmartTalk-CXyhOTDZ.js              37.89 kB | gzip:  11.13 kB
 firebase-firestore-DWlcjqk8.js    449.87 kB | gzip: 111.58 kB
 ```
 

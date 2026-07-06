@@ -34,10 +34,10 @@ No new libraries, workers, polling loops, or background services were added.
 1769 modules transformed.
 dist/index.html                                4.73 kB | gzip:   1.27 kB
 dist/assets/index-DCPn6uSi.css                81.56 kB | gzip:  14.32 kB
-dist/assets/index-Xr2vxUEt.js                 81.12 kB | gzip:  23.49 kB
-dist/assets/SmartTalk-BtwTa5y8.js             37.89 kB | gzip:  11.13 kB
-dist/assets/KnowledgeCard-BQa99Z8N.js         39.70 kB | gzip:  12.09 kB
-dist/assets/KnowledgeFeed-BSu-hThf.js         74.54 kB | gzip:  23.15 kB
+dist/assets/index-CvG3Nmt5.js                 81.12 kB | gzip:  23.50 kB
+dist/assets/SmartTalk-CXyhOTDZ.js             37.89 kB | gzip:  11.13 kB
+dist/assets/KnowledgeCard-DB0ECkWa.js         39.97 kB | gzip:  12.13 kB
+dist/assets/KnowledgeFeed-CT3F-36d.js         74.54 kB | gzip:  23.15 kB
 dist/assets/firebase-auth-tJi5azUg.js        112.26 kB | gzip:  22.83 kB
 dist/assets/firebase-firestore-DWlcjqk8.js   449.87 kB | gzip: 111.58 kB
 ```

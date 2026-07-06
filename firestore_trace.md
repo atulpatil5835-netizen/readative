@@ -21,9 +21,9 @@ Execution path:
    - `dislikeCount`
    - `misleadingIds`
    - `misleadingCount`
-7. Transaction writes profile tracking on `userProfiles/{actorId}` with `likedKnowledgeIds`.
-8. Repository returns persisted arrays plus trace metadata.
-9. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+7. Repository returns persisted arrays plus trace metadata.
+8. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+9. Profile `likedKnowledgeIds` tracking runs best-effort after the primary post transaction.
 10. Like and milestone notifications run best-effort after the primary transaction.
 
 Repository result shape now includes:
@@ -49,9 +49,9 @@ Execution path:
 4. `toggleKnowledgeEntryMisleading()` opens a Firestore transaction.
 5. Transaction reads `knowledge/{entry.id}`.
 6. Transaction writes synchronized trust fields on `knowledge/{entry.id}`.
-7. If the actor previously marked the post Helpful, transaction also removes `entry.id` from `userProfiles/{actorId}.likedKnowledgeIds`.
-8. Repository returns persisted Helpful/Misleading arrays plus trace metadata.
-9. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+7. Repository returns persisted Helpful/Misleading arrays plus trace metadata.
+8. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+9. If the actor previously marked the post Helpful, profile cleanup runs best-effort after the primary post transaction.
 
 Repository result shape now includes:
 
@@ -80,6 +80,7 @@ Repository result shape now includes:
 | Firestore error code | Original Firestore/Firebase error object is preserved in the catch path. No Firestore write error was produced in unauthenticated smoke QA because no write was attempted. |
 | Firestore error message | Original error message is preserved in the catch path and user-facing fallback text is shown. |
 | Repository return value | Helpful/Misleading now return persisted arrays and trace metadata instead of `void`. |
+| Profile tracking path | `userProfiles/{actorId}.likedKnowledgeIds` is best-effort after the post trust transaction so profile-rule failures cannot block Helpful/Misleading. |
 | Notification execution path | Notifications run after the transaction with dynamic imports and are best-effort. Notification failure logs a warning and does not roll back the primary write. |
 | UI rollback path | There is no optimistic trust update to roll back. On failure, existing UI state is left unchanged and a visible message is shown. |
 
@@ -125,7 +126,7 @@ SmartTalk answer voting now returns an internal result object:
 ## Confirmed Root Causes
 
 1. Post Helpful and Misleading used optimistic local UI/count updates before the Firestore transaction result was known.
-2. Helpful profile tracking wrote `userProfiles/{actorId}.likedKnowledgeIds` outside the post trust transaction, allowing post/profile state to desynchronize.
+2. Production rules can reject the profile tracking write; when that write is inside the same transaction it causes the primary Helpful/Misleading post update to fail.
 3. Post Save used optimistic UI/count updates before the Firestore transaction result was known.
 4. Comment and publish success paths awaited notification writes inside primary write success flows, so notification failure could falsely appear as primary interaction failure.
 5. SmartTalk answer voting silently returned when a discussion document was missing and did not block duplicate vote clicks.

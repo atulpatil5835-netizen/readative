@@ -79,7 +79,7 @@ const FOOTER_LINKS = [
 
 export function AppFooter() {
   return (
-    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10 min-[1400px]:max-w-[1400px]">
+    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10 min-[1280px]:max-w-[1328px]">
       <div className="border-t border-slate-200/80 pt-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

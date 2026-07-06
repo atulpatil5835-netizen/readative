@@ -297,7 +297,7 @@ function DesktopLeftRail({
   return (
     <aside
       aria-label="Desktop reading workspace"
-      className="hidden min-[1400px]:block min-[1400px]:self-stretch"
+      className="hidden min-[1280px]:block min-[1280px]:self-stretch"
     >
       <div className="sticky top-24 space-y-5">
         {(entries.length > 0 || contextEntry) && (
@@ -358,7 +358,7 @@ function DesktopRightRail({
   return (
     <aside
       aria-label="Desktop learning context"
-      className="hidden min-[1400px]:block min-[1400px]:self-stretch"
+      className="hidden min-[1280px]:block min-[1280px]:self-stretch"
     >
       <div className="sticky top-24 space-y-5">
         {contextEntry && hasJourneyActions ? (
@@ -833,7 +833,7 @@ export function FeedRenderer({
         />
       )}
 
-      <div className="min-[1400px]:grid min-[1400px]:grid-cols-[240px_780px_280px] min-[1400px]:items-start min-[1400px]:gap-6">
+      <div className="min-[1280px]:grid min-[1280px]:grid-cols-[minmax(200px,220px)_minmax(0,1fr)_minmax(230px,260px)] min-[1280px]:items-start min-[1280px]:gap-5">
         <DesktopLeftRail
           activeFeedLabel={activeFeedLabel}
           contextEntry={desktopContextEntry}
@@ -843,7 +843,7 @@ export function FeedRenderer({
           onOpenEntry={onOpenEntry}
         />
 
-        <div className="min-[1400px]:min-w-0 min-[1400px]:w-[780px]">
+        <div className="min-[1280px]:min-w-0 min-[1280px]:w-full">
           {feedContent}
         </div>
 

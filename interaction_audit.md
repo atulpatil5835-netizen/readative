@@ -24,7 +24,7 @@ Production preview: `http://127.0.0.1:4173/`
 | Area | Interaction | Status | Audit result |
 | --- | --- | --- | --- |
 | Posts | Helpful | FIXED | UI updates after `toggleKnowledgeEntryLike()` resolves with persisted arrays. Transaction metadata includes collection, document path, profile path, and attempt count. |
-| Posts | Helpful remove | FIXED | Remove path updates post arrays and profile tracking through the same repository path; UI updates from persisted arrays. |
+| Posts | Helpful remove | FIXED | Remove path updates post arrays through the primary transaction; profile tracking is best-effort afterward. UI updates from persisted arrays. |
 | Posts | Misleading | FIXED | UI updates after `toggleKnowledgeEntryMisleading()` resolves with persisted arrays. Helpful cleanup is transactional. |
 | Posts | Misleading remove | FIXED | Remove path updates from persisted arrays only. |
 | Posts | Save / bookmark | FIXED | `toggleKnowledgeSave()` returns committed `savedBy` and `saveCount`; UI no longer changes before persistence. |
