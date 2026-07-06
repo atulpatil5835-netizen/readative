@@ -462,40 +462,26 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       return;
     }
 
-    if (shouldLike && !localHelpfulIds.includes(actorIdentity.authorId)) {
-      setHelpfulAnimationVersion((current) => current + 1);
-    }
-
-    const nextHelpfulIds = shouldLike
-      ? [...new Set([...localHelpfulIds, actorIdentity.authorId])]
-      : localHelpfulIds.filter((id) => id !== actorIdentity.authorId);
-    const nextMisleadingIds = shouldLike
-      ? localMisleadingIds.filter((id) => id !== actorIdentity.authorId)
-      : localMisleadingIds;
-
-    setLocalHelpfulIds(nextHelpfulIds);
-    setLocalHelpfulCount(nextHelpfulIds.length);
-    setLocalMisleadingIds(nextMisleadingIds);
-    setLocalMisleadingCount(nextMisleadingIds.length);
-    onLikeChange?.(entry.id, nextHelpfulIds, nextMisleadingIds);
     setInteractionMessage(null);
     setIsUpdatingTrust(true);
 
     try {
-      await toggleKnowledgeEntryLike({
+      const result = await toggleKnowledgeEntryLike({
         entry,
         actorId: actorIdentity.authorId,
         actorName: actorIdentity.displayName,
         shouldLike,
       });
+      if (shouldLike && !localHelpfulIds.includes(actorIdentity.authorId)) {
+        setHelpfulAnimationVersion((current) => current + 1);
+      }
+      setLocalHelpfulIds(result.helpfulIds);
+      setLocalHelpfulCount(result.helpfulIds.length);
+      setLocalMisleadingIds(result.misleadingIds);
+      setLocalMisleadingCount(result.misleadingIds.length);
+      onLikeChange?.(entry.id, result.helpfulIds, result.misleadingIds);
     } catch (error) {
       console.error("Failed to update helpful trust:", error);
-      const metrics = getTrustMetrics(entry);
-      setLocalHelpfulIds(metrics.helpfulIds);
-      setLocalHelpfulCount(metrics.helpfulCount);
-      setLocalMisleadingIds(metrics.misleadingIds);
-      setLocalMisleadingCount(metrics.misleadingCount);
-      onLikeChange?.(entry.id, metrics.helpfulIds, metrics.misleadingIds);
       setInteractionMessage(
         "Could not update helpful feedback right now. Please try again.",
       );
@@ -517,35 +503,22 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       return;
     }
 
-    const nextMisleadingIds = shouldMarkMisleading
-      ? [...new Set([...localMisleadingIds, actorIdentity.authorId])]
-      : localMisleadingIds.filter((id) => id !== actorIdentity.authorId);
-    const nextHelpfulIds = shouldMarkMisleading
-      ? localHelpfulIds.filter((id) => id !== actorIdentity.authorId)
-      : localHelpfulIds;
-
-    setLocalHelpfulIds(nextHelpfulIds);
-    setLocalHelpfulCount(nextHelpfulIds.length);
-    setLocalMisleadingIds(nextMisleadingIds);
-    setLocalMisleadingCount(nextMisleadingIds.length);
-    onLikeChange?.(entry.id, nextHelpfulIds, nextMisleadingIds);
     setInteractionMessage(null);
     setIsUpdatingTrust(true);
 
     try {
-      await toggleKnowledgeEntryMisleading({
+      const result = await toggleKnowledgeEntryMisleading({
         entry,
         actorId: actorIdentity.authorId,
         shouldMarkMisleading,
       });
+      setLocalHelpfulIds(result.helpfulIds);
+      setLocalHelpfulCount(result.helpfulIds.length);
+      setLocalMisleadingIds(result.misleadingIds);
+      setLocalMisleadingCount(result.misleadingIds.length);
+      onLikeChange?.(entry.id, result.helpfulIds, result.misleadingIds);
     } catch (error) {
       console.error("Failed to update misleading trust:", error);
-      const metrics = getTrustMetrics(entry);
-      setLocalHelpfulIds(metrics.helpfulIds);
-      setLocalHelpfulCount(metrics.helpfulCount);
-      setLocalMisleadingIds(metrics.misleadingIds);
-      setLocalMisleadingCount(metrics.misleadingCount);
-      onLikeChange?.(entry.id, metrics.helpfulIds, metrics.misleadingIds);
       setInteractionMessage(
         "Could not update misleading feedback right now. Please try again.",
       );
@@ -593,27 +566,20 @@ export const KnowledgeCard = memo(function KnowledgeCard({
 
     if (isUpdatingSave) return;
 
-    const nextSavedBy = shouldSave
-      ? [...new Set([...localSavedBy, actorIdentity.authorId])]
-      : localSavedBy.filter((id) => id !== actorIdentity.authorId);
-
-    setLocalSavedBy(nextSavedBy);
-    setLocalSaveCount(nextSavedBy.length);
     setInteractionMessage(null);
     setIsUpdatingSave(true);
 
     try {
-      await toggleKnowledgeSave({
+      const result = await toggleKnowledgeSave({
         entry,
         actorId: actorIdentity.authorId,
         shouldSave,
       });
+      setLocalSavedBy(result.savedBy);
+      setLocalSaveCount(result.saveCount);
       setInteractionMessage(shouldSave ? "Saved to your profile." : "Removed from saved.");
     } catch (error) {
       console.error("Failed to update saved post:", error);
-      const saveMetrics = getSaveMetrics(entry);
-      setLocalSavedBy(saveMetrics.savedBy);
-      setLocalSaveCount(saveMetrics.saveCount);
       setInteractionMessage("Could not update saved posts right now. Please try again.");
     } finally {
       setIsUpdatingSave(false);
@@ -646,10 +612,16 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     setInteractionMessage(null);
     setIsModeratingComment(true);
 
-    const { moderateContent } = await import("../../utils/contentModeration");
-    const moderation = await moderateContent("knowledge-comment", {
-      content,
-    });
+    let moderation;
+    try {
+      const { moderateContent } = await import("../../utils/contentModeration");
+      moderation = await moderateContent("knowledge-comment", { content });
+    } catch (error) {
+      console.error("Failed to validate comment:", error);
+      setCommentMessage("Could not validate your comment right now. Please try again.");
+      setIsModeratingComment(false);
+      return;
+    }
 
     if (!moderation.allowed) {
       setCommentMessage(moderation.message);
@@ -661,18 +633,6 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     setIsCommenting(true);
     setIsModeratingComment(false);
     setActiveCommentMention(null);
-
-    const optimisticComment: KnowledgeComment = {
-      id: `temp-${Date.now()}`,
-      author: normalizedName,
-      authorId: commentIdentity.authorId,
-      text: content,
-      mentions: commentMentions,
-      createdAt: Date.now(),
-    };
-
-    setLocalComments((current) => [...current, optimisticComment]);
-    setCommentText("");
 
     try {
       const savedComment: KnowledgeComment = {
@@ -688,45 +648,45 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         comments: arrayUnion(savedComment),
       });
 
-      const { notifyCommentOnKnowledge, notifyTaggedUsersOnComment } =
-        await import("../../utils/notifications");
-      await notifyCommentOnKnowledge(
-        entry,
-        {
-          authorId: commentIdentity.authorId,
-          username: normalizedName,
-        },
-        savedComment,
-      );
-
-      await notifyTaggedUsersOnComment(
-        {
-          id: entry.id,
-          title: entry.title,
-          authorId: entry.authorId,
-        },
-        savedComment,
-        {
-          authorId: commentIdentity.authorId,
-          username: normalizedName,
-        },
-        commentMentions,
-      );
-      recordKnowledgeFeedActivity({
-        type: "comment",
-        entry,
-      });
-
       setLocalComments((current) =>
-        current.map((comment) =>
-          comment.id === optimisticComment.id ? savedComment : comment,
-        ),
+        current.some((comment) => comment.id === savedComment.id)
+          ? current
+          : [...current, savedComment],
       );
+      setCommentText("");
+      recordKnowledgeFeedActivity({ type: "comment", entry });
+
+      void import("../../utils/notifications")
+        .then(({ notifyCommentOnKnowledge, notifyTaggedUsersOnComment }) =>
+          Promise.all([
+            notifyCommentOnKnowledge(
+              entry,
+              {
+                authorId: commentIdentity.authorId,
+                username: normalizedName,
+              },
+              savedComment,
+            ),
+            notifyTaggedUsersOnComment(
+              {
+                id: entry.id,
+                title: entry.title,
+                authorId: entry.authorId,
+              },
+              savedComment,
+              {
+                authorId: commentIdentity.authorId,
+                username: normalizedName,
+              },
+              commentMentions,
+            ),
+          ]),
+        )
+        .catch((error) => {
+          console.warn("Comment notifications failed; comment was saved.", error);
+        });
     } catch (error) {
       console.error("Failed to save comment:", error);
-      setLocalComments((current) =>
-        current.filter((comment) => comment.id !== optimisticComment.id),
-      );
       setCommentText(content);
       setCommentMessage(
         "Could not add your comment right now. Please try again.",

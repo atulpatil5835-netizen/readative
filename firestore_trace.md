@@ -1,155 +1,137 @@
-# Release Y.2.1 Firestore Trace
+# Release H2 Firestore Trace
 
-Status: audit only; no Firestore data was written or migrated.
+Status: code-level trace complete; authenticated runtime write trace still requires a signed-in browser session.
+Date: 2026-07-06
 
-## Storage path
+## Helpful path
 
-The current semantic highlight storage is:
+Execution path:
 
-```text
-userNotebook/{userId}/posts/{postId}
-```
+1. `KnowledgeCard` receives a Helpful click through `handleHelpful()`.
+2. `handleHelpful()` resolves the current `KnowledgeIdentity`.
+3. `updateHelpful(shouldLike, actorIdentity)` blocks duplicate trust writes with `isUpdatingTrust`.
+4. `toggleKnowledgeEntryLike()` opens a Firestore transaction.
+5. Transaction reads `knowledge/{entry.id}`.
+6. Transaction writes synchronized trust fields on `knowledge/{entry.id}`:
+   - `likes`
+   - `likeCount`
+   - `helpfulIds`
+   - `helpfulCount`
+   - `dislikes`
+   - `dislikeCount`
+   - `misleadingIds`
+   - `misleadingCount`
+7. Transaction writes profile tracking on `userProfiles/{actorId}` with `likedKnowledgeIds`.
+8. Repository returns persisted arrays plus trace metadata.
+9. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+10. Like and milestone notifications run best-effort after the primary transaction.
 
-The document stores:
+Repository result shape now includes:
 
 ```ts
 {
-  highlights: NotebookHighlight[]
+  collectionName: "knowledge",
+  documentPath: "knowledge/{entryId}",
+  helpfulIds: string[],
+  misleadingIds: string[],
+  profileDocumentPath: "userProfiles/{actorId}",
+  transactionAttempts: number
 }
 ```
 
-Each highlight contains only:
+## Misleading path
 
-```text
-postId
-paragraphId
-startOffset
-endOffset
-color
-createdAt
+Execution path:
+
+1. `KnowledgeCard` receives a Misleading click through `handleMisleading()`.
+2. `handleMisleading()` resolves the current `KnowledgeIdentity`.
+3. `updateMisleading(shouldMarkMisleading, actorIdentity)` blocks duplicate trust writes with `isUpdatingTrust`.
+4. `toggleKnowledgeEntryMisleading()` opens a Firestore transaction.
+5. Transaction reads `knowledge/{entry.id}`.
+6. Transaction writes synchronized trust fields on `knowledge/{entry.id}`.
+7. If the actor previously marked the post Helpful, transaction also removes `entry.id` from `userProfiles/{actorId}.likedKnowledgeIds`.
+8. Repository returns persisted Helpful/Misleading arrays plus trace metadata.
+9. UI updates local Helpful/Misleading arrays and counts from the repository result only.
+
+Repository result shape now includes:
+
+```ts
+{
+  collectionName: "knowledge",
+  documentPath: "knowledge/{entryId}",
+  helpfulIds: string[],
+  misleadingIds: string[],
+  profileDocumentPath: "userProfiles/{actorId}",
+  transactionAttempts: number
+}
 ```
 
-Evidence:
+## Captured Fields
 
-- `src/highlights/types.ts:4-15`
-- `src/highlights/types.ts:17-49`
-- `src/highlights/repository.ts:29-35`
-- `src/highlights/repository.ts:74-78`
+| Field | H2 result |
+| --- | --- |
+| Current authenticated UID | Passed as `actorIdentity.authorId`; for Google sessions this is Firebase `user.uid`. A concrete live UID was not captured because signed-in QA is credential-blocked. |
+| Helpful document path | `knowledge/{entry.id}` |
+| Helpful collection name | `knowledge` |
+| Misleading document path | `knowledge/{entry.id}` |
+| Misleading collection name | `knowledge` |
+| Profile document path | `userProfiles/{actorId}` |
+| Transaction retries | `transactionAttempts` increments each time the Firestore transaction callback executes. A value above 1 means the SDK retried the transaction callback. |
+| Firestore error code | Original Firestore/Firebase error object is preserved in the catch path. No Firestore write error was produced in unauthenticated smoke QA because no write was attempted. |
+| Firestore error message | Original error message is preserved in the catch path and user-facing fallback text is shown. |
+| Repository return value | Helpful/Misleading now return persisted arrays and trace metadata instead of `void`. |
+| Notification execution path | Notifications run after the transaction with dynamic imports and are best-effort. Notification failure logs a warning and does not roll back the primary write. |
+| UI rollback path | There is no optimistic trust update to roll back. On failure, existing UI state is left unchanged and a visible message is shown. |
 
-No pixels, SVG paths, pointer geometry, canvas data, or coordinates are stored in the new repository.
+## Other touched transaction paths
 
-## Highlight creation trace
+`toggleKnowledgeSave()` now returns:
 
-1. User toggles Notebook Highlight from the card trust row.
-   - `src/components/KnowledgeCard/CardTrust.tsx:48-67`
-   - `src/components/KnowledgeCard/KnowledgeCard.tsx:136-152`
-2. If the card is not focused, the card opens as focused before activation.
-   - `KnowledgeCard.tsx:147-151`
-3. Margin indicator arms a paragraph.
-   - `src/components/KnowledgeCard/CardContent.tsx:252-262`
-4. Selection is captured only inside the armed paragraph.
-   - `CardContent.tsx:101-154`
-5. A semantic highlight object is created.
-   - `CardContent.tsx:155-162`
-6. React state is updated optimistically.
-   - `CardContent.tsx:169-172`
-7. Repository is lazy imported and `saveNotebookHighlight(currentUserId, entry.id, highlight)` is called.
-   - `CardContent.tsx:174-177`
-8. Firestore transaction reads the current post document.
-   - `src/highlights/repository.ts:62-67`
-9. Transaction rejects duplicates and per-post cap overflow.
-   - `repository.ts:68-73`
-10. Transaction writes the updated `highlights` array.
-   - `repository.ts:74-80`
-11. If this is the first highlight for the post, the provider refreshes notebook post count.
-   - `CardContent.tsx:178-180`
-   - `src/context/NotebookContext.tsx:86-91`
+```ts
+{
+  collectionName: "knowledge",
+  documentPath: "knowledge/{entryId}",
+  profileDocumentPath: "userProfiles/{actorId}",
+  savedBy: string[],
+  saveCount: number,
+  transactionAttempts: number
+}
+```
 
-## Per-highlight verification matrix
+`toggleSmartTalkSave()` now returns:
 
-| Check | Code-level answer | Notes |
-| --- | --- | --- |
-| Did Firestore receive a write attempt? | Yes after a valid selection when `currentUserId`, focus, notebook mode, armed paragraph, and ready state are all true. | `CardContent.tsx:101-109`, `CardContent.tsx:174-177` |
-| Was the document created? | Not in the failing persistence scenario. | The most likely blocker is missing/undeployed owner rules for `userNotebook`, plus possible auth-state mismatch during local identity bootstrap. |
-| Correct collection? | Yes. | `userNotebook` in `repository.ts:29-35`. |
-| Correct user? | Yes after Google auth reconciliation; risky before auth is confirmed. | App starts from localStorage identity at `App.tsx:109-111`; Google profile maps to `user.uid` at `googleAuth.ts:121-126` and `userProfiles.ts:487-565`. |
-| Correct postId? | Yes. | Save/read both use `entry.id`; routes build `/post/{focusedEntryId}`. |
-| Correct paragraph? | Yes for unchanged content. | `buildNotebookParagraphIds()` hashes normalized section text and occurrence. |
+```ts
+{
+  collectionName: "smarttalk",
+  documentPath: "smarttalk/{questionId}",
+  profileDocumentPath: "userProfiles/{actorId}",
+  savedBy: string[],
+  saveCount: number,
+  transactionAttempts: number
+}
+```
 
-## Page refresh trace
+SmartTalk answer voting now returns an internal result object:
 
-### Route and focus
+```ts
+{
+  collectionName: "smarttalk",
+  documentPath: "smarttalk/{questionId}",
+  saved: boolean,
+  transactionAttempts: number
+}
+```
 
-1. Route parsing extracts `/post/{id}` into `focusedEntryId`.
-   - `src/utils/routes.ts:258-271`
-2. App syncs route state and stores `focusedEntryId` only for knowledge routes.
-   - `src/App.tsx:125-133`
-3. `NotebookProvider` receives `focusedPostId={activeTab === "knowledge" ? focusedEntryId : null}`.
-   - `src/App.tsx:415-418`
+## Confirmed Root Causes
 
-### Firestore read
+1. Post Helpful and Misleading used optimistic local UI/count updates before the Firestore transaction result was known.
+2. Helpful profile tracking wrote `userProfiles/{actorId}.likedKnowledgeIds` outside the post trust transaction, allowing post/profile state to desynchronize.
+3. Post Save used optimistic UI/count updates before the Firestore transaction result was known.
+4. Comment and publish success paths awaited notification writes inside primary write success flows, so notification failure could falsely appear as primary interaction failure.
+5. SmartTalk answer voting silently returned when a discussion document was missing and did not block duplicate vote clicks.
+6. SmartTalk save and post-sign-in continuation swallowed failures with console-only handling.
+7. The temporary Firestore test helper created a public `Temporary Test Post` without cleanup; future runs now delete their test document.
 
-1. `CardContent` runs its load effect.
-   - `src/components/KnowledgeCard/CardContent.tsx:61-88`
-2. If `!isFocusedPost || !currentUserId`, it clears local highlights and exits.
-   - `CardContent.tsx:61-67`
-3. Otherwise it lazy imports the repository and calls `loadNotebookPost(currentUserId, entry.id)`.
-   - `CardContent.tsx:70-72`
-4. Repository performs one `getDoc()` against `userNotebook/{uid}/posts/{postId}`.
-   - `src/highlights/repository.ts:52-55`
-5. The document is normalized and filtered to highlights matching the post id.
-   - `repository.ts:37-44`
+## Runtime QA Limitation
 
-### React hydration and rendering
-
-1. Loaded highlights enter local React state.
-   - `CardContent.tsx:73-75`
-2. Each paragraph computes its id and rendered text length.
-   - `CardContent.tsx:230-236`
-3. Highlights for that paragraph are filtered by `paragraphId` and `endOffset`.
-   - `CardContent.tsx:232-236`
-4. Valid highlights are rendered through `highlightNotebookReactTree()`.
-   - `CardContent.tsx:282-287`
-   - `src/highlights/highlightReactTree.tsx:26-88`
-
-## Page refresh verification matrix
-
-| Step | YES/NO | Reason |
-| --- | --- | --- |
-| Does Firestore read execute after refresh? | Yes only on a focused post with a current user id. No for home feed/profile/non-focused cards. | `CardContent.tsx:61-88` |
-| Does query return data? | Only if `userNotebook/{uid}/posts/{postId}` exists and deployed rules allow read. | `repository.ts:52-55` |
-| Does React receive data? | Yes if the promise resolves with normalized highlights. | `CardContent.tsx:73-75` |
-| Does renderer receive data? | Yes only after paragraph id and offset validation. | `CardContent.tsx:232-287` |
-| If rendering fails, exact component? | `CardContent` first, then `highlightNotebookReactTree` if no mark segments intersect text nodes. | `CardContent.tsx:61-88`, `CardContent.tsx:232-287`, `highlightReactTree.tsx:26-88` |
-
-## Post identifier matching
-
-| Identifier | Usage | Match status |
-| --- | --- | --- |
-| `postId` | Stored inside each highlight. | Matches `entry.id` at creation. |
-| `entry.id` | Firestore post document id and route id. | Save and read use the same value. |
-| `slug` | Not used by notebook persistence. | No slug mismatch found. |
-| `route` | `/post/{entry.id}` or knowledge focused route. | Routes preserve the id as `focusedEntryId`. |
-| `collection` | `knowledge` for posts, `userNotebook` for highlights. | Correct separation. |
-
-## My Notes Firestore trace
-
-Opening My Notes performs:
-
-1. One query to `userNotebook/{uid}/posts`, ordered by document id, limit 12.
-   - `src/highlights/repository.ts:87-108`
-2. One query to `knowledge` with the returned post ids.
-   - `repository.ts:111-123`
-
-It does not fetch every post individually. It does not attach a listener.
-
-Returning to My Notes repeats those reads because no cache is retained.
-
-## Firestore impact
-
-- Maximum one notebook document per user/post.
-- One transaction per new highlight.
-- One document read plus one document write inside that transaction.
-- My Notes first page: up to 12 notebook document reads plus up to 12 knowledge document reads.
-- No extra Firestore listeners introduced by Notebook Highlight.
-- Count badge: one aggregation query when provider refreshes the count.
+Production preview smoke QA was read-only and did not perform real Helpful/Misleading writes. A signed-in browser session is still required to capture a concrete UID, live transaction attempts, Firestore error code/message if any, refresh persistence, and another-session visibility.

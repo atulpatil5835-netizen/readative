@@ -1,154 +1,89 @@
-# Release T1 Walkthrough - Trust, Cookies & Notification Consent
+# Release H2 Walkthrough
 
-Status: completed.
-Date: 2026-07-05
+Status: local code and smoke validation passed; authenticated write walkthrough still required.
+Date: 2026-07-06
 
 ## Objective
 
-Add production-grade trust polish for first-time users:
+Restore interaction-based Firestore integrity without redesigning UI, routing, SEO, cookies, desktop workspace, or notification architecture.
 
-- premium first-visit cookie consent
-- lightweight browser notification permission flow
-- polished cookie-policy wording
-- no dependencies
-- no backend or Firestore changes
-- no notification delivery implementation
-- no routing, SEO-system, SmartTalk, Notebook, or feed changes
+## What Changed
 
-## Implementation
+Posts:
 
-### Cookie consent
+- Helpful and Misleading now update UI only after the Firestore transaction returns persisted arrays.
+- Helpful profile tracking now happens inside the same transaction as post trust updates.
+- Save now updates UI only after the Firestore transaction returns persisted saved state.
+- Comments appear only after the `knowledge/{postId}` write succeeds.
+- Comment and publish notifications now run best-effort after primary persistence.
 
-Added `src/components/TrustConsent.tsx` and lazy-loaded it from `src/App.tsx`.
+SmartTalk:
 
-The cookie card:
+- Helpful/Misleading answer votes throw on missing discussion docs instead of silently returning.
+- Vote buttons disable while a vote transaction is in flight.
+- Save uses a shared awaited helper and blocks duplicate writes.
+- Vote/save failures show visible messages.
+- Question and answer validation failures clean up loading state and show visible messages.
 
-- appears only when consent version `2026-07-05.t1` has not been accepted
-- stores acceptance locally
-- links to `/cookies`
-- is non-modal
-- is responsive
-- is keyboard-accessible
-- is labelled for assistive tech
+Auth:
 
-### Notification permission card
+- Google sign-in waits for Firebase auth persistence setup.
+- Session restore waits for persistence setup and reports restore errors.
+- Sign-out is awaited, duplicate-submit guarded, and visibly reports failure.
 
-The same lazy component owns the notification permission card.
+Trace and test helpers:
 
-The card:
+- Touched transaction paths now record transaction callback attempt counts.
+- Repository results include collection/document/profile paths where applicable.
+- The temporary Firestore test helper deletes its test post in `finally`.
 
-- waits until cookie consent is accepted
-- waits until meaningful engagement exists
-- does not call `Notification.requestPermission()` until `Enable Notifications` is clicked
-- stores settled `granted` or `denied` decisions locally
-- records session display so it never asks twice in the same session
-- dismisses with `Not Now`
-- supports Escape when focused inside the card
-- adds no polling, timers, or global listeners
+## Local Validation Performed
 
-### Cookie page polish
+Commands run from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
 
-Updated the existing `/cookies` legal content in `src/content/legalPages.ts`.
-
-The page now clearly covers:
-
-- Essential Cookies
-- Preference Storage
-- Future Analytics
-- Future Advertising
-- Controls
-
-No routing config, route parser, canonical logic, sitemap generator, or schema utility was changed.
-
-### Third-party startup cleanup
-
-Removed immediate third-party script startup so the essential-cookie copy is accurate:
-
-- Removed inline Google Analytics from `index.html`.
-- Removed startup `scheduleThirdPartyScripts()` from `src/main.tsx`.
-- Kept the existing utility file available for future consent-aware analytics/ads work.
-
-## QA evidence
-
-Cookie first visit:
-
-```json
-{
-  "path": "/",
-  "cookieVisible": true,
-  "notificationVisible": false,
-  "title": "Welcome to Readative",
-  "copyMatches": true,
-  "acceptButton": true,
-  "learnMoreHref": "/cookies",
-  "thirdPartyScripts": [],
-  "overflowX": 0
-}
+```text
+npm run build
+npx tsc --noEmit
+npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false
+git diff --check
 ```
 
-Cookies page:
+Results:
 
-```json
-{
-  "path": "/cookies",
-  "hasEssential": true,
-  "hasPreference": true,
-  "hasFutureAnalytics": true,
-  "hasFutureAdvertising": true,
-  "noCurrentAnalyticsClaim": true,
-  "overflowX": 0
-}
-```
+- Build: PASS.
+- TypeScript: PASS.
+- Strict unused-symbol TypeScript: PASS.
+- Diff whitespace: PASS; Git printed CRLF conversion warnings only.
 
-After acceptance and reload:
+## Browser Smoke Walkthrough
 
-```json
-{
-  "cookieVisible": false,
-  "notificationVisible": false,
-  "thirdPartyScripts": [],
-  "overflowX": 0
-}
-```
+1. Built the app with `npm run build`.
+2. Started production preview at `http://127.0.0.1:4173/`.
+3. Loaded Home, SmartTalk, Explore, and Profile on desktop 1280x720.
+4. Repeated Home, SmartTalk, Explore, and Profile on tablet 768x1024.
+5. Repeated Home, SmartTalk, Explore, and Profile on mobile 390x844.
+6. Verified no console errors on those routes.
+7. Verified no horizontal overflow on those routes.
+8. Did not perform production Firestore writes because no signed-in browser credentials were available.
 
-Responsive cookie QA:
+## Authenticated Walkthrough Still Required
 
-- Desktop 1280x720: PASS
-- Tablet 900x800: PASS
-- Mobile 390x844: PASS
-- Horizontal overflow: 0 in all checked sizes
+After signing in with a disposable or approved account:
 
-Notification QA:
+1. Toggle Helpful and verify count, refresh persistence, and another-session visibility.
+2. Remove Helpful and verify count, refresh persistence, and another-session visibility.
+3. Toggle Misleading and verify Helpful cleanup, count sync, refresh persistence, and another-session visibility.
+4. Remove Misleading and verify count and refresh persistence.
+5. Save and unsave a post; verify profile saved state/count and refresh persistence.
+6. Add a comment; verify count and refresh persistence.
+7. Verify notification failure cannot roll back a saved comment or published post.
+8. Verify SmartTalk answer Helpful/Misleading vote, duplicate-click disable, counts, refresh persistence, and error messaging.
+9. Verify SmartTalk save/unsave and answer/reply flow.
+10. Verify Notebook highlight save/delete, My Notes, feed highlights, notebook count, and refresh persistence.
+11. Verify profile counters after real actions.
+12. Verify notifications panel, badge, mark-read state, and open behavior with existing notifications.
+13. Verify logout and session restore.
 
-- Prompt not shown before cookie consent: PASS
-- Prompt not shown before engagement: PASS
-- In-app browser `Notification` API unsupported; prompt suppressed: PASS
-- Source confirms permission is requested only from `Enable Notifications`: PASS
-- Source confirms no polling, timers, or global listeners: PASS
+## Verdict
 
-Console QA:
-
-- Browser warnings/errors: none observed
-
-## Files modified for T1
-
-- `index.html`
-- `src/App.tsx`
-- `src/main.tsx`
-- `src/components/TrustConsent.tsx`
-- `src/content/legalPages.ts`
-- `trust_report.md`
-- `performance_report.md`
-- `walkthrough.md`
-- `task.md`
-- `final_report.md`
-
-## Validation
-
-Passed before report updates:
-
-- `npm run build`
-- `npx tsc --noEmit`
-- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`
-
-Final gates passed after report updates.
+H2 is locally clean and interaction code paths are repaired, but authenticated persistence QA remains the release gate before calling it fully production-complete.

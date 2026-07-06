@@ -1,77 +1,55 @@
-# Release T1 Performance Report
+# Release H2 Performance Report
 
-Status: passed.
-Date: 2026-07-05
+Status: build/runtime smoke clean; no broad performance redesign.
+Date: 2026-07-06
 
-## Performance rule
+## Scope
 
-T1 target:
+H2 focused on Firestore stability and interaction integrity. Performance work was limited to safe duplicate-write prevention and avoiding unnecessary primary-write retries caused by coupled side effects.
+
+## Dependency Impact
+
+No dependency files were changed:
+
+- `package.json`: unchanged
+- `package-lock.json`: unchanged
+
+No new libraries, workers, polling loops, or background services were added.
+
+## Firestore Impact
+
+- Helpful/Misleading/save UI no longer encourages duplicate retries caused by optimistic false success/failure states.
+- Trust and save buttons are guarded while writes are in flight.
+- SmartTalk vote/save buttons are guarded while writes are in flight.
+- SmartTalk total count quota failure no longer creates a console error; the page continues with loaded question count.
+- Notification side effects are decoupled from primary comment/publish success.
+- Test helper cleanup prevents future temporary post write artifacts.
+- No broad feed/listener/cache behavior was changed.
+
+## Build Evidence
+
+`npm run build` passed on 2026-07-06:
 
 ```text
-Startup increase < 500 bytes gzip
+1769 modules transformed.
+dist/index.html                                4.73 kB | gzip:   1.27 kB
+dist/assets/index-DCPn6uSi.css                81.56 kB | gzip:  14.32 kB
+dist/assets/index-Xr2vxUEt.js                 81.12 kB | gzip:  23.49 kB
+dist/assets/SmartTalk-BtwTa5y8.js             37.89 kB | gzip:  11.13 kB
+dist/assets/KnowledgeCard-BQa99Z8N.js         39.70 kB | gzip:  12.09 kB
+dist/assets/KnowledgeFeed-BSu-hThf.js         74.54 kB | gzip:  23.15 kB
+dist/assets/firebase-auth-tJi5azUg.js        112.26 kB | gzip:  22.83 kB
+dist/assets/firebase-firestore-DWlcjqk8.js   449.87 kB | gzip: 111.58 kB
 ```
 
-No dependency, cookie library, notification library, backend service, or polling mechanism was added.
+## Browser Smoke Evidence
 
-## Bundle results
+Production preview at `http://127.0.0.1:4173/`:
 
-Baseline measured from the R3 production build before T1:
+- Desktop 1280x720: Home, SmartTalk, Explore, Profile rendered; no console errors; no horizontal overflow.
+- Tablet 768x1024: Home, SmartTalk, Explore, Profile rendered; no console errors; no horizontal overflow.
+- Mobile 390x844: Home, SmartTalk, Explore, Profile rendered; no console errors; no horizontal overflow.
 
-```json
-{ "entry": "index-C9mLALxp.js", "raw": 82501, "gzip": 24047 }
-```
+## Verdict
 
-T1 production build:
-
-```json
-{ "entry": "index-CYr8QRAD.js", "raw": 80744, "gzip": 23366 }
-```
-
-Entry chunk delta:
-
-```text
-raw:  -1757 bytes
-gzip:  -681 bytes
-```
-
-The startup entry became smaller because T1 removed immediate third-party script startup from the main path while lazy-loading the consent UI.
-
-## Startup assets after T1
-
-```json
-{ "file": "dist/index.html", "raw": 4730, "gzip": 1274 }
-{ "file": "dist/assets/index-CYr8QRAD.js", "raw": 80744, "gzip": 23366 }
-{ "file": "dist/assets/index-DCPn6uSi.css", "raw": 81563, "gzip": 14322 }
-```
-
-## Consent UI chunk
-
-The consent UI is split into its own lazy chunk:
-
-```json
-{ "file": "TrustConsent-DtKkjE7I.js", "raw": 4735, "gzip": 1601 }
-```
-
-This chunk is not part of the core entry chunk. It loads only when the cookie consent is needed or when the notification-permission card becomes eligible after consent and engagement.
-
-## Third-party startup reduction
-
-Removed immediate startup loading for:
-
-- Google Analytics script in `index.html`
-- Startup scheduling of Google Analytics / Google ads in `src/main.tsx`
-
-Runtime QA confirmed no `googletagmanager` or `googlesyndication` scripts were present during first-visit, post-acceptance, or reload checks.
-
-## Dependency audit
-
-No changes were made to:
-
-- `package.json`
-- `package-lock.json`
-
-No cookie or notification package was added.
-
-## Conclusion
-
-T1 passes the startup performance rule. The entry chunk decreased by 681 bytes gzip, and the consent UI is isolated in a small lazy chunk.
+No H2 build or smoke-test performance regression was identified. Firestore read reduction is limited to existing bounded/cached behavior; larger read-model optimizations should be handled as a separate schema/data-access release.

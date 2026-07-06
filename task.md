@@ -1,104 +1,82 @@
-# Release T1 Task Checklist
+# Release H2 Task Checklist
 
-Status: implementation complete; final gates passed.
-Date: 2026-07-05
+Status: code fixes applied; local validation passed; authenticated Firestore E2E QA remains blocked by missing signed-in browser credentials.
+Date: 2026-07-06
 
-## Part 1 - Cookie consent
+## Root trace
 
-- [x] First-visit cookie consent added
-- [x] Shows only when consent version is missing or outdated
-- [x] Acceptance stored locally
-- [x] Versioned consent implemented
-- [x] Non-modal
-- [x] No fullscreen overlay
-- [x] Responsive
-- [x] Lightweight
-- [x] Accessible
-- [x] Premium/calm presentation
-- [x] Copy matches required title, description, and buttons
-- [x] Learn More opens `/cookies`
-- [x] Acceptance suppresses future display on reload
+- [x] Trace `KnowledgeCard -> updateHelpful -> toggleKnowledgeEntryLike -> runTransaction -> Firestore -> repository result -> UI update`.
+- [x] Trace `KnowledgeCard -> updateMisleading -> toggleKnowledgeEntryMisleading -> runTransaction -> Firestore -> repository result -> UI update`.
+- [x] Capture collection and document paths in repository results.
+- [x] Capture transaction callback attempt counts in touched transaction paths.
+- [x] Document notification side-effect paths.
+- [x] Document UI rollback behavior.
+- [x] Fix confirmed Helpful/Misleading defects only.
 
-## Part 2 - Notification permission
+## Firestore read audit
 
-- [x] No immediate browser notification permission request
-- [x] Existing notification system left intact
-- [x] Lightweight permission card added
-- [x] Card requires cookie consent first
-- [x] Card requires meaningful engagement
-- [x] Logged-in identity qualifies as engagement
-- [x] Opening three unique posts qualifies as engagement
-- [x] Enable Notifications button is the only `requestPermission()` path
-- [x] Not Now dismisses the prompt
-- [x] Never asks twice in the same session
-- [x] Granted/denied decisions stored locally when returned by the browser
-- [x] Unsupported browser Notification API suppresses the prompt
-- [x] No polling
-- [x] No timers
-- [x] No new global listeners
+- [x] Enumerate `getDoc`, `getDocs`, `onSnapshot`, and `runTransaction` call sites.
+- [x] Verify feed listener and pagination limits.
+- [x] Verify SmartTalk listener and pagination limits.
+- [x] Verify notification listener limit and fallback behavior.
+- [x] Verify notebook read paths.
+- [x] Verify profile read paths.
+- [x] Leave broad read/cache redesign as recommendation only.
 
-## Part 3 - Cookies page
+## Firestore write audit
 
-- [x] Essential Cookies wording
-- [x] Preference Storage wording
-- [x] Future Analytics wording
-- [x] Future Advertising wording
-- [x] Clear explanation
-- [x] Simple language
-- [x] No legal duplication added
-- [x] No redesign
+- [x] Helpful write path repaired.
+- [x] Misleading write path repaired.
+- [x] Save write path repaired.
+- [x] Comment write path repaired.
+- [x] Publish notification coupling repaired.
+- [x] SmartTalk vote duplicate-click and silent-failure path repaired.
+- [x] SmartTalk save duplicate-click and silent-failure path repaired.
+- [x] Test helper now deletes its temporary Firestore post after execution.
 
-## Part 4 - Performance
+## Interaction integrity
 
-- [x] No dependency added
-- [x] No cookie library added
-- [x] No notification library added
-- [x] Consent UI lazy-loaded
-- [x] Startup entry gzip decreased by 681 bytes
-- [x] Third-party script startup removed
+- [x] Helpful code path repaired.
+- [x] Helpful remove code path repaired.
+- [x] Misleading code path repaired.
+- [x] Misleading remove code path repaired.
+- [x] Comment code path repaired.
+- [x] Bookmark/save code path repaired.
+- [x] SmartTalk Helpful/Misleading vote code path repaired.
+- [x] SmartTalk save code path repaired.
+- [x] SmartTalk answer/reply error handling repaired.
+- [x] Confirm standalone post reply is not implemented.
+- [x] Confirm standalone SmartTalk comment/like surfaces are not implemented.
+- [ ] Authenticated Helpful E2E after refresh.
+- [ ] Authenticated Misleading E2E after refresh.
+- [ ] Authenticated Save E2E after refresh.
+- [ ] Authenticated Comment E2E after refresh.
+- [ ] Authenticated SmartTalk vote/save/reply E2E after refresh.
+- [ ] Authenticated Notebook save/delete/sync E2E after refresh.
+- [ ] Authenticated Profile counters E2E after refresh.
+- [ ] Authenticated Notifications E2E with existing notifications.
 
-## Part 5 - Accessibility
+## Validation
 
-- [x] Keyboard-accessible native controls
-- [x] Labelled consent regions
-- [x] Focus-visible styles
-- [x] Escape support for notification card
-- [x] ARIA labels/labelled regions
-- [x] Color contrast uses existing high-contrast palette
-
-## Part 6 - Validation
-
-- [x] `npm run build` passed before report updates
-- [x] `npx tsc --noEmit` passed before report updates
-- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` passed before report updates
-- [x] Final `npm run build` after report updates
-- [x] Final `npx tsc --noEmit` after report updates
-- [x] Final strict unused TypeScript check after report updates
-- [x] Final `git diff --check`
-- [x] Desktop QA
-- [x] Tablet QA
-- [x] Mobile QA
-- [x] Cookie QA
-- [x] Notification Prompt QA with in-app browser limitation noted
-- [x] Accessibility QA
-- [x] Console QA
+- [x] `npm run build`
+- [x] `npx tsc --noEmit`
+- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`
+- [x] `git diff --check`
+- [x] Desktop smoke QA on production preview.
+- [x] Tablet smoke QA on production preview.
+- [x] Mobile smoke QA on production preview.
+- [x] Console-error smoke QA on Home, SmartTalk, Explore, and Profile.
 
 ## Reports
 
-- [x] `trust_report.md`
+- [x] `firestore_trace.md`
+- [x] `firestore_optimization_report.md`
+- [x] `interaction_audit.md`
 - [x] `performance_report.md`
 - [x] `walkthrough.md`
 - [x] `task.md`
 - [x] `final_report.md`
 
-## Stop conditions
+## Stop condition
 
-- [x] Push notifications not implemented
-- [x] Backend notification delivery not implemented
-- [x] Firestore not modified
-- [x] SmartTalk not modified
-- [x] Notebook not modified
-- [x] Routing not modified
-- [x] SEO infrastructure not modified
-- [x] Feed behavior not modified for T1
-- [x] Startup bundle did not increase by more than 500 bytes gzip
+H2 should not be marked fully production-complete until the implemented signed-in interactions are verified end-to-end with a real authenticated session after refresh. Local build/type/browser smoke gates are clean.

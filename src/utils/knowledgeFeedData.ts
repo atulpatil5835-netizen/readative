@@ -3,7 +3,6 @@ import {
   arrayUnion,
   doc,
   runTransaction,
-  updateDoc,
 } from "firebase/firestore";
 import type { KnowledgeEntry } from "../types";
 import { db } from "../firebase/firebase";
@@ -31,10 +30,18 @@ export async function toggleKnowledgeEntryLike({
   actorName,
   shouldLike,
 }: ToggleKnowledgeEntryLikeInput) {
-  const knowledgeRef = doc(db, "knowledge", entry.id);
+  const collectionName = "knowledge";
+  const documentPath = `${collectionName}/${entry.id}`;
+  const profileDocumentPath = `userProfiles/${actorId}`;
+  const knowledgeRef = doc(db, collectionName, entry.id);
+  const profileRef = doc(db, "userProfiles", actorId);
   let nextHelpfulCount = getTrustMetrics(entry).helpfulCount;
+  let persistedHelpfulIds = getTrustMetrics(entry).helpfulIds;
+  let persistedMisleadingIds = getTrustMetrics(entry).misleadingIds;
+  let transactionAttempts = 0;
 
   await runTransaction(db, async (transaction) => {
+    transactionAttempts += 1;
     const snapshot = await transaction.get(knowledgeRef);
     const currentEntry = snapshot.exists()
       ? ({ ...entry, ...snapshot.data(), id: entry.id } as KnowledgeEntry)
@@ -47,6 +54,8 @@ export async function toggleKnowledgeEntryLike({
       ? metrics.misleadingIds.filter((id) => id !== actorId)
       : metrics.misleadingIds;
     nextHelpfulCount = nextHelpfulIds.length;
+    persistedHelpfulIds = nextHelpfulIds;
+    persistedMisleadingIds = nextMisleadingIds;
 
     transaction.update(knowledgeRef, {
       likes: nextHelpfulIds,
@@ -58,17 +67,12 @@ export async function toggleKnowledgeEntryLike({
       misleadingIds: nextMisleadingIds,
       misleadingCount: nextMisleadingIds.length,
     });
-  });
-
-  try {
-    await updateDoc(doc(db, "userProfiles", actorId), {
+    transaction.set(profileRef, {
       likedKnowledgeIds: shouldLike
         ? arrayUnion(entry.id)
         : arrayRemove(entry.id),
-    });
-  } catch (error) {
-    console.warn("Profile helpful-post tracking failed; post trust was saved.", error);
-  }
+    }, { merge: true });
+  });
 
   if (shouldLike) {
     if (actorName) {
@@ -101,7 +105,14 @@ export async function toggleKnowledgeEntryLike({
       type: "like",
       entry,
     });
-    return;
+    return {
+      collectionName,
+      documentPath,
+      helpfulIds: persistedHelpfulIds,
+      misleadingIds: persistedMisleadingIds,
+      profileDocumentPath,
+      transactionAttempts,
+    };
   }
 
   void import("./notifications")
@@ -111,6 +122,15 @@ export async function toggleKnowledgeEntryLike({
     .catch((error) => {
       console.warn("Like notification cleanup failed; unlike was saved.", error);
     });
+
+  return {
+    collectionName,
+    documentPath,
+    helpfulIds: persistedHelpfulIds,
+    misleadingIds: persistedMisleadingIds,
+    profileDocumentPath,
+    transactionAttempts,
+  };
 }
 
 export async function toggleKnowledgeEntryMisleading({
@@ -118,10 +138,17 @@ export async function toggleKnowledgeEntryMisleading({
   actorId,
   shouldMarkMisleading,
 }: ToggleKnowledgeEntryMisleadingInput) {
-  const knowledgeRef = doc(db, "knowledge", entry.id);
-  let shouldRemoveHelpfulProfileEntry = false;
+  const collectionName = "knowledge";
+  const documentPath = `${collectionName}/${entry.id}`;
+  const profileDocumentPath = `userProfiles/${actorId}`;
+  const knowledgeRef = doc(db, collectionName, entry.id);
+  const profileRef = doc(db, "userProfiles", actorId);
+  let persistedHelpfulIds = getTrustMetrics(entry).helpfulIds;
+  let persistedMisleadingIds = getTrustMetrics(entry).misleadingIds;
+  let transactionAttempts = 0;
 
   await runTransaction(db, async (transaction) => {
+    transactionAttempts += 1;
     const snapshot = await transaction.get(knowledgeRef);
     const currentEntry = snapshot.exists()
       ? ({ ...entry, ...snapshot.data(), id: entry.id } as KnowledgeEntry)
@@ -134,8 +161,10 @@ export async function toggleKnowledgeEntryMisleading({
       ? metrics.helpfulIds.filter((id) => id !== actorId)
       : metrics.helpfulIds;
 
-    shouldRemoveHelpfulProfileEntry =
+    const shouldRemoveHelpfulProfileEntry =
       shouldMarkMisleading && metrics.helpfulIds.includes(actorId);
+    persistedHelpfulIds = nextHelpfulIds;
+    persistedMisleadingIds = nextMisleadingIds;
 
     transaction.update(knowledgeRef, {
       likes: nextHelpfulIds,
@@ -147,15 +176,19 @@ export async function toggleKnowledgeEntryMisleading({
       misleadingIds: nextMisleadingIds,
       misleadingCount: nextMisleadingIds.length,
     });
+    if (shouldRemoveHelpfulProfileEntry) {
+      transaction.set(profileRef, {
+        likedKnowledgeIds: arrayRemove(entry.id),
+      }, { merge: true });
+    }
   });
 
-  if (shouldRemoveHelpfulProfileEntry) {
-    try {
-      await updateDoc(doc(db, "userProfiles", actorId), {
-        likedKnowledgeIds: arrayRemove(entry.id),
-      });
-    } catch (error) {
-      console.warn("Profile helpful-post cleanup failed; misleading trust was saved.", error);
-    }
-  }
+  return {
+    collectionName,
+    documentPath,
+    helpfulIds: persistedHelpfulIds,
+    misleadingIds: persistedMisleadingIds,
+    profileDocumentPath,
+    transactionAttempts,
+  };
 }

@@ -1,69 +1,85 @@
-# Release T1 Final Report
+# Release H2 Final Report
 
-Status: production-ready.
-Date: 2026-07-05
+Status: locally production-ready; authenticated Firestore write QA remains the final release gate.
+Date: 2026-07-06
 
-## Release verdict
+## 1. Exact Root Cause
 
-Release T1 delivers trust, cookie, and browser notification consent polish without turning into a feature release or backend release.
+Confirmed root causes:
 
-Implemented:
+- Helpful/Misleading UI updated counts before Firestore transaction success.
+- Helpful profile tracking wrote outside the trust transaction, allowing post/profile desync.
+- Save UI updated before Firestore transaction success.
+- Comment and publish flows awaited notification writes in the primary success path, causing false interaction failures.
+- SmartTalk vote/save paths allowed duplicate clicks and had silent failure branches.
+- SmartTalk total count quota failure logged a console error even though the list could continue with loaded questions.
+- The Firestore test helper left temporary post artifacts.
 
-- Premium first-visit cookie consent
-- Lightweight browser notification permission card
-- Cookie policy copy polish
-- Immediate third-party analytics/ad startup removal
-- No dependencies
-- No Firestore/backend changes
-- No push notification delivery
-- No routing changes
-- No SmartTalk changes
-- No Notebook changes
-- No feed changes for T1
+No live Firestore write error code/message was captured because authenticated write QA could not be performed in the available browser session.
 
-## Validation matrix
+## 2. Firestore Read Reduction
 
-| Gate | Result | Notes |
-| --- | --- | --- |
-| `npm run build` | PASS | 1769 modules transformed after final report updates. |
-| `npx tsc --noEmit` | PASS | Zero TypeScript errors after final report updates. |
-| `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` | PASS | Zero unused-local/parameter errors after final report updates. |
-| `git diff --check` | PASS | No whitespace errors after final cleanup. |
-| Desktop QA | PASS | 1280x720 cookie/trust check, overflow 0. |
-| Tablet QA | PASS | 900x800 cookie/trust check, overflow 0. |
-| Mobile QA | PASS | 390x844 cookie/trust check, overflow 0. |
-| Cookie QA | PASS | First visit, Learn More, acceptance, reload persistence. |
-| Notification Prompt QA | PASS with limitation | In-app browser has unsupported Notification API; suppression verified and source request path verified. |
-| Accessibility QA | PASS | Labelled region, native controls, unique accessible names, focus-visible styles. |
-| Console QA | PASS | No warnings/errors observed. |
-| Dependency audit | PASS | `package.json` and `package-lock.json` unchanged. |
-| Third-party startup audit | PASS | No Google Analytics/ad script tags observed in runtime QA. |
+No broad read reduction was claimed. Existing main reads are bounded or cached: feed initial listener limit 10, feed pagination 5, one idle background prefetch page, SmartTalk listener limit 50, notification listener limit 20, and guarded feed/profile/SmartTalk cache refs. Broader profile/stat read reductions are deferred because they need a separate data-model pass.
 
-## Performance verdict
+## 3. Firestore Write Reduction
 
-T1 passes the startup budget.
+H2 reduced unsafe and duplicate writes:
+
+- Helpful profile tracking moved into the post trust transaction.
+- Misleading profile cleanup moved into the same transaction when needed.
+- Helpful/Misleading/save/SmartTalk vote/save buttons block duplicate writes while in flight.
+- Notification side effects no longer cause primary comment/publish retry paths.
+- Future temporary test posts are deleted by the test helper.
+
+## 4. Files Modified
+
+- `src/App.tsx`
+- `src/components/KnowledgeCard/KnowledgeCard.tsx`
+- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
+- `src/components/SmartTalk.tsx`
+- `src/firebase/firebase.ts`
+- `src/utils/bookmarks.ts`
+- `src/utils/googleAuth.ts`
+- `src/utils/knowledgeFeedData.ts`
+- `test-notifications.ts`
+- `bug_fix_report.md`
+- `final_report.md`
+- `firestore_optimization_report.md`
+- `firestore_trace.md`
+- `interaction_audit.md`
+- `performance_report.md`
+- `task.md`
+- `walkthrough.md`
+
+## 5. Bundle Impact
+
+Build passed with 1769 transformed modules. Key built assets:
 
 ```text
-Baseline entry gzip: 24,047 bytes
-T1 entry gzip:       23,366 bytes
-Delta:                -681 bytes
+index-Xr2vxUEt.js                  81.12 kB | gzip:  23.49 kB
+KnowledgeFeed-BSu-hThf.js          74.54 kB | gzip:  23.15 kB
+KnowledgeCard-BQa99Z8N.js          39.70 kB | gzip:  12.09 kB
+SmartTalk-BtwTa5y8.js              37.89 kB | gzip:  11.13 kB
+firebase-firestore-DWlcjqk8.js    449.87 kB | gzip: 111.58 kB
 ```
 
-The consent UI is lazy-loaded as `TrustConsent-DtKkjE7I.js` at 1,601 bytes gzip and is not part of the core entry chunk.
+No dependencies changed.
 
-## Files changed for T1
+## 6. Production Readiness
 
-- `index.html`
-- `src/App.tsx`
-- `src/main.tsx`
-- `src/components/TrustConsent.tsx`
-- `src/content/legalPages.ts`
-- `trust_report.md`
-- `performance_report.md`
-- `walkthrough.md`
-- `task.md`
-- `final_report.md`
+Local gates passed:
 
-## Production readiness
+- `npm run build`
+- `npx tsc --noEmit`
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`
+- `git diff --check`
 
-T1 is production-ready. No stop condition has been triggered.
+Production preview smoke QA passed on desktop, tablet, and mobile for Home, SmartTalk, Explore, and Profile with no console errors and no horizontal overflow.
+
+## 7. Remaining Recommendations
+
+- Complete authenticated write QA with a real approved account.
+- Verify refresh persistence and another-session visibility for all implemented signed-in interactions.
+- Manually remove any existing live `Temporary Test Post` documents after confirming project/document ids.
+- Consider future schema work for high-growth arrays: reactions, saves, comments, and SmartTalk answers.
+- Add emulator-backed Firestore interaction tests for transaction attempts, error codes, and rollback behavior.

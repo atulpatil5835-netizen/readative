@@ -133,7 +133,7 @@ export async function signInWithGoogleAccount(): Promise<KnowledgeIdentity> {
       );
     }
 
-    void authPersistenceReady;
+    await authPersistenceReady;
     const result = await signInWithPopup(auth, googleProvider);
     return resolveGoogleUserIdentity(result.user);
   } catch (error) {
@@ -155,31 +155,49 @@ export function subscribeToGoogleIdentity(
     return () => undefined;
   }
 
-  return onAuthStateChanged(
-    auth,
-    (user) => {
-      if (!user) {
-        clearKnowledgeIdentity();
-        onChange(null);
-        return;
-      }
+  let cancelled = false;
+  let unsubscribe = () => undefined;
 
-      void resolveGoogleUserIdentity(user)
-        .then(onChange)
-        .catch((error) => {
-          console.error("Failed to sync Google profile:", error);
-          onError?.(
-            error instanceof Error
-              ? error.message
-              : "Could not load your Google profile right now.",
-          );
-        });
-    },
-    (error) => {
-      console.error("Firebase auth listener error:", error);
-      onError?.(getFirebaseAuthErrorMessage(error));
-    },
-  );
+  void authPersistenceReady
+    .then(() => {
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(
+        auth,
+        (user) => {
+          if (!user) {
+            clearKnowledgeIdentity();
+            onChange(null);
+            return;
+          }
+
+          void resolveGoogleUserIdentity(user)
+            .then(onChange)
+            .catch((error) => {
+              console.error("Failed to sync Google profile:", error);
+              onError?.(
+                error instanceof Error
+                  ? error.message
+                  : "Could not load your Google profile right now.",
+              );
+            });
+        },
+        (error) => {
+          console.error("Firebase auth listener error:", error);
+          onError?.(getFirebaseAuthErrorMessage(error));
+        },
+      );
+    })
+    .catch((error) => {
+      console.error("Firebase auth persistence setup failed:", error);
+      if (!cancelled) {
+        onError?.("Could not restore your sign-in session in this browser.");
+      }
+    });
+
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
 }
 
 export async function signOutGoogleAccount() {

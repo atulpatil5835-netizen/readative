@@ -139,6 +139,7 @@ export default function App() {
   const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
   const [cookieConsentAccepted, setCookieConsentAccepted] = useState(
     hasAcceptedCookieConsent,
@@ -239,9 +240,19 @@ export default function App() {
     setShowSignOutConfirm(true);
   }, []);
   const handleConfirmSignOut = useCallback(async () => {
-    await handleGoogleSignOut();
-    setShowSignOutConfirm(false);
-  }, [handleGoogleSignOut]);
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    setAuthStatusMessage(null);
+    try {
+      await handleGoogleSignOut();
+      setShowSignOutConfirm(false);
+    } catch (error) {
+      console.error("Google sign-out failed:", error);
+      setAuthStatusMessage("Could not sign out right now. Please try again.");
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [handleGoogleSignOut, isSigningOut]);
 
   useEffect(() => {
     const syncAndNormalizeRoute = () => {
@@ -612,6 +623,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowSignOutConfirm(false)}
+                disabled={isSigningOut}
                 className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Close sign out confirmation"
               >
@@ -635,6 +647,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowSignOutConfirm(false)}
+                  disabled={isSigningOut}
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   Cancel
@@ -644,9 +657,10 @@ export default function App() {
                   onClick={() => {
                     void handleConfirmSignOut();
                   }}
+                  disabled={isSigningOut}
                   className="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-rose-700"
                 >
-                  Sign Out
+                  {isSigningOut ? "Signing Out..." : "Sign Out"}
                 </button>
               </div>
             </div>

@@ -53,10 +53,15 @@ export async function toggleKnowledgeSave({
   actorId: string;
   shouldSave: boolean;
 }) {
-  const entryRef = doc(db, "knowledge", entry.id);
+  const collectionName = "knowledge";
+  const documentPath = `${collectionName}/${entry.id}`;
+  const profileDocumentPath = `userProfiles/${actorId}`;
+  const entryRef = doc(db, collectionName, entry.id);
   const profileRef = doc(db, "userProfiles", actorId);
+  let transactionAttempts = 0;
 
-  await runTransaction(db, async (transaction) => {
+  return runTransaction(db, async (transaction) => {
+    transactionAttempts += 1;
     const snapshot = await transaction.get(entryRef);
     if (!snapshot.exists()) {
       throw new Error("Post no longer exists.");
@@ -80,6 +85,14 @@ export async function toggleKnowledgeSave({
       },
       { merge: true },
     );
+    return {
+      collectionName,
+      documentPath,
+      profileDocumentPath,
+      savedBy: nextSavedBy,
+      saveCount: nextSavedBy.length,
+      transactionAttempts,
+    };
   });
 }
 
@@ -92,10 +105,15 @@ export async function toggleSmartTalkSave({
   actorId: string;
   shouldSave: boolean;
 }) {
-  const questionRef = doc(db, "smarttalk", question.id);
+  const collectionName = "smarttalk";
+  const documentPath = `${collectionName}/${question.id}`;
+  const profileDocumentPath = `userProfiles/${actorId}`;
+  const questionRef = doc(db, collectionName, question.id);
   const profileRef = doc(db, "userProfiles", actorId);
+  let transactionAttempts = 0;
 
-  await runTransaction(db, async (transaction) => {
+  return runTransaction(db, async (transaction) => {
+    transactionAttempts += 1;
     const snapshot = await transaction.get(questionRef);
     if (!snapshot.exists()) {
       throw new Error("Discussion no longer exists.");
@@ -119,5 +137,13 @@ export async function toggleSmartTalkSave({
       },
       { merge: true },
     );
+    return {
+      collectionName,
+      documentPath,
+      profileDocumentPath,
+      savedBy: nextSavedBy,
+      saveCount: nextSavedBy.length,
+      transactionAttempts,
+    };
   });
 }

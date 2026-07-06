@@ -1714,12 +1714,24 @@ export function KnowledgeFeed({
     setFeedMessage(null);
     setIsModerating(true);
 
-    const { moderateContent } = await import("../../utils/contentModeration");
-    const moderation = await moderateContent("knowledge-post", {
-      title,
-      content,
-      hashtags: seedHashtags,
-    });
+    let moderation;
+    try {
+      const { moderateContent } = await import("../../utils/contentModeration");
+      moderation = await moderateContent("knowledge-post", {
+        title,
+        content,
+        hashtags: seedHashtags,
+      });
+    } catch (error) {
+      console.error("Failed to validate knowledge post:", error);
+      setIsModerating(false);
+      setFeedMessage({
+        tone: "warning",
+        title: "Validation failed",
+        body: "Could not validate this post right now. Please try again.",
+      });
+      return;
+    }
 
     if (!moderation.allowed) {
       setIsModerating(false);
@@ -1783,20 +1795,6 @@ export function KnowledgeFeed({
       await setDoc(reference, entryPayload);
       const createdEntry = normalizeKnowledgeEntry(reference.id, entryPayload);
 
-      const { notifyTaggedUsers } = await import("../../utils/notifications");
-      await notifyTaggedUsers(
-        {
-          id: reference.id,
-          title,
-          authorId: currentIdentity.authorId,
-        },
-        {
-          authorId: currentIdentity.authorId,
-          username: currentIdentity.displayName,
-        },
-        mentions,
-      );
-
       entriesRef.current = [
         createdEntry,
         ...entriesRef.current.filter((entry) => entry.id !== createdEntry.id),
@@ -1809,6 +1807,25 @@ export function KnowledgeFeed({
       resetComposer();
       setShowComposer(false);
       onOpenEntry(reference.id);
+
+      void import("../../utils/notifications")
+        .then(({ notifyTaggedUsers }) =>
+          notifyTaggedUsers(
+            {
+              id: reference.id,
+              title,
+              authorId: currentIdentity.authorId,
+            },
+            {
+              authorId: currentIdentity.authorId,
+              username: currentIdentity.displayName,
+            },
+            mentions,
+          ),
+        )
+        .catch((error) => {
+          console.warn("Post tag notifications failed; post was published.", error);
+        });
     } catch (error) {
       console.error("Failed to publish knowledge:", error);
       setFeedMessage({

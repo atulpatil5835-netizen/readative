@@ -466,6 +466,9 @@ export function SmartTalk({
   const [savingQuestionIds, setSavingQuestionIds] = useState<Record<string, boolean>>(
     {},
   );
+  const [votingAnswerIds, setVotingAnswerIds] = useState<Record<string, boolean>>(
+    {},
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   const activeAuthorId = currentIdentity?.authorId || null;
@@ -493,7 +496,10 @@ export function SmartTalk({
       totalQuestionCountRef.current = nextCount;
       setTotalQuestionCount(nextCount);
     } catch (error) {
-      console.error("Firestore SmartTalk count error:", error);
+      console.warn(
+        "SmartTalk total count unavailable; using loaded question count.",
+        error,
+      );
     }
   }, [selectedCategory]);
 
@@ -762,9 +768,17 @@ export function SmartTalk({
     setModerationMessage(null);
     setIsModeratingQuestion(true);
 
-    const moderation = await moderateContent("smarttalk-question", {
-      content: questionText,
-    });
+    let moderation;
+    try {
+      moderation = await moderateContent("smarttalk-question", {
+        content: questionText,
+      });
+    } catch (error) {
+      console.error("Failed to validate SmartTalk question:", error);
+      setModerationMessage("Could not validate this question right now. Please try again.");
+      setIsModeratingQuestion(false);
+      return false;
+    }
 
     if (!moderation.allowed) {
       setModerationMessage(moderation.message);
@@ -794,6 +808,7 @@ export function SmartTalk({
       return true;
     } catch (error) {
       console.error("Failed to post question:", error);
+      setModerationMessage("Could not post this question right now. Please try again.");
       return false;
     } finally {
       setIsAsking(false);
@@ -829,9 +844,20 @@ export function SmartTalk({
     setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
     setModeratingAnswerId(questionId);
 
-    const moderation = await moderateContent("smarttalk-answer", {
-      content: answerText,
-    });
+    let moderation;
+    try {
+      moderation = await moderateContent("smarttalk-answer", {
+        content: answerText,
+      });
+    } catch (error) {
+      console.error("Failed to validate SmartTalk answer:", error);
+      setModeratingAnswerId(null);
+      setAnswerMessages((current) => ({
+        ...current,
+        [questionId]: "Could not validate your answer right now. Please try again.",
+      }));
+      return;
+    }
 
     if (!moderation.allowed) {
       setModeratingAnswerId(null);
@@ -898,15 +924,22 @@ export function SmartTalk({
     voteType: VoteType,
     voterId: string,
   ) => {
+    const collectionName = "smarttalk";
+    const documentPath = `${collectionName}/${question.id}`;
+    let transactionAttempts = 0;
+
     try {
-      const questionRef = doc(db, "smarttalk", question.id);
+      const questionRef = doc(db, collectionName, question.id);
       let bestAnswerNotification:
         | { question: Question; answer: Answer }
         | null = null;
 
       await runTransaction(db, async (transaction) => {
+        transactionAttempts += 1;
         const snapshot = await transaction.get(questionRef);
-        if (!snapshot.exists()) return;
+        if (!snapshot.exists()) {
+          throw new Error("This SmartTalk discussion no longer exists.");
+        }
 
         const currentQuestion = normalizeSmartTalkQuestion(
           snapshot.id,
@@ -973,8 +1006,25 @@ export function SmartTalk({
             console.warn("Best answer notification failed; vote was saved.", error);
           });
       }
+      return {
+        collectionName,
+        documentPath,
+        saved: true,
+        transactionAttempts,
+      };
     } catch (error) {
-      console.error("Failed to vote:", error);
+      console.error("Failed to vote:", {
+        collectionName,
+        documentPath,
+        error,
+        transactionAttempts,
+      });
+      return {
+        collectionName,
+        documentPath,
+        saved: false,
+        transactionAttempts,
+      };
     }
   };
 
@@ -988,7 +1038,52 @@ export function SmartTalk({
       return;
     }
 
-    await applyVote(question, answerId, voteType, currentIdentity.authorId);
+    const votingKey = `${question.id}:${answerId}`;
+    if (votingAnswerIds[votingKey]) return;
+
+    setVotingAnswerIds((current) => ({ ...current, [votingKey]: true }));
+    setAnswerMessages((current) => ({ ...current, [question.id]: "" }));
+    try {
+      const result = await applyVote(
+        question,
+        answerId,
+        voteType,
+        currentIdentity.authorId,
+      );
+      if (!result.saved) {
+        setAnswerMessages((current) => ({
+          ...current,
+          [question.id]: "Could not save that trust response right now. Please try again.",
+        }));
+      }
+    } finally {
+      setVotingAnswerIds((current) => ({ ...current, [votingKey]: false }));
+    }
+  };
+
+  const updateSavedQuestion = async (
+    question: Question,
+    actorId: string,
+    shouldSave: boolean,
+  ) => {
+    if (savingQuestionIds[question.id]) return;
+    setSavingQuestionIds((current) => ({ ...current, [question.id]: true }));
+    setAnswerMessages((current) => ({ ...current, [question.id]: "" }));
+    try {
+      await toggleSmartTalkSave({
+        question,
+        actorId,
+        shouldSave,
+      });
+    } catch (error) {
+      console.error("Failed to update saved SmartTalk discussion:", error);
+      setAnswerMessages((current) => ({
+        ...current,
+        [question.id]: "Could not update this saved discussion right now. Please try again.",
+      }));
+    } finally {
+      setSavingQuestionIds((current) => ({ ...current, [question.id]: false }));
+    }
   };
 
   const handleToggleSaveQuestion = async (question: Question) => {
@@ -999,19 +1094,7 @@ export function SmartTalk({
 
     const metrics = getSaveMetrics(question);
     const shouldSave = !metrics.savedBy.includes(currentIdentity.authorId);
-
-    setSavingQuestionIds((current) => ({ ...current, [question.id]: true }));
-    try {
-      await toggleSmartTalkSave({
-        question,
-        actorId: currentIdentity.authorId,
-        shouldSave,
-      });
-    } catch (error) {
-      console.error("Failed to update saved SmartTalk discussion:", error);
-    } finally {
-      setSavingQuestionIds((current) => ({ ...current, [question.id]: false }));
-    }
+    await updateSavedQuestion(question, currentIdentity.authorId, shouldSave);
   };
 
   const getAnswerScore = (answer: Answer) => getAnswerHelpfulScore(answer);
@@ -1056,21 +1139,27 @@ export function SmartTalk({
 
     if (prompt.type === "save") {
       setNamePrompt(null);
-      void toggleSmartTalkSave({
-        question: prompt.question,
-        actorId: nextIdentity.authorId,
-        shouldSave: true,
-      });
+      await updateSavedQuestion(prompt.question, nextIdentity.authorId, true);
       return;
     }
 
     setNamePrompt(null);
-    void applyVote(
+    const votingKey = `${prompt.question.id}:${prompt.answerId}`;
+    setVotingAnswerIds((current) => ({ ...current, [votingKey]: true }));
+    const result = await applyVote(
       prompt.question,
       prompt.answerId,
       prompt.voteType,
       nextIdentity.authorId,
     );
+    if (!result.saved) {
+      setAnswerMessages((current) => ({
+        ...current,
+        [prompt.question.id]:
+          "Could not save that trust response right now. Please try again.",
+      }));
+    }
+    setVotingAnswerIds((current) => ({ ...current, [votingKey]: false }));
   };
 
   const searchTerms = useMemo(
@@ -1163,6 +1252,7 @@ export function SmartTalk({
     const userDisliked = activeAuthorId
       ? trustMetrics.misleadingIds.includes(activeAuthorId)
       : false;
+    const isVoting = Boolean(votingAnswerIds[`${question.id}:${answer.id}`]);
 
     return (
       <div
@@ -1218,7 +1308,8 @@ export function SmartTalk({
           <button
             type="button"
             onClick={() => void handleVote(question, answer.id, "helpful")}
-            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
+            disabled={isVoting}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               userLiked
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                 : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
@@ -1234,7 +1325,8 @@ export function SmartTalk({
           <button
             type="button"
             onClick={() => void handleVote(question, answer.id, "misleading")}
-            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors ${
+            disabled={isVoting}
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               userDisliked
                 ? "border-amber-200 bg-amber-50 text-amber-700"
                 : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"

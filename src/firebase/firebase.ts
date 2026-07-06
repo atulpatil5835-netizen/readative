@@ -161,7 +161,5 @@ export const auth = maybeAuth as Auth
 export const firebaseAuthDomain = firebaseConfig.authDomain
 
 export const authPersistenceReady = maybeAuth
-  ? setPersistence(maybeAuth, browserLocalPersistence).catch((error) => {
-      console.error("Firebase auth persistence setup failed:", error)
-    })
+  ? setPersistence(maybeAuth, browserLocalPersistence)
   : Promise.resolve()
