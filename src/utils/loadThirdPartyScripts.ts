@@ -63,9 +63,9 @@ function ensureAnalyticsStub() {
   window.dataLayer = window.dataLayer || [];
   window.gtag =
     window.gtag ||
-    ((...args: unknown[]) => {
-      window.dataLayer?.push(args);
-    });
+    function () {
+      window.dataLayer?.push(arguments);
+    };
 }
 
 function configureAnalytics() {
@@ -197,8 +197,11 @@ function scheduleAdsScript() {
 function loadThirdPartyScripts() {
   configureAnalytics();
 
+  // Load Google Analytics script immediately for active realtime data collection
+  appendScript(GOOGLE_ANALYTICS_SRC, { async: true });
+
+  // Keep ad loading on idle
   runWhenBrowserIsIdle(() => {
-    appendScript(GOOGLE_ANALYTICS_SRC, { async: true });
     scheduleAdsScript();
   });
 }
@@ -211,7 +214,8 @@ export function scheduleThirdPartyScripts() {
   thirdPartyScriptsScheduled = true;
   configureAnalytics();
 
-  if (document.readyState === "complete") {
+  // Load immediately if the document DOM is interactive or fully loaded
+  if (document.readyState === "complete" || document.readyState === "interactive") {
     loadThirdPartyScripts();
     return;
   }
