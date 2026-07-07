@@ -56,7 +56,6 @@ Date: 2026-07-06
 - [ ] Authenticated Notebook save/delete/sync E2E after refresh.
 - [ ] Authenticated Profile counters E2E after refresh.
 - [ ] Authenticated Notifications E2E with existing notifications.
-
 ## Validation
 
 - [x] `npm run build`

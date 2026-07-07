@@ -43,6 +43,8 @@ import {
 } from "../types";
 import { SEO } from "./SEO";
 import { DiscoverySearch } from "./DiscoverySearch";
+import { trackSearch } from "../utils/analytics";
+
 import { ProfileAvatar } from "./ProfileAvatar";
 import { hydrateUserProfile } from "../utils/profileData";
 import {
@@ -730,6 +732,17 @@ export function Explore({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  useEffect(() => {
+    const trimmed = deferredSearchQuery.trim();
+    if (!trimmed) return;
+
+    const timeoutId = setTimeout(() => {
+      trackSearch(trimmed);
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [deferredSearchQuery]);
 
   useEffect(() => {
     let cancelled = false;

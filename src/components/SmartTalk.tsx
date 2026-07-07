@@ -45,6 +45,8 @@ import {
 import { db } from "../firebase/firebase";
 import { GoogleSignInPrompt } from "./Auth";
 import { DiscoverySearch } from "./DiscoverySearch";
+import { trackSearch, trackSmartTalkAsked, trackSmartTalkAnswered } from "../utils/analytics";
+
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
@@ -473,6 +475,18 @@ export function SmartTalk({
 
   const activeAuthorId = currentIdentity?.authorId || null;
   const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  useEffect(() => {
+    const trimmed = deferredSearchQuery.trim();
+    if (!trimmed) return;
+
+    const timeoutId = setTimeout(() => {
+      trackSearch(trimmed);
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [deferredSearchQuery]);
+
   const firstPageQuestionsRef = useRef<Question[]>([]);
   const loadedPageQuestionsRef = useRef<Question[]>([]);
   const totalQuestionCountRef = useRef<number | null>(null);
@@ -790,7 +804,7 @@ export function SmartTalk({
     setIsModeratingQuestion(false);
 
     try {
-      await addDoc(collection(db, "smarttalk"), {
+      const docRef = await addDoc(collection(db, "smarttalk"), {
         author: authorIdentity.displayName,
         authorId: authorIdentity.authorId,
         content: questionText,
@@ -801,7 +815,9 @@ export function SmartTalk({
         saveCount: 0,
         createdAt: serverTimestamp(),
       });
+      trackSmartTalkAsked(docRef.id, newQuestionCategory || undefined);
       void loadTotalQuestionCount();
+
       setNewQuestion("");
       setNewQuestionCategory("");
       setNewQuestionDifficulty("");
@@ -890,7 +906,9 @@ export function SmartTalk({
         answers: arrayUnion(answer),
       });
 
+      trackSmartTalkAnswered(questionId, answer.id);
       setAnswerInputs((current) => ({ ...current, [questionId]: "" }));
+
       setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
       setExpandedAnswers((current) => ({ ...current, [questionId]: true }));
     } catch (error) {

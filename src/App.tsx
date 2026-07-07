@@ -43,7 +43,8 @@ import {
   type AppTab,
 } from "./utils/routes";
 import type { LegalSlug } from "./content/legalRoutes";
-import { trackPageView } from "./utils/analytics";
+import { trackPageView, trackLogin, trackLogout, setAnalyticsUser } from "./utils/analytics";
+import { scheduleThirdPartyScripts } from "./utils/loadThirdPartyScripts";
 
 const KnowledgeFeed = lazy(() =>
   import("./components/KnowledgeFeed").then((module) => ({
@@ -227,6 +228,9 @@ export default function App() {
     setIdentity(nextIdentity);
     setAuthStatusMessage(null);
     setShowGoogleSignInPrompt(false);
+    if (nextIdentity) {
+      trackLogin("Google");
+    }
   }, []);
 
   const handleGoogleSignOut = useCallback(async () => {
@@ -235,6 +239,7 @@ export default function App() {
     setShowNotificationsPanel(false);
     setUnreadNotificationCount(0);
     setNotifications([]);
+    trackLogout();
   }, []);
   const handleHeaderSignOut = useCallback(() => {
     setShowSignOutConfirm(true);
@@ -293,7 +298,7 @@ export default function App() {
 
   useEffect(() => {
     trackPageView();
-  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, legalSlug, routeErrorPath]);
+  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, legalSlug, routeErrorPath, cookieConsentAccepted]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -315,6 +320,22 @@ export default function App() {
   const notificationPromptEligible =
     cookieConsentAccepted && isIdentityHydrated && hasNotificationEngagement;
   const shouldRenderTrustConsent = !cookieConsentAccepted || notificationPromptEligible;
+
+  useEffect(() => {
+    if (cookieConsentAccepted) {
+      scheduleThirdPartyScripts();
+    }
+  }, [cookieConsentAccepted]);
+
+  useEffect(() => {
+    if (cookieConsentAccepted) {
+      if (hydratedIdentity?.authorId) {
+        setAnalyticsUser(hydratedIdentity.authorId);
+      } else {
+        setAnalyticsUser(null);
+      }
+    }
+  }, [cookieConsentAccepted, hydratedIdentity?.authorId]);
 
   useEffect(() => {
     if (!firebaseConfigReady || !hydratedIdentity?.authorId) {

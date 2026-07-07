@@ -9,6 +9,8 @@ import type { KnowledgeEntry } from "../types";
 import { db } from "../firebase/firebase";
 import { recordKnowledgeFeedActivity } from "./feedPersonalization";
 import { getTrustMetrics } from "./trustSystem";
+import { trackPostLiked } from "./analytics";
+
 
 const HELPFUL_MILESTONES = new Set([10, 25, 50, 100, 250, 500, 1000]);
 
@@ -112,6 +114,7 @@ export async function toggleKnowledgeEntryLike({
         });
     }
 
+    trackPostLiked(entry.id);
     recordKnowledgeFeedActivity({
       type: "like",
       entry,

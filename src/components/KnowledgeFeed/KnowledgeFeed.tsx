@@ -30,6 +30,7 @@ import {
 } from "../../types";
 import { GoogleSignInPrompt } from "../Auth";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
+import { trackPostCreated } from "../../utils/analytics";
 import { hydrateUserProfile } from "../../utils/profileData";
 import { signInWithGoogleAccount } from "../../utils/googleAuth";
 import {
@@ -1931,6 +1932,7 @@ export function KnowledgeFeed({
       };
 
       await setDoc(reference, entryPayload);
+      trackPostCreated(reference.id, category || undefined);
       const createdEntry = normalizeKnowledgeEntry(reference.id, entryPayload);
 
       entriesRef.current = [

@@ -26,6 +26,7 @@ import {
 } from "../../utils/knowledgeImages";
 import { buildAbsoluteRouteUrl, navigateToRoute } from "../../utils/routes";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
+import { trackShare } from "../../utils/analytics";
 import { normalizeKnowledgeVisibility } from "../../utils/knowledgePrivacy";
 import {
   createExcerpt,
@@ -732,6 +733,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           type: "share",
           entry,
         });
+        trackShare("knowledge_post", entry.id);
         setShareCopied(true);
         return;
       } catch (error) {
@@ -749,6 +751,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         type: "share",
         entry,
       });
+      trackShare("knowledge_post", entry.id);
       setShareCopied(true);
     } catch (error) {
       console.error("Clipboard share failed:", error);
