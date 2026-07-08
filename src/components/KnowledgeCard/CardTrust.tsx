@@ -17,8 +17,9 @@ export function CardTrust({
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${trustToneClass}`}
           title={`${trustMetrics.communityTrustPercent}% trust: ${trustMetrics.helpfulCount} helpful, ${trustMetrics.misleadingCount} misleading`}
+          aria-label={`${trustLabel} badge: ${trustMetrics.communityTrustPercent}% trust, ${trustMetrics.helpfulCount} helpful, ${trustMetrics.misleadingCount} misleading`}
         >
-          <ShieldCheck className="h-2.5 w-2.5" />
+          <ShieldCheck className="h-2.5 w-2.5" aria-hidden="true" />
           {trustLabel}
         </span>
         {trustMetrics.helpfulCount >= 5 && (
@@ -28,7 +29,7 @@ export function CardTrust({
         )}
         {localSaveCount >= 3 && (
           <span className="inline-flex items-center gap-1 rounded-full border border-sky-100 bg-sky-50/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-sky-700">
-            <Bookmark className="h-2.5 w-2.5" />
+            <Bookmark className="h-2.5 w-2.5" aria-hidden="true" />
             Most Saved
           </span>
         )}
@@ -39,7 +40,7 @@ export function CardTrust({
         )}
         {entryVisibility === "private" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-            <Lock className="h-2.5 w-2.5" />
+            <Lock className="h-2.5 w-2.5" aria-hidden="true" />
             Private
           </span>
         )}
@@ -62,7 +63,7 @@ export function CardTrust({
               : "border-slate-200/80 text-slate-400 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
           }`}
         >
-          <Highlighter className="h-4 w-4" />
+          <Highlighter className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
     </div>

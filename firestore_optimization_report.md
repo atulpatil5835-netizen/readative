@@ -1,3 +1,49 @@
+# Release H3 Firestore Optimization Report
+
+Status: audit complete; exact profile reads added without duplicate user reads; authenticated write QA blocked.
+Date: 2026-07-08
+
+## H3 Read/Listener/Transaction Measurement
+
+Measured from code audit and local browser smoke:
+
+| Area | Reads | Writes | Listeners | Transactions | H3 result |
+| --- | --- | --- | --- | --- | --- |
+| Home feed first page | `knowledge` one-shot `getDocs`, limit 10 unless fresh cache is used. | None on read. | None for public feed first page. | None. | Unchanged from H2 containment. |
+| Home feed pagination | `knowledge` one-shot `getDocs`, limit 5 per page. | None. | None. | None. | Unchanged. |
+| Feed author profiles | New exact `userProfiles` id query for profile ids visible in rendered feed entries/comments/mentions, chunked at 30 ids. | None. | None. | None. | Added to fix missing avatars. Loaded/loading id sets prevent duplicate profile reads in the session. |
+| Profile mention directory | `userProfiles` one-shot directory query, limit 80, only after composer opens. | None. | None. | None. | Now merges with exact feed profiles instead of replacing them. |
+| Profile edit/photo/banner/details | Existing `userProfiles/{uid}` writes only. | One profile write per save. | None added. | None. | Same-session event updates feed profile cache without rereading. |
+| Edit Post | Existing `knowledge/{postId}` update. | One post update per save. | None added. | None. | Parent feed state updates after successful write; no schema change. |
+| Helpful | Transaction reads/writes `knowledge/{postId}`. Best-effort profile tracking write after transaction. | One primary post transaction; optional profile tracking write. | None added. | One transaction. | Notification/profile failures remain unable to roll back the primary trust write. |
+| Misleading | Transaction reads/writes `knowledge/{postId}`. Optional profile cleanup write when needed. | One primary post transaction; optional profile cleanup write. | None added. | One transaction. | Same behavior; browser-auth QA blocked. |
+| Notifications | Existing signed-in listener. | Existing notification writes best-effort. | One signed-in notification listener with fallback behavior. | None. | Unchanged. |
+| GA | No Firestore activity. | None. | None. | None. | GA script remains deduped after consent. |
+
+## Duplicate Read Verification
+
+Confirmed duplicate-read protections:
+
+- `loadedProfileIdsRef` prevents rereading a profile id after it has loaded.
+- `loadingProfileIdsRef` prevents concurrent duplicate reads for the same profile id while a query is in flight.
+- Profile directory results add ids to the loaded set and merge into existing exact profiles.
+- Same-session profile changes dispatch `readative:user-profile-updated` after Firestore success and update the feed profile list without another `getDoc`.
+- Existing fresh feed cache and deferred composer directory behavior remain intact.
+
+## Firestore Schema
+
+No Firestore schema changes were made.
+
+No routing, SEO architecture, AdSense, or SmartTalk logic changes were made.
+
+## H3 Validation Gap
+
+Authenticated browser QA for Helpful/Misleading/Edit/Publish/Comments could not be completed because Google sign-in failed in local preview with Firebase auth handler text: `The requested action is invalid`.
+
+## H3 Firestore Verdict
+
+Read duplication around feed profile images is fixed in code. Primary write paths remain scoped and best-effort side effects remain decoupled. However, release is not approved until authenticated Firestore browser QA passes.
+
 # Release H2 Firestore Optimization Report
 
 Status: audit complete; safe write reductions and live read containment applied.

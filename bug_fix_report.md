@@ -1,3 +1,49 @@
+# Release H3 Bug Fix Report
+
+Status: ❌ NOT READY FOR DEPLOY
+Date: 2026-07-08
+
+## Confirmed H3 Defects Fixed
+
+| # | Defect | Root cause | Repair | Files |
+| --- | --- | --- | --- | --- |
+| 1 | Profile photo could be missing in Knowledge Feed | Feed cards depended on a delayed, limited profile directory query. Authors outside that directory, or profile edits made after the directory loaded, fell back to initials/stale data. | Feed now loads exact missing author/comment/mention profile docs by id, tracks loaded/loading ids to avoid duplicate reads, merges directory profiles, and listens for same-session profile update events. | `src/components/KnowledgeFeed/KnowledgeFeed.tsx`, `src/utils/userProfiles.ts` |
+| 2 | Edit Post could save but leave stale feed UI/cache | `KnowledgeCard` wrote Firestore but did not propagate the updated entry to the parent feed state. Existing card/feed cache could keep old title/content until a later server refresh. | Edit save now builds the updated entry after Firestore succeeds and updates home/topic/focused feed state through `FeedRenderer` and `KnowledgeCardList`. | `src/components/KnowledgeCard/KnowledgeCard.tsx`, `src/components/KnowledgeCardList.tsx`, `src/components/KnowledgeFeed/FeedRenderer.tsx`, `src/components/KnowledgeFeed/KnowledgeFeed.tsx` |
+| 3 | GA page_view could be missed after consent | `trackPageView` re-read consent from storage instead of using the app's accepted consent state. If storage reads were blocked or delayed, GA loaded but page_view returned early. | `trackPageView` now accepts the app consent state and dispatches only when that state is true. | `src/App.tsx`, `src/utils/analytics.ts` |
+| 4 | Cookie banner link text was non-descriptive | Cookie policy link used `Learn More`. | Changed link text to `Read Cookie Policy`. | `src/components/TrustConsent.tsx` |
+| 5 | Confirmed accessibility gaps in trust/toggle/button semantics | Trust badge exposed a visual title but no explicit accessible label; some toggle-style controls lacked pressed state; some buttons relied on default type. | Added trust badge label/decorative icon hiding, `aria-pressed` for existing toggles, and explicit button types where confirmed. | `src/components/KnowledgeCard/CardTrust.tsx`, `src/components/KnowledgeCard/EditPostModal.tsx`, `src/components/KnowledgeFeed/FeedComposer.tsx`, `src/components/KnowledgeCard/CardComments.tsx`, `src/components/ProfileAvatarPicker.tsx` |
+
+## Helpful/Misleading Audit
+
+Code audit result:
+
+- Primary Helpful/Misleading writes still commit through Firestore transactions on `knowledge/{postId}`.
+- Notification work remains best-effort and runs after the primary write path.
+- Profile liked-post tracking/cleanup remains best-effort and cannot roll back the primary trust write.
+- Local UI state updates from returned persisted arrays.
+
+Browser result:
+
+- Authenticated Helpful/Misleading browser QA could not be completed because local Google sign-in failed in the in-app browser.
+
+## H3 Validation
+
+Passed:
+
+- `npm run build`
+- `npx tsc --noEmit`
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`
+- `git diff --check`
+- `npm run verify:seo`
+
+Blocked:
+
+- Authenticated Publish/Edit/Helpful/Misleading/Comment browser QA.
+
+## H3 Verdict
+
+❌ NOT READY FOR DEPLOY
+
 # Release H2 Bug Fix Report
 
 Status: confirmed code defects repaired; authenticated E2E QA still required.

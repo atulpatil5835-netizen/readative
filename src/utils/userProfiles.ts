@@ -29,6 +29,7 @@ import { getTrustMetrics } from "./trustSystem";
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
   USERNAME_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+export const USER_PROFILE_UPDATED_EVENT = "readative:user-profile-updated";
 const GOOGLE_MIGRATION_KEY_PREFIX = "readativeGoogleMigration";
 const SOCIAL_HOSTS: Partial<Record<keyof UserSocialLinks, string[]>> = {
   linkedin: ["linkedin.com"],
@@ -49,6 +50,16 @@ export interface UserProfileDetailsInput {
 function syncLocalProfileIdentity(profile: UserProfile) {
   saveGuestName(profile.username);
   saveKnowledgeIdentity(profile.username, profile.id, profile.email);
+}
+
+function announceUserProfileUpdated(profile: UserProfile) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent<UserProfile>(USER_PROFILE_UPDATED_EVENT, {
+      detail: profile,
+    }),
+  );
 }
 
 function normalizeGooglePhotoUrl(value: string | null): string | null {
@@ -689,6 +700,7 @@ export async function changeProfileUsername(
 
   await syncUsernameAcrossContent(profile.id, updated.username);
   syncLocalProfileIdentity(updated);
+  announceUserProfileUpdated(updated);
   return updated;
 }
 
@@ -712,6 +724,7 @@ export async function changeProfilePhoto(
     avatarId: deleteField(),
   });
 
+  announceUserProfileUpdated(updated);
   return updated;
 }
 
@@ -734,6 +747,7 @@ export async function changeProfileBanner(
     updatedAt: updated.updatedAt,
   });
 
+  announceUserProfileUpdated(updated);
   return updated;
 }
 
@@ -766,6 +780,7 @@ export async function updateProfileDetails(
     updatedAt: updated.updatedAt,
   });
 
+  announceUserProfileUpdated(updated);
   return updated;
 }
 
@@ -785,5 +800,6 @@ export async function updateProfileSocialLinks(
     updatedAt: updated.updatedAt,
   });
 
+  announceUserProfileUpdated(updated);
   return updated;
 }

@@ -79,6 +79,7 @@ export function EditPostModal({
                 key={nextVisibility}
                 type="button"
                 onClick={() => setVisibility(nextVisibility)}
+                aria-pressed={visibility === nextVisibility}
                 className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
                   visibility === nextVisibility
                     ? "bg-white text-slate-950 shadow-sm"

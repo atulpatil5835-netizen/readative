@@ -297,7 +297,7 @@ export default function App() {
   }, [syncRouteState]);
 
   useEffect(() => {
-    trackPageView();
+    trackPageView(cookieConsentAccepted);
   }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, legalSlug, routeErrorPath, cookieConsentAccepted]);
 
   useEffect(() => {

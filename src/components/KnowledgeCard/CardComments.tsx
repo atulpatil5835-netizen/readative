@@ -78,6 +78,7 @@ export function CardComments({
             className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
           />
           <button
+            type="button"
             onClick={onCommentSubmit}
             disabled={
               isCommenting || isModeratingComment || !commentText.trim()
@@ -94,6 +95,7 @@ export function CardComments({
               {filteredCommentMentionProfiles.map((profile) => (
                 <button
                   key={profile.id}
+                  type="button"
                   onClick={() => onCommentMentionInsert(profile)}
                   className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-emerald-50"
                 >

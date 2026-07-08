@@ -11,6 +11,7 @@ import {
 import {
   collection,
   doc,
+  documentId,
   getDocs,
   limit,
   orderBy,
@@ -19,6 +20,7 @@ import {
   startAfter,
   type DocumentData,
   type QueryDocumentSnapshot,
+  where,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import {
@@ -33,6 +35,7 @@ import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { trackPostCreated } from "../../utils/analytics";
 import { hydrateUserProfile } from "../../utils/profileData";
 import { signInWithGoogleAccount } from "../../utils/googleAuth";
+import { USER_PROFILE_UPDATED_EVENT } from "../../utils/userProfiles";
 import {
   buildAbsoluteRouteUrl,
   navigateToNotFound,
@@ -131,6 +134,79 @@ const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
   cursor: null,
   error: null,
 };
+const PROFILE_AUTHOR_LOOKUP_LIMIT = 30;
+
+function mergeUserProfileList(
+  currentProfiles: UserProfile[],
+  nextProfiles: UserProfile[],
+) {
+  if (nextProfiles.length === 0) return currentProfiles;
+
+  const profileMap = new Map(
+    currentProfiles.map((profile) => [profile.id, profile] as const),
+  );
+  let didChange = false;
+
+  nextProfiles.forEach((profile) => {
+    const existing = profileMap.get(profile.id);
+    if (existing && existing.updatedAt === profile.updatedAt) {
+      return;
+    }
+
+    profileMap.set(profile.id, profile);
+    didChange = true;
+  });
+
+  if (!didChange) return currentProfiles;
+
+  return [...profileMap.values()].sort((left, right) =>
+    (left.usernameLower || left.username || left.id).localeCompare(
+      right.usernameLower || right.username || right.id,
+    ),
+  );
+}
+
+function replaceKnowledgeEntry(
+  entries: KnowledgeEntry[],
+  updatedEntry: KnowledgeEntry,
+) {
+  let didUpdate = false;
+  const nextEntries = entries.map((entry) => {
+    if (entry.id !== updatedEntry.id) return entry;
+
+    didUpdate = true;
+    return updatedEntry;
+  });
+
+  return didUpdate ? nextEntries : entries;
+}
+
+function collectFeedProfileIds(entries: KnowledgeEntry[]) {
+  const profileIds = new Set<string>();
+  const addProfileId = (value: string | null | undefined) => {
+    const profileId = value?.trim();
+    if (profileId) {
+      profileIds.add(profileId);
+    }
+  };
+
+  entries.forEach((entry) => {
+    addProfileId(entry.authorId);
+    entry.comments?.forEach((comment) => addProfileId(comment.authorId));
+    entry.mentions?.forEach((mention) => addProfileId(mention.authorId));
+  });
+
+  return [...profileIds];
+}
+
+function chunkProfileIds(profileIds: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < profileIds.length; index += PROFILE_AUTHOR_LOOKUP_LIMIT) {
+    chunks.push(profileIds.slice(index, index + PROFILE_AUTHOR_LOOKUP_LIMIT));
+  }
+
+  return chunks;
+}
 
 function normalizeJourneyTimestamp(value: unknown, fallback = Date.now()) {
   if (
@@ -396,6 +472,8 @@ export function KnowledgeFeed({
   const hasPaginatedPastFirstPageRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const independentLoadingKeysRef = useRef(new Set<string>());
+  const loadedProfileIdsRef = useRef(new Set<string>());
+  const loadingProfileIdsRef = useRef(new Set<string>());
   const hasLoadedProfilesDirectoryRef = useRef(false);
   const hasLoadedJourneySmartTalkRef = useRef(false);
   const isLoadingJourneySmartTalkRef = useRef(false);
@@ -562,6 +640,22 @@ export function KnowledgeFeed({
   useEffect(() => {
     visibleLikedEntryIdsRef.current = visibleLikedEntryIds;
   }, [visibleLikedEntryIds]);
+
+  useEffect(() => {
+    const handleProfileUpdated = (event: Event) => {
+      const profile = (event as CustomEvent<UserProfile>).detail;
+      if (!profile?.id) return;
+
+      loadedProfileIdsRef.current.add(profile.id);
+      setProfiles((currentProfiles) =>
+        mergeUserProfileList(currentProfiles, [profile]),
+      );
+    };
+
+    window.addEventListener(USER_PROFILE_UPDATED_EVENT, handleProfileUpdated);
+    return () =>
+      window.removeEventListener(USER_PROFILE_UPDATED_EVENT, handleProfileUpdated);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1068,8 +1162,11 @@ export function KnowledgeFeed({
           hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
         );
 
+        data.forEach((profile) => loadedProfileIdsRef.current.add(profile.id));
         hasLoadedProfilesDirectoryRef.current = true;
-        setProfiles(data);
+        setProfiles((currentProfiles) =>
+          mergeUserProfileList(currentProfiles, data),
+        );
         setProfilesLoadError(null);
       } catch (error) {
         console.error("Profile directory error:", error);
@@ -1334,6 +1431,10 @@ export function KnowledgeFeed({
       matchesKnowledgeSearch(entry, searchTerms),
     );
   }, [deferredFeedSearchQuery, visibleEntries]);
+  const feedProfileIds = useMemo(
+    () => collectFeedProfileIds(filteredEntries),
+    [filteredEntries],
+  );
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
   const hasActiveTopic = activeFeedTopic.id !== "all";
   const isIndependentFeedLoading =
@@ -1388,6 +1489,69 @@ export function KnowledgeFeed({
   const shouldContinueLoadingVisibleFeed =
     shouldKeepLoadingEmptyFeed || shouldFillInitialVisibleBatch;
   const shouldHoldEmptyFeedState = shouldKeepLoadingEmptyFeed;
+
+  useEffect(() => {
+    if (!isActive || feedProfileIds.length === 0) return;
+
+    const profileIdsToLoad = feedProfileIds.filter(
+      (profileId) =>
+        !loadedProfileIdsRef.current.has(profileId) &&
+        !loadingProfileIdsRef.current.has(profileId),
+    );
+    if (profileIdsToLoad.length === 0) return;
+
+    profileIdsToLoad.forEach((profileId) =>
+      loadingProfileIdsRef.current.add(profileId),
+    );
+
+    const loadFeedProfiles = async () => {
+      try {
+        const snapshots = await Promise.all(
+          chunkProfileIds(profileIdsToLoad).map((profileIdChunk) =>
+            getDocs(
+              query(
+                collection(db, "userProfiles"),
+                where(documentId(), "in", profileIdChunk),
+              ),
+            ),
+          ),
+        );
+
+        profileIdsToLoad.forEach((profileId) =>
+          loadedProfileIdsRef.current.add(profileId),
+        );
+
+        if (!isMountedRef.current) return;
+
+        const loadedProfiles = snapshots.flatMap((snapshot) =>
+          snapshot.docs.map((item) =>
+            hydrateUserProfile(item.data() as Partial<UserProfile>, item.id),
+          ),
+        );
+
+        loadedProfiles.forEach((profile) =>
+          loadedProfileIdsRef.current.add(profile.id),
+        );
+        setProfiles((currentProfiles) =>
+          mergeUserProfileList(currentProfiles, loadedProfiles),
+        );
+        setProfilesLoadError(null);
+      } catch (error) {
+        console.error("Feed author profile load error:", error);
+        if (isMountedRef.current) {
+          setProfilesLoadError(
+            "Some profile pictures may be incomplete for a moment.",
+          );
+        }
+      } finally {
+        profileIdsToLoad.forEach((profileId) =>
+          loadingProfileIdsRef.current.delete(profileId),
+        );
+      }
+    };
+
+    void loadFeedProfiles();
+  }, [feedProfileIds, isActive]);
 
   // ── Scroll persistence ──
 
@@ -2265,6 +2429,33 @@ export function KnowledgeFeed({
     [currentAuthorId],
   );
 
+  const handleEntryUpdated = useCallback((updatedEntry: KnowledgeEntry) => {
+    setEntries((currentEntries) => {
+      const nextEntries = replaceKnowledgeEntry(currentEntries, updatedEntry);
+      if (nextEntries === currentEntries) return currentEntries;
+
+      entriesRef.current = nextEntries;
+      return nextEntries;
+    });
+
+    setTopicFeedStates((currentStates) => {
+      let nextStates: typeof currentStates | null = null;
+
+      Object.entries(currentStates).forEach(([key, state]) => {
+        const nextEntries = replaceKnowledgeEntry(state.entries, updatedEntry);
+        if (nextEntries === state.entries) return;
+
+        nextStates = nextStates || { ...currentStates };
+        nextStates[key] = {
+          ...state,
+          entries: nextEntries,
+        };
+      });
+
+      return nextStates || currentStates;
+    });
+  }, []);
+
   // ── SEO derived values ──
 
   const pageTitle = focusedEntry
@@ -2361,6 +2552,7 @@ export function KnowledgeFeed({
         onOpenEntry={onOpenEntry}
         onSelectHashtag={handleSelectHashtag}
         onLikeChange={handleLikeChange}
+        onEntryUpdated={handleEntryUpdated}
         onBackToTopRefresh={handleBackToTopRefresh}
       />
 

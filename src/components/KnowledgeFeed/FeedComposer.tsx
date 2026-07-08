@@ -201,6 +201,7 @@ export function ComposerModal({
                     key={option.id}
                     type="button"
                     onClick={() => setDraftContentKind(option.id)}
+                    aria-pressed={draftContentKind === option.id}
                     className={`rounded-xl border px-3 py-2 text-left transition-colors ${
                       draftContentKind === option.id
                         ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -227,6 +228,7 @@ export function ComposerModal({
                   key={visibility}
                   type="button"
                   onClick={() => setDraftVisibility(visibility)}
+                  aria-pressed={draftVisibility === visibility}
                   className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
                     draftVisibility === visibility
                       ? "bg-white text-slate-950 shadow-sm"

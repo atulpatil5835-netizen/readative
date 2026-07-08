@@ -451,6 +451,7 @@ export interface FeedRendererProps {
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag: (tag: string) => void;
   onLikeChange: (entryId: string, likes: string[], misleadingIds?: string[]) => void;
+  onEntryUpdated: (entry: KnowledgeEntry) => void;
   onBackToTopRefresh: () => void;
 }
 
@@ -500,6 +501,7 @@ export function FeedRenderer({
   onOpenEntry,
   onSelectHashtag,
   onLikeChange,
+  onEntryUpdated,
   onBackToTopRefresh,
   identity,
 }: FeedRendererProps) {
@@ -765,6 +767,7 @@ export function FeedRenderer({
             onOpenEntry={onOpenEntry}
             onSelectHashtag={onSelectHashtag}
             onLikeChange={onLikeChange}
+            onEntryUpdated={onEntryUpdated}
             focusedEntryId={focusedEntryId}
             renderAfterCard={renderKnowledgeJourney}
             estimateAfterCardHeight={estimateKnowledgeJourneyHeight}

@@ -1,3 +1,58 @@
+# Release H3 Performance Report
+
+Status: ❌ NOT READY FOR DEPLOY; command validation passed, authenticated browser QA and LCP measurement remain blocked.
+Date: 2026-07-08
+
+## H3 Scope
+
+No redesign or new feature work was performed. H3 performance work was limited to confirmed feed/profile read behavior and validation of bundle/runtime signals.
+
+## H3 LCP Audit
+
+Findings:
+
+- No render-blocking SEO architecture changes were made.
+- No new dependencies were added.
+- No image-size expansion was introduced.
+- Feed author profile hydration now loads only missing profile ids for rendered feed entries and tracks loaded/loading ids to avoid repeated user reads.
+- The composer mention directory remains deferred until composer open and now merges with exact feed author profiles instead of replacing them.
+- GA still loads only after consent and the script tag remains deduplicated.
+
+Blocked:
+
+- The in-app browser sandbox did not expose `window.performance`, so LCP could not be measured directly from the local browser QA run.
+- Because LCP was not measured, the H3 target of under 3 seconds is not marked verified.
+
+## H3 Build Evidence
+
+`npm run build` passed on 2026-07-08:
+
+```text
+1770 modules transformed.
+dist/index.html                                  4.73 kB | gzip:   1.28 kB
+dist/assets/index-BhHZCQu3.css                  81.94 kB | gzip:  14.41 kB
+dist/assets/index-DVq1V9AB.js                   84.93 kB | gzip:  24.81 kB
+dist/assets/KnowledgeFeed-BPcsE8a0.js           77.24 kB | gzip:  24.12 kB
+dist/assets/KnowledgeCard-CuhEnzsl.js           40.50 kB | gzip:  12.23 kB
+dist/assets/SmartTalk-Ck-ZJCBg.js               38.08 kB | gzip:  11.21 kB
+dist/assets/Profile-CrUEb9Bg.js                 56.19 kB | gzip:  15.80 kB
+dist/assets/firebase-firestore-DWlcjqk8.js     449.87 kB | gzip: 111.58 kB
+```
+
+## H3 Browser Smoke Evidence
+
+Production preview at `http://127.0.0.1:4173/`:
+
+- Desktop 1280x900: Home rendered, 2 feed cards visible, 2 profile avatars loaded.
+- Tablet 768x1024: Home rendered, 2 feed cards visible, 2 profile avatars loaded.
+- Mobile 390x844: Home rendered, 1 feed card visible, 1 profile avatar loaded.
+- SmartTalk route rendered.
+- GA script count stayed at exactly 1 across SPA navigation.
+
+## H3 Performance Verdict
+
+No confirmed performance regression was introduced, and the exact profile-image fix avoids duplicate profile reads. However, H3 performance is not fully cleared because LCP could not be measured in the available browser runtime.
+
 # Release H2 Performance Report
 
 Status: build/runtime smoke clean; live Firestore read containment applied.

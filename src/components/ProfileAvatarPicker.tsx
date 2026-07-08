@@ -84,6 +84,7 @@ export function ProfileAvatarPicker({
       <div className="w-full max-w-3xl overflow-hidden rounded-[32px] border border-white/65 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
         <div className="relative bg-gradient-to-r from-slate-950 via-emerald-900 to-teal-700 px-6 py-6 text-white">
           <button
+            type="button"
             onClick={handleClose}
             className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/85 transition-colors hover:bg-white/20 hover:text-white"
             aria-label="Close photo uploader"
@@ -150,6 +151,7 @@ export function ProfileAvatarPicker({
 
             <div className="mt-5 flex gap-3">
               <button
+                type="button"
                 onClick={() => selectedImage && void onSave(selectedImage)}
                 disabled={!selectedImage || isSaving || isOptimizing}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-55"
@@ -162,6 +164,7 @@ export function ProfileAvatarPicker({
                     : "Save photo"}
               </button>
               <button
+                type="button"
                 onClick={handleClose}
                 disabled={isSaving || isOptimizing}
                 className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100"

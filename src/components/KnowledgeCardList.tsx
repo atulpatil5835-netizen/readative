@@ -48,6 +48,7 @@ interface KnowledgeCardListProps {
     helpfulIds: string[],
     misleadingIds?: string[],
   ) => void;
+  onEntryUpdated?: (entry: KnowledgeEntry) => void;
   focusedEntryId?: string | null;
   renderAfterCard?: (entry: KnowledgeEntry) => ReactNode;
   estimateAfterCardHeight?: (entry: KnowledgeEntry) => number;
@@ -145,6 +146,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
   onVisible,
   onSelectHashtag,
   onLikeChange,
+  onEntryUpdated,
   focusedEntryId,
   renderAfterCard,
   estimateAfterCardHeight,
@@ -391,6 +393,7 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 onOpenEntry={onOpenEntry}
                 onSelectHashtag={onSelectHashtag}
                 onLikeChange={onLikeChange}
+                onEntryUpdated={onEntryUpdated}
                 focused={entry.id === focusedEntryId}
               />
               {renderAfterCard?.(entry)}

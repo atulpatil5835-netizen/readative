@@ -4,22 +4,27 @@ function getPagePath() {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
-export function trackPageView() {
+export function trackPageView(hasConsentOverride?: boolean) {
   if (typeof window === "undefined") {
     return;
   }
 
-  // Safe fallback: if cookie consent has been accepted, ensure scripts are loaded
-  let hasConsent = false;
-  try {
-    hasConsent = window.localStorage.getItem("readativeCookieConsentVersion") === "2026-07-05.t1";
-  } catch {
-    // ignore
+  let hasConsent = hasConsentOverride === true;
+  if (hasConsentOverride === undefined) {
+    try {
+      hasConsent =
+        window.localStorage.getItem("readativeCookieConsentVersion") ===
+        "2026-07-05.t1";
+    } catch {
+      hasConsent = false;
+    }
   }
 
-  if (hasConsent) {
-    scheduleThirdPartyScripts();
+  if (!hasConsent) {
+    return;
   }
+
+  scheduleThirdPartyScripts();
 
   if (typeof window.gtag !== "function") {
     return;

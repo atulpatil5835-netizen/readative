@@ -1,3 +1,75 @@
+# Release H3 Final Report
+
+Status: ❌ NOT READY FOR DEPLOY
+Date: 2026-07-08
+
+## H3 Summary
+
+Release H3 fixed confirmed production issues in the feed/profile/edit/analytics/accessibility paths without changing Firestore schema, routing, SEO architecture, AdSense code, SmartTalk logic, or the visual design.
+
+Production readiness is not approved because authenticated browser QA could not be completed in the local in-app browser. The Google sign-in attempt for local preview navigated to Firebase's auth handler and returned `The requested action is invalid`, leaving Publish/Edit/Helpful/Misleading/Comments write flows blocked from full browser validation.
+
+## H3 Fixes
+
+- Profile images in Knowledge Feed now hydrate exact author/comment/mention profiles from `userProfiles` by document id, merge those results with the composer mention directory, and skip repeated reads for profile ids already loaded or loading.
+- Same-session profile edits now announce the updated profile after the Firestore profile write succeeds, letting the feed update avatars/display details without an extra user read.
+- Edit Post now updates the parent feed entry after the Firestore `knowledge/{postId}` update succeeds, so the card, refresh cache, focused entry, and topic feed state do not keep stale content.
+- GA page views now use the app's consent state instead of re-reading storage inside `trackPageView`, so consent-state success can dispatch `page_view` even when storage reads are blocked or delayed.
+- Cookie banner link text changed from `Learn More` to `Read Cookie Policy`.
+- Trust badges and toggle-style buttons received accessible labels/pressed states where confirmed.
+- Comment/photo-picker buttons received explicit `type="button"` where confirmed.
+
+## H3 Validation
+
+Commands run from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
+
+```text
+npm run build
+npx tsc --noEmit
+npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+git diff --check
+npm run verify:seo
+```
+
+Results: all passed. `git diff --check` printed CRLF conversion warnings only.
+
+SEO verifier result:
+
+```text
+postUrlsDiscovered: 333
+smartTalksDiscovered: 109
+profileUrlsDiscovered: 33
+tagUrlsDiscovered: 547
+sitemapUrls: 509
+missingPostUrls: 0
+canonicalStatus: PASS - all sitemap URLs use https://www.readative.com
+robotsAllowsAll: true
+```
+
+## H3 Browser QA
+
+Production preview: `http://127.0.0.1:4173/`
+
+Passed:
+
+- Desktop 1280x900 Home rendered with 2 feed cards, 2 profile avatars, and 2 loaded avatar images.
+- Tablet 768x1024 Home rendered with 2 feed cards, 2 profile avatars, and 2 loaded avatar images.
+- Mobile 390x844 Home rendered with 1 feed card, 1 profile avatar, and 1 loaded avatar image.
+- SmartTalk route rendered.
+- SPA navigation kept exactly one GA script tag loaded.
+- Cookie banner text was verified as `Read Cookie Policy` before consent in the first browser pass.
+
+Blocked:
+
+- Publish, Edit Post, Helpful, Misleading, Comments, and authenticated notification side effects could not be completed because the local browser session was not authenticated and Google sign-in failed in local preview.
+- LCP could not be measured in the in-app browser because the browser evaluation sandbox did not expose `window.performance`.
+
+## H3 Verdict
+
+❌ NOT READY FOR DEPLOY
+
+The code fixes and command validations are clean, but H3 cannot be marked production ready until authenticated browser QA passes for Profile Image, Edit Post, Helpful, and Misleading.
+
 # Release H2 Final Report
 
 Status: locally production-ready; authenticated Firestore write QA remains the final release gate.

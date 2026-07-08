@@ -90,6 +90,7 @@ interface KnowledgeCardProps {
     helpfulIds: string[],
     misleadingIds?: string[],
   ) => void;
+  onEntryUpdated?: (entry: KnowledgeEntry) => void;
   focused?: boolean;
 }
 
@@ -106,6 +107,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   onOpenEntry,
   onSelectHashtag,
   onLikeChange,
+  onEntryUpdated,
   focused = false,
 }: KnowledgeCardProps) {
   const {
@@ -834,18 +836,35 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       );
     }
 
+    const updatedAt = Date.now();
+    const excerpt = createExcerpt(content, 180);
+    const readingMinutes = estimateReadMinutes(content);
+    const updatedEntry: KnowledgeEntry = {
+      ...entry,
+      title,
+      content,
+      visibility,
+      hashtags: seedHashtags,
+      mentions,
+      excerpt,
+      readingMinutes,
+      qualityScore: moderation.knowledgeScore,
+      updatedAt,
+    };
+
     await updateDoc(doc(db, "knowledge", entry.id), {
       title,
       content,
       visibility,
       hashtags: seedHashtags,
       mentions,
-      excerpt: createExcerpt(content, 180),
-      readingMinutes: estimateReadMinutes(content),
+      excerpt,
+      readingMinutes,
       qualityScore: moderation.knowledgeScore,
-      updatedAt: Date.now(),
+      updatedAt,
     });
 
+    onEntryUpdated?.(updatedEntry);
     setShowEditModal(false);
     setInteractionMessage("Post updated.");
   };
