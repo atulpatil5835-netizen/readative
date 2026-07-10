@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProfileAvatar } from "../ProfileAvatar";
 import { renderRichText } from "../../utils/renderRichText";
+import { buildPublicPath } from "../../utils/routes";
 import { CardContentProps } from "./cardTypes";
 import { buildProfilePath, buildTagPath } from "./cardHelpers";
 import {
@@ -220,7 +221,10 @@ export function CardContent({
     <div>
       <div>
         <a
-          href={`/post/${entry.id}`}
+          href={buildPublicPath("knowledge", {
+            focusedEntryId: entry.id,
+            seoTitle: entry.title,
+          })}
           onClick={(e) => {
             e.preventDefault();
             onOpenEntryDetails();

@@ -9,6 +9,10 @@ import {
   loadSeoData,
 } from "./_seoData.js";
 import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+} from "../src/utils/seoUrls.js";
 
 function escapeHtml(value: string) {
   return escapeXml(value);
@@ -95,13 +99,13 @@ function buildDiscoverySchemas({
             "@type": "ListItem",
             position: index + 1,
             name: post.title,
-            url: absoluteUrl(`/post/${encodeURIComponent(post.id)}`),
+            url: absoluteUrl(buildPostSeoPath(post.id, post.title)),
           })),
           ...smartTalks.slice(0, 20).map((question, index) => ({
             "@type": "ListItem",
             position: posts.slice(0, 30).length + index + 1,
             name: question.title,
-            url: absoluteUrl(`/smarttalks/${encodeURIComponent(question.id)}`),
+            url: absoluteUrl(buildSmartTalkSeoPath(question.id, question.title)),
           })),
           ...profiles.slice(0, 20).map((profile, index) => ({
             "@type": "ListItem",
@@ -139,7 +143,7 @@ function renderPostLink(post: SeoPost) {
     ),
   ].filter(Boolean);
 
-  return `<li><a href="/post/${escapeHtml(encodeURIComponent(post.id))}">${escapeHtml(post.title)}</a> <span>${escapeHtml(post.description)}</span>${
+  return `<li><a href="${escapeHtml(buildPostSeoPath(post.id, post.title))}">${escapeHtml(post.title)}</a> <span>${escapeHtml(post.description)}</span>${
     metaLinks.length > 0 ? ` <small>${metaLinks.join(" / ")}</small>` : ""
   }</li>`;
 }
@@ -155,7 +159,7 @@ function renderSmartTalkLink(question: SeoSmartTalk) {
     `${question.answerCount} answers`,
   ].filter(Boolean);
 
-  return `<li><a href="/smarttalks/${escapeHtml(encodeURIComponent(question.id))}">${escapeHtml(question.title)}</a> <span>${escapeHtml(question.description)}</span> <small>${metaLinks.join(" / ")}</small></li>`;
+  return `<li><a href="${escapeHtml(buildSmartTalkSeoPath(question.id, question.title))}">${escapeHtml(question.title)}</a> <span>${escapeHtml(question.description)}</span> <small>${metaLinks.join(" / ")}</small></li>`;
 }
 
 function renderProfileLink(profile: SeoProfile) {

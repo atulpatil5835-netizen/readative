@@ -302,6 +302,7 @@ export function buildKnowledgeSchemas({
       name: listEntry.title,
       url: buildAbsoluteRouteUrl("knowledge", {
         focusedEntryId: listEntry.id,
+        seoTitle: listEntry.title,
       }),
       description: createExcerpt(listEntry.content),
     })),
@@ -325,6 +326,7 @@ export function buildKnowledgeSchemas({
             name: entry.title,
             url: buildAbsoluteRouteUrl("knowledge", {
               focusedEntryId: entry.id,
+              seoTitle: entry.title,
             }),
           },
         ]
@@ -358,6 +360,7 @@ export function buildKnowledgeSchemas({
       section: category?.label || entry.category || undefined,
       url: buildAbsoluteRouteUrl("knowledge", {
         focusedEntryId: entry.id,
+        seoTitle: entry.title,
       }),
       image:
         primaryImage?.dataUrl && !primaryImage.dataUrl.startsWith("data:")

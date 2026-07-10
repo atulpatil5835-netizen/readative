@@ -38,6 +38,7 @@ import { signInWithGoogleAccount } from "../../utils/googleAuth";
 import { USER_PROFILE_UPDATED_EVENT } from "../../utils/userProfiles";
 import {
   buildAbsoluteRouteUrl,
+  buildPublicPath,
   navigateToNotFound,
   navigateToRoute,
   ROUTE_CHANGE_EVENT,
@@ -1204,7 +1205,28 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     if (!focusedEntryId) return;
-    if (entriesRef.current.some((entry) => entry.id === focusedEntryId)) return;
+
+    const replaceWithCanonicalEntryPath = (entry: KnowledgeEntry) => {
+      const canonicalPath = buildPublicPath("knowledge", {
+        focusedEntryId: entry.id,
+        seoTitle: entry.title,
+      });
+      if (window.location.pathname !== canonicalPath) {
+        navigateToRoute(
+          "knowledge",
+          { focusedEntryId: entry.id, seoTitle: entry.title },
+          "replace",
+        );
+      }
+    };
+
+    const existingEntry = entriesRef.current.find(
+      (entry) => entry.id === focusedEntryId,
+    );
+    if (existingEntry) {
+      replaceWithCanonicalEntryPath(existingEntry);
+      return;
+    }
 
     let cancelled = false;
 
@@ -1227,6 +1249,7 @@ export function KnowledgeFeed({
         );
 
         if (entriesRef.current.some((entry) => entry.id === focusedEntry.id)) {
+          replaceWithCanonicalEntryPath(focusedEntry);
           return;
         }
 
@@ -1243,9 +1266,11 @@ export function KnowledgeFeed({
         if (snapshot.id !== focusedEntryId) {
           navigateToRoute(
             "knowledge",
-            { focusedEntryId: snapshot.id },
+            { focusedEntryId: snapshot.id, seoTitle: focusedEntry.title },
             "replace",
           );
+        } else {
+          replaceWithCanonicalEntryPath(focusedEntry);
         }
       } catch (error) {
         if (cancelled) return;
@@ -2477,7 +2502,10 @@ export function KnowledgeFeed({
           ? `Explore ${activeFeedTopic.label.toLowerCase()} knowledge posts on Readative.`
         : "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
   const pageUrl = focusedEntry
-    ? buildAbsoluteRouteUrl("knowledge", { focusedEntryId: focusedEntry.id })
+    ? buildAbsoluteRouteUrl("knowledge", {
+        focusedEntryId: focusedEntry.id,
+        seoTitle: focusedEntry.title,
+      })
     : selectedHashtag
       ? buildAbsoluteRouteUrl("knowledge", {
           selectedHashtag,

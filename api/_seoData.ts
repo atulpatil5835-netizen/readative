@@ -11,6 +11,11 @@ import {
   getRelatedQuestions,
   normalizeContentGraphTags,
 } from "../src/utils/contentGraph.js";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+  extractSeoDocumentId,
+} from "../src/utils/seoUrls.js";
 
 export const SITE_URL = "https://www.readative.com";
 export const DISCOVERY_INDEX_PATH = "/posts";
@@ -604,11 +609,12 @@ export async function loadSeoData(): Promise<SeoData> {
 }
 
 export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | null> {
-  if (!id) return null;
+  const documentId = extractSeoDocumentId(id);
+  if (!documentId) return null;
   const data = await loadSeoData();
   if (data.source === "static") return null;
 
-  const post = data.posts.find((candidate) => candidate.id === id);
+  const post = data.posts.find((candidate) => candidate.id === documentId);
   if (!post) return null;
 
   return {
@@ -725,7 +731,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   for (const post of data.posts) {
     entries.push(
       buildEntry(
-        `/post/${encodeURIComponent(post.id)}`,
+        buildPostSeoPath(post.id, post.title),
         "post",
         post.updatedAt || post.createdAt,
         getChangeFrequency(post.updatedAt, post.createdAt),
@@ -749,7 +755,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   for (const question of data.smartTalks) {
     entries.push(
       buildEntry(
-        `/smarttalks/${encodeURIComponent(question.id)}`,
+        buildSmartTalkSeoPath(question.id, question.title),
         "smarttalk",
         question.updatedAt || question.createdAt,
         getChangeFrequency(question.updatedAt, question.createdAt),

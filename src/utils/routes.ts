@@ -1,4 +1,9 @@
 import { isLegalPageSlug, type LegalSlug } from "../content/legalRoutes";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+  extractSeoDocumentId,
+} from "./seoUrls";
 
 export type AppTab = "knowledge" | "smarttalk" | "explore" | "profile";
 export type AppRouteTab = AppTab | "legal" | "notFound";
@@ -12,6 +17,8 @@ export interface RouteOptions {
   selectedTopic?: string | null;
   section?: string | null;
   legalSlug?: LegalSlug | null;
+  seoTitle?: string | null;
+  seoSlug?: string | null;
 }
 
 export interface ParsedAppRoute {
@@ -277,13 +284,15 @@ function parsePostRoute(
   source: "hash" | "path",
   attemptedLocation: string,
 ) {
-  const postPrefix = source === "hash" ? "post/" : "/post/";
+  const postPrefixes =
+    source === "hash" ? ["posts/", "post/"] : ["/posts/", "/post/"];
+  const postPrefix = postPrefixes.find((prefix) => routePart.startsWith(prefix));
 
-  if (!routePart.startsWith(postPrefix)) {
+  if (!postPrefix) {
     return null;
   }
 
-  const focusedEntryId = safeDecode(routePart.slice(postPrefix.length));
+  const focusedEntryId = extractSeoDocumentId(routePart.slice(postPrefix.length));
   if (!focusedEntryId) {
     return createRoute("notFound", source, attemptedLocation);
   }
@@ -303,10 +312,16 @@ function parseSmartTalkCanonicalRoute(
     return createRoute("smarttalk", source, attemptedLocation);
   }
 
-  const questionPrefix = source === "hash" ? "smarttalks/" : "/smarttalks/";
-  if (!routePart.startsWith(questionPrefix)) return null;
+  const questionPrefixes =
+    source === "hash"
+      ? ["smarttalk/", "smarttalks/"]
+      : ["/smarttalk/", "/smarttalks/"];
+  const questionPrefix = questionPrefixes.find((prefix) =>
+    routePart.startsWith(prefix),
+  );
+  if (!questionPrefix) return null;
 
-  const focusedEntryId = safeDecode(routePart.slice(questionPrefix.length));
+  const focusedEntryId = extractSeoDocumentId(routePart.slice(questionPrefix.length));
   if (!focusedEntryId) {
     return createRoute("notFound", source, attemptedLocation);
   }
@@ -363,6 +378,10 @@ function parsePathRoute(pathname: string, search: string) {
     );
   }
 
+  if (normalizedPathname === "/posts") {
+    return createRoute("knowledge", "path", attemptedLocation);
+  }
+
   if (normalizedPathname === "/smarttalk") {
     const params = new URLSearchParams(search);
     const focusedEntryId = params.get("id") || params.get("question");
@@ -414,7 +433,10 @@ export function parseRouteFromLocation(locationLike = window.location) {
 
 export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   if (tab === "knowledge" && options.focusedEntryId) {
-    return `/post/${encodeURIComponent(options.focusedEntryId)}`;
+    return buildPostSeoPath(
+      options.focusedEntryId,
+      options.seoTitle || options.seoSlug,
+    );
   }
 
   if (tab === "knowledge") {
@@ -459,7 +481,10 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
 
   if (tab === "smarttalk") {
     if (options.focusedEntryId) {
-      return `/smarttalks/${encodeURIComponent(options.focusedEntryId)}`;
+      return buildSmartTalkSeoPath(
+        options.focusedEntryId,
+        options.seoTitle || options.seoSlug,
+      );
     }
 
     const category = options.selectedTopic ? normalizeCategorySlug(options.selectedTopic) : null;

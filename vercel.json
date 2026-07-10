@@ -46,6 +46,24 @@
       ]
     },
     {
+      "source": "/posts/:path*",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/smarttalk/:path*",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
       "source": "/smarttalks",
       "headers": [
         {
@@ -68,8 +86,9 @@
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/posts", "destination": "/api/discovery" },
+    { "source": "/posts/:id", "destination": "/api/post?id=:id" },
     { "source": "/smarttalks", "destination": "/api/smarttalks" },
-    { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id" },
+    { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id&legacy=smarttalks" },
     { "source": "/about", "destination": "/api/legal?slug=about" },
     { "source": "/contact", "destination": "/api/legal?slug=contact" },
     { "source": "/privacy", "destination": "/api/legal?slug=privacy" },
@@ -93,11 +112,11 @@
     { "source": "/knowledge", "destination": "/index.html" },
     { "source": "/knowledge/:path*", "destination": "/index.html" },
     { "source": "/post", "destination": "/index.html" },
-    { "source": "/post/:id", "destination": "/api/post?id=:id" },
+    { "source": "/post/:id", "destination": "/api/post?id=:id&legacy=post" },
     { "source": "/profile", "destination": "/index.html" },
     { "source": "/profile/:path*", "destination": "/index.html" },
     { "source": "/smarttalk", "destination": "/api/smarttalk" },
-    { "source": "/smarttalk/:id", "destination": "/api/smarttalk?id=:id" },
+    { "source": "/smarttalk/:id", "destination": "/api/smarttalks?id=:id" },
     { "source": "/explore", "destination": "/index.html" },
     { "source": "/explore/:path*", "destination": "/index.html" },
     { "source": "/category", "destination": "/index.html" },

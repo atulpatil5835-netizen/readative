@@ -68,7 +68,7 @@ import {
   updateProfileDetails,
 } from "../utils/userProfiles";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
-import { buildAbsoluteRouteUrl, navigateToRoute } from "../utils/routes";
+import { buildAbsoluteRouteUrl, buildPublicPath, navigateToRoute } from "../utils/routes";
 import { hydrateUserProfile } from "../utils/profileData";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import {
@@ -1308,7 +1308,10 @@ export function Profile({
             url: profileUrl,
             items: sharedEntries.slice(0, 5).map((entry) => ({
               name: entry.title,
-              url: `/post/${encodeURIComponent(entry.id)}`,
+              url: buildPublicPath("knowledge", {
+                focusedEntryId: entry.id,
+                seoTitle: entry.title,
+              }),
               description: entry.content.slice(0, 160),
             })),
           }),
@@ -2770,6 +2773,7 @@ function ProfileSavedSection({
                 onClick={() => navigateToRoute("smarttalk", {
                   selectedTopic: question.category,
                   focusedEntryId: question.id,
+                  seoTitle: question.content,
                 })}
                 className="w-full rounded-xl bg-slate-50 px-3 py-3 text-left transition-colors hover:bg-indigo-50"
               >

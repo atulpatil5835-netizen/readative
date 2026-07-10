@@ -195,7 +195,10 @@ export default function ProfileMyNotes({ userId }: { userId: string }) {
                 type="button"
                 disabled={!post}
                 onClick={() =>
-                  navigateToRoute("knowledge", { focusedEntryId: postId })
+                  navigateToRoute("knowledge", {
+                    focusedEntryId: postId,
+                    seoTitle: post?.title,
+                  })
                 }
                 className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40"
               >

@@ -12,13 +12,35 @@ import {
   renderJsonLd,
   renderTextParagraphs,
 } from "./_document.js";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+  extractSeoDocumentId,
+  isCanonicalSeoDocumentSegment,
+} from "../src/utils/seoUrls.js";
 
 function getQueryValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
 
-function postPath(id: string) {
-  return `/post/${encodeURIComponent(id)}`;
+function postPath(post: Pick<SeoPost, "id" | "title">) {
+  return buildPostSeoPath(post.id, post.title);
+}
+
+function shouldRedirectToCanonical(
+  requestedSegment: string,
+  canonicalPost: SeoPost,
+  legacy: string,
+) {
+  return (
+    Boolean(legacy) ||
+    !isCanonicalSeoDocumentSegment(
+      "post",
+      requestedSegment,
+      canonicalPost.id,
+      canonicalPost.title,
+    )
+  );
 }
 
 function renderPostList(posts: SeoPost[]) {
@@ -29,7 +51,7 @@ function renderPostList(posts: SeoPost[]) {
   return posts
     .map(
       (post) => `<li>
-        <a href="${postPath(post.id)}">${escapeHtml(post.title)}</a>
+        <a href="${postPath(post)}">${escapeHtml(post.title)}</a>
         <span> — ${escapeHtml(post.description)}</span>
       </li>`,
     )
@@ -44,7 +66,7 @@ function renderSmartTalkList(questions: SeoSmartTalk[]) {
   return questions
     .map(
       (question) => `<li>
-        <a href="/smarttalks/${encodeURIComponent(question.id)}">${escapeHtml(question.title)}</a>
+        <a href="${buildSmartTalkSeoPath(question.id, question.title)}">${escapeHtml(question.title)}</a>
         <span> — ${question.answerCount} ${question.answerCount === 1 ? "answer" : "answers"}</span>
       </li>`,
     )
@@ -76,7 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).end();
   }
 
-  const id = getQueryValue(req.query.id);
+  const requestedSegment = getQueryValue(req.query.id);
+  const id = extractSeoDocumentId(requestedSegment);
   if (!id) {
     if (req.method === "HEAD") return res.status(404).end();
     return res.status(404).send(renderNotFound("unknown"));
@@ -91,8 +114,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { post, relatedPosts, relatedSmartTalks } = page;
-    const canonicalPath = postPath(post.id);
+    const canonicalPath = postPath(post);
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
+    const legacy = getQueryValue(req.query.legacy);
+    if (shouldRedirectToCanonical(requestedSegment, post, legacy)) {
+      res.setHeader("Location", canonicalUrl);
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
+      return res.status(301).end();
+    }
+
     const pageTitle = `${post.title} | Readative`;
     const authorUrl = post.authorId
       ? `${SITE_URL}/profile/${encodeURIComponent(post.authorId)}`
@@ -216,7 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </div>
           <section><h3>Similar Topics</h3><div class="seo-tags">${tags || '<a href="/explore">Explore topics</a>'}</div></section>
           <div class="seo-meta">
-            ${nextPost ? `<a href="${postPath(nextPost.id)}">Next reading: ${escapeHtml(nextPost.title)}</a>` : '<a href="/posts">Next reading</a>'}
+            ${nextPost ? `<a href="${postPath(nextPost)}">Next reading: ${escapeHtml(nextPost.title)}</a>` : '<a href="/posts">Next reading</a>'}
           </div>
         </section>
       </main>

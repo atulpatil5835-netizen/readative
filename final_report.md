@@ -1,168 +1,85 @@
-# Release H3 Final Report
+# Release H5 Final Report
 
-Status: ❌ NOT READY FOR DEPLOY
-Date: 2026-07-08
+Status: PASS.
+Date: 2026-07-10
 
-## H3 Summary
+## Summary
 
-Release H3 fixed confirmed production issues in the feed/profile/edit/analytics/accessibility paths without changing Firestore schema, routing, SEO architecture, AdSense code, SmartTalk logic, or the visual design.
+Release H5 implements the SEO URL architecture for Readative posts and SmartTalk discussions without changing Firestore schema, ranking, SmartTalk behavior, Notebook, Authentication, Notifications, UI design, or product workflows.
 
-Production readiness is not approved because authenticated browser QA could not be completed in the local in-app browser. The Google sign-in attempt for local preview navigated to Firebase's auth handler and returned `The requested action is invalid`, leaving Publish/Edit/Helpful/Misleading/Comments write flows blocked from full browser validation.
+Canonical item URL formats are now:
 
-## H3 Fixes
+- Posts: `/posts/<seo-slug>--<documentId>`
+- SmartTalk: `/smarttalk/<seo-slug>--<documentId>`
 
-- Profile images in Knowledge Feed now hydrate exact author/comment/mention profiles from `userProfiles` by document id, merge those results with the composer mention directory, and skip repeated reads for profile ids already loaded or loading.
-- Same-session profile edits now announce the updated profile after the Firestore profile write succeeds, letting the feed update avatars/display details without an extra user read.
-- Edit Post now updates the parent feed entry after the Firestore `knowledge/{postId}` update succeeds, so the card, refresh cache, focused entry, and topic feed state do not keep stale content.
-- GA page views now use the app's consent state instead of re-reading storage inside `trackPageView`, so consent-state success can dispatch `page_view` even when storage reads are blocked or delayed.
-- Cookie banner link text changed from `Learn More` to `Read Cookie Policy`.
-- Trust badges and toggle-style buttons received accessible labels/pressed states where confirmed.
-- Comment/photo-picker buttons received explicit `type="button"` where confirmed.
+Legacy item URL families remain supported and redirect-compatible.
 
-## H3 Validation
+## Implemented
 
-Commands run from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
+- Added one shared slug and canonical URL utility in `src/utils/seoUrls.ts`.
+- Updated route parsing/building in `src/utils/routes.ts`.
+- Updated post and SmartTalk server-rendered SEO documents.
+- Updated sitemap generation.
+- Updated server-rendered discovery anchors and JSON-LD.
+- Updated in-app canonical links across feed, cards, journey, Explore, Profile, My Notes, and SmartTalk.
+- Updated production rewrites in `vercel.json` and `public/_redirects`.
+- Updated `npm run verify:seo` to validate the new canonical URL contract and write `seo_report.md`.
 
-```text
-npm run build
-npx tsc --noEmit
-npx tsc --noEmit --noUnusedLocals --noUnusedParameters
-git diff --check
-npm run verify:seo
-```
+## Safety
 
-Results: all passed. `git diff --check` printed CRLF conversion warnings only.
+- Firestore document IDs are preserved in every canonical URL.
+- Existing legacy URLs remain usable.
+- No Firestore reads/writes were added to client product flows for slug persistence.
+- No schema migration is required.
+- No UI redesign or layout change was made.
 
-SEO verifier result:
+## Validation
 
-```text
-postUrlsDiscovered: 333
-smartTalksDiscovered: 109
-profileUrlsDiscovered: 33
-tagUrlsDiscovered: 547
-sitemapUrls: 509
-missingPostUrls: 0
-canonicalStatus: PASS - all sitemap URLs use https://www.readative.com
-robotsAllowsAll: true
-```
+- `npx tsc --noEmit`: PASS.
+- `npm run build`: PASS.
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`: PASS.
+- `npm run verify:seo`: PASS.
+- `git diff --check`: PASS; line-ending warnings only.
+- Handler route smoke: PASS.
+- Browser public-route smoke: PASS.
 
-## H3 Browser QA
+Measured SEO verifier output:
 
-Production preview: `http://127.0.0.1:4173/`
+- Firestore SEO data source: `rest`.
+- Published post URLs discovered: 336.
+- SmartTalk discussions discovered: 109.
+- Sitemap URLs generated: 512.
+- Missing post URLs: 0.
+- Missing SmartTalk URLs: 0.
+- Duplicate sitemap URL groups: 0.
+- Canonical host status: PASS.
+- robots.txt crawl status: PASS.
 
-Passed:
+Route smoke:
 
-- Desktop 1280x900 Home rendered with 2 feed cards, 2 profile avatars, and 2 loaded avatar images.
-- Tablet 768x1024 Home rendered with 2 feed cards, 2 profile avatars, and 2 loaded avatar images.
-- Mobile 390x844 Home rendered with 1 feed card, 1 profile avatar, and 1 loaded avatar image.
-- SmartTalk route rendered.
-- SPA navigation kept exactly one GA script tag loaded.
-- Cookie banner text was verified as `Read Cookie Policy` before consent in the first browser pass.
+- Canonical post URL: 200.
+- Legacy `/post/<id>`: 301 to canonical post URL.
+- Canonical SmartTalk URL: 200.
+- Legacy `/smarttalks/<id>`: 301 to canonical SmartTalk URL.
+- Legacy `/smarttalk/<id>`: 301 to canonical SmartTalk URL.
+- Legacy `/smarttalk?id=<id>`: 301 to canonical SmartTalk URL.
 
-Blocked:
+Browser smoke:
 
-- Publish, Edit Post, Helpful, Misleading, Comments, and authenticated notification side effects could not be completed because the local browser session was not authenticated and Google sign-in failed in local preview.
-- LCP could not be measured in the in-app browser because the browser evaluation sandbox did not expose `window.performance`.
+- Home desktop rendered with canonical `https://www.readative.com/`.
+- Explore mobile rendered with canonical `https://www.readative.com/explore`.
+- Canonical post route rendered with matching canonical and OpenGraph URL.
+- Canonical SmartTalk route rendered with matching canonical and OpenGraph URL.
+- Old client `/post/<id>` canonicalized to `/posts/<slug>--<id>`.
+- Old client `/smarttalk/<id>` canonicalized to `/smarttalk/<slug>--<id>`.
+- Post refresh preserved canonical URL and metadata.
+- Browser back and forward between representative post and SmartTalk routes preserved canonical URLs and did not show the app error page on the fresh preview origin.
+- Fresh preview origin console errors: 0.
 
-## H3 Verdict
+Coverage note:
 
-❌ NOT READY FOR DEPLOY
+- Auth-personalized Bookmarks and Notifications were not E2E exercised with signed-in saved/notification data. H5 URL behavior for those surfaces was verified statically/code-path wise: saved post cards use canonical links, saved SmartTalk passes content for slugging, and notification opens resolve by ID then canonicalize after the focused document loads.
 
-The code fixes and command validations are clean, but H3 cannot be marked production ready until authenticated browser QA passes for Profile Image, Edit Post, Helpful, and Misleading.
+## Verdict
 
-# Release H2 Final Report
-
-Status: locally production-ready; authenticated Firestore write QA remains the final release gate.
-Date: 2026-07-06
-
-## 1. Exact Root Cause
-
-Confirmed root causes:
-
-- Helpful/Misleading UI updated counts before Firestore transaction success.
-- Helpful/Misleading profile tracking was coupled to the trust transaction, so a production rules rejection on `userProfiles/{uid}` could make the primary post trust update fail.
-- Save UI updated before Firestore transaction success.
-- Comment and publish flows awaited notification writes in the primary success path, causing false interaction failures.
-- SmartTalk vote/save paths allowed duplicate clicks and had silent failure branches.
-- SmartTalk total count quota failure logged a console error even though the list could continue with loaded questions.
-- The Firestore test helper left temporary post artifacts.
-
-No live Firestore write error code/message was captured because authenticated write QA could not be performed in the available browser session.
-
-## 2. Firestore Read Reduction
-
-Live read containment was added for the public feed:
-
-- Public home feed no longer opens an `onSnapshot` listener for every visitor; it uses a one-shot first page load.
-- Fresh feed cache now prevents the immediate initial server read for returning visitors.
-- Automatic background feed prefetch was disabled.
-- SmartTalk journey preview was reduced from 50 reads to 12 and cached for 6 hours.
-- The 80-profile mention directory query now runs only after the composer opens.
-
-Broader profile/stat migration scans remain deferred because they need a separate data-model pass.
-
-## 3. Firestore Write Reduction
-
-H2 reduced unsafe and duplicate writes:
-
-- Helpful/Misleading post trust writes now succeed or fail on `knowledge/{postId}` only.
-- Profile tracking/cleanup now runs best-effort after the primary post trust transaction.
-- Helpful/Misleading/save/SmartTalk vote/save buttons block duplicate writes while in flight.
-- Notification side effects no longer cause primary comment/publish retry paths.
-- Future temporary test posts are deleted by the test helper.
-
-## 4. Files Modified
-
-- `src/App.tsx`
-- `src/components/KnowledgeCard/KnowledgeCard.tsx`
-- `src/components/KnowledgeFeed/KnowledgeFeed.tsx`
-- `src/components/KnowledgeFeed/feedHelpers.ts`
-- `src/components/SmartTalk.tsx`
-- `src/firebase/firebase.ts`
-- `src/utils/bookmarks.ts`
-- `src/utils/googleAuth.ts`
-- `src/utils/knowledgeFeedData.ts`
-- `test-notifications.ts`
-- `bug_fix_report.md`
-- `final_report.md`
-- `firestore_optimization_report.md`
-- `firestore_trace.md`
-- `interaction_audit.md`
-- `performance_report.md`
-- `task.md`
-- `walkthrough.md`
-
-## 5. Bundle Impact
-
-Build passed with 1769 transformed modules. Key built assets:
-
-```text
-index-CvG3Nmt5.js                  81.12 kB | gzip:  23.50 kB
-KnowledgeFeed-CT3F-36d.js          74.54 kB | gzip:  23.15 kB
-KnowledgeCard-DB0ECkWa.js          39.97 kB | gzip:  12.13 kB
-SmartTalk-CXyhOTDZ.js              37.89 kB | gzip:  11.13 kB
-firebase-firestore-DWlcjqk8.js    449.87 kB | gzip: 111.58 kB
-```
-
-No dependencies changed.
-
-## 6. Production Readiness
-
-Local gates passed:
-
-- `npm run build`
-- `npx tsc --noEmit`
-- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`
-- `git diff --check`
-
-Production preview smoke QA passed on desktop, tablet, and mobile for Home, SmartTalk, Explore, and Profile with no console errors and no horizontal overflow.
-
-Production deploy completed on 2026-07-06 through Vercel prebuilt output. `https://readative.com/` resolves to `https://www.readative.com/` and serves the new production asset names. Live smoke QA confirmed the Home feed hydrated with search, feed content, both desktop rails, and no horizontal overflow.
-
-## 7. Remaining Recommendations
-
-- Complete authenticated write QA with a real approved account.
-- Verify refresh persistence and another-session visibility for all implemented signed-in interactions.
-- Manually remove any existing live `Temporary Test Post` documents after confirming project/document ids.
-- Consider future schema work for high-growth arrays: reactions, saves, comments, and SmartTalk answers.
-- Add emulator-backed Firestore interaction tests for transaction attempts, error codes, and rollback behavior.
+PASS for Release H5 SEO URL architecture.

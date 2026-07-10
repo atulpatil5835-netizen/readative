@@ -713,6 +713,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const handleShare = async () => {
     const shareUrl = buildAbsoluteRouteUrl("knowledge", {
       focusedEntryId: entry.id,
+      seoTitle: entry.title,
     });
     const text = `${entry.title}\n\n${entry.content.slice(0, 160)}${
       entry.content.length > 160 ? "..." : ""

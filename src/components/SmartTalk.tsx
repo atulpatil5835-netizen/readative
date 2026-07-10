@@ -253,7 +253,10 @@ function buildSmartTalkSchemas(
   selectedCategory: string | null,
 ) {
   const pageUrl = focusedQuestion
-    ? buildPublicPath("smarttalk", { focusedEntryId: focusedQuestion.id })
+    ? buildPublicPath("smarttalk", {
+        focusedEntryId: focusedQuestion.id,
+        seoTitle: focusedQuestion.content,
+      })
     : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
   const pageLabel = selectedCategory
     ? getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"
@@ -313,7 +316,10 @@ function buildSmartTalkSchemas(
     url: pageUrl,
     items: questions.slice(0, 10).map((question) => ({
       name: summarizeSmartTalkText(question.content, 90),
-      url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
+      url: buildPublicPath("smarttalk", {
+        focusedEntryId: question.id,
+        seoTitle: question.content,
+      }),
       description: `${question.answers.length} answer${
         question.answers.length === 1 ? "" : "s"
       }`,
@@ -342,7 +348,10 @@ function buildSmartTalkSchemas(
       buildDiscussionForumPostingSchema({
         headline: summarizeSmartTalkText(question.content, 90),
         text: question.content,
-        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
+        url: buildPublicPath("smarttalk", {
+          focusedEntryId: question.id,
+          seoTitle: question.content,
+        }),
         authorName: question.author,
         authorUrl: question.authorId
           ? `/profile/${encodeURIComponent(question.authorId)}`
@@ -1365,7 +1374,10 @@ export function SmartTalk({
     ? getRelatedQuestions(focusedQuestion, questions, 4)
     : [];
   const smartTalkPageUrl = focusedQuestion
-    ? buildPublicPath("smarttalk", { focusedEntryId: focusedQuestion.id })
+    ? buildPublicPath("smarttalk", {
+        focusedEntryId: focusedQuestion.id,
+        seoTitle: focusedQuestion.content,
+      })
     : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
   const smartTalkPageTitle = focusedQuestion
     ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | SmartTalk | Readative`
@@ -1377,6 +1389,25 @@ export function SmartTalk({
     : selectedCategory
       ? `Explore ${getSmartTalkCategoryLabel(selectedCategory) || selectedCategory} questions and practical community answers on Readative SmartTalk.`
       : "Ask learning-focused questions and get thoughtful community answers on Readative.";
+
+  useEffect(() => {
+    if (!focusedQuestion) return;
+
+    const canonicalPath = buildPublicPath("smarttalk", {
+      focusedEntryId: focusedQuestion.id,
+      seoTitle: focusedQuestion.content,
+    });
+    if (window.location.pathname !== canonicalPath) {
+      navigateToRoute(
+        "smarttalk",
+        {
+          focusedEntryId: focusedQuestion.id,
+          seoTitle: focusedQuestion.content,
+        },
+        "replace",
+      );
+    }
+  }, [focusedQuestion]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -1628,10 +1659,16 @@ export function SmartTalk({
                   relatedFocusedQuestions.map((question) => (
                     <a
                       key={question.id}
-                      href={buildPublicPath("smarttalk", { focusedEntryId: question.id })}
+                      href={buildPublicPath("smarttalk", {
+                        focusedEntryId: question.id,
+                        seoTitle: question.content,
+                      })}
                       onClick={(event) => {
                         event.preventDefault();
-                        navigateToRoute("smarttalk", { focusedEntryId: question.id });
+                        navigateToRoute("smarttalk", {
+                          focusedEntryId: question.id,
+                          seoTitle: question.content,
+                        });
                       }}
                       className="rounded-lg border border-slate-100 px-3 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-indigo-200 hover:text-indigo-700"
                     >
@@ -1668,6 +1705,7 @@ export function SmartTalk({
                   <a
                     href={buildPublicPath("smarttalk", {
                       focusedEntryId: relatedFocusedQuestions[0].id,
+                      seoTitle: relatedFocusedQuestions[0].content,
                     })}
                     className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700"
                   >
@@ -1815,12 +1853,14 @@ export function SmartTalk({
                     href={buildPublicPath("smarttalk", {
                       selectedTopic: selectedCategory,
                       focusedEntryId: question.id,
+                      seoTitle: question.content,
                     })}
                     onClick={(event) => {
                       event.preventDefault();
                       navigateToRoute("smarttalk", {
                         selectedTopic: selectedCategory,
                         focusedEntryId: question.id,
+                        seoTitle: question.content,
                       });
                     }}
                     className="group block rounded-xl border border-slate-200 bg-white p-4 shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_12px_24px_rgba(99,102,241,0.08)]"

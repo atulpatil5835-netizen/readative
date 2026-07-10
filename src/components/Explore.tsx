@@ -236,12 +236,18 @@ function buildExploreSchemas({
     items: [
       ...topPosts.slice(0, 5).map((entry) => ({
         name: entry.title,
-        url: buildAbsoluteRouteUrl("knowledge", { focusedEntryId: entry.id }),
+        url: buildAbsoluteRouteUrl("knowledge", {
+          focusedEntryId: entry.id,
+          seoTitle: entry.title,
+        }),
         description: entry.excerpt || summarizeSchemaText(entry.content),
       })),
       ...activeDiscussions.slice(0, 5).map((question) => ({
         name: summarizeSchemaText(question.content, 90),
-        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
+        url: buildPublicPath("smarttalk", {
+          focusedEntryId: question.id,
+          seoTitle: question.content,
+        }),
         description: `${question.answers.length} SmartTalk answer${
           question.answers.length === 1 ? "" : "s"
         }`,
@@ -275,7 +281,10 @@ function buildExploreSchemas({
       buildDiscussionForumPostingSchema({
         headline: summarizeSchemaText(question.content, 90),
         text: question.content,
-        url: buildPublicPath("smarttalk", { focusedEntryId: question.id }),
+        url: buildPublicPath("smarttalk", {
+          focusedEntryId: question.id,
+          seoTitle: question.content,
+        }),
         authorName: question.author,
         datePublished: new Date(question.createdAt).toISOString(),
         answerCount: question.answers.length,
@@ -1283,6 +1292,7 @@ export function Explore({
                     href={buildPublicPath("smarttalk", {
                       selectedTopic: question.category,
                       focusedEntryId: question.id,
+                      seoTitle: question.content,
                     })}
                     onClick={(event) => {
                       event.preventDefault();
@@ -1340,7 +1350,10 @@ export function Explore({
                       {collection.entries.map((entry) => (
                         <a
                           key={entry.id}
-                          href={`/post/${entry.id}`}
+                          href={buildPublicPath("knowledge", {
+                            focusedEntryId: entry.id,
+                            seoTitle: entry.title,
+                          })}
                           onClick={(e) => {
                             e.preventDefault();
                             onOpenEntry(entry.id);
@@ -1359,6 +1372,7 @@ export function Explore({
                           href={buildPublicPath("smarttalk", {
                             selectedTopic: question.category,
                             focusedEntryId: question.id,
+                            seoTitle: question.content,
                           })}
                           onClick={(event) => {
                             event.preventDefault();
@@ -1616,6 +1630,7 @@ function UnifiedSearchResults({
                 href={buildPublicPath("smarttalk", {
                   selectedTopic: question.category,
                   focusedEntryId: question.id,
+                  seoTitle: question.content,
                 })}
                 onClick={(event) => {
                   event.preventDefault();
@@ -1682,7 +1697,10 @@ function DiscoveryPostList({
         return (
           <DiscoveryListRow
             key={entry.id}
-            href={`/post/${entry.id}`}
+            href={buildPublicPath("knowledge", {
+              focusedEntryId: entry.id,
+              seoTitle: entry.title,
+            })}
             onClick={(e) => {
               e.preventDefault();
               onOpenEntry(entry.id);
@@ -1838,7 +1856,10 @@ function ResurfacingGrid({
             {section.entries.map((entry) => (
               <a
                 key={entry.id}
-                href={`/post/${entry.id}`}
+                href={buildPublicPath("knowledge", {
+                  focusedEntryId: entry.id,
+                  seoTitle: entry.title,
+                })}
                 onClick={(e) => {
                   e.preventDefault();
                   onOpenEntry(entry.id);

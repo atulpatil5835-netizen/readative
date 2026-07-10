@@ -119,7 +119,11 @@ function isAdsEligibleRoute() {
     pathname === "/index.html" ||
     pathname === "/knowledge" ||
     pathname.startsWith("/knowledge/") ||
+    pathname.startsWith("/posts/") ||
+    pathname === "/post" ||
+    pathname.startsWith("/post/") ||
     pathname === "/smarttalk" ||
+    pathname.startsWith("/smarttalk/") ||
     pathname === "/smarttalks" ||
     pathname.startsWith("/smarttalks/")
   ) {
@@ -129,7 +133,9 @@ function isAdsEligibleRoute() {
   if (
     hashRoute === "knowledge" ||
     hashRoute.startsWith("knowledge/") ||
-    hashRoute === "smarttalk"
+    hashRoute.startsWith("post/") ||
+    hashRoute === "smarttalk" ||
+    hashRoute.startsWith("smarttalk/")
   ) {
     return true;
   }

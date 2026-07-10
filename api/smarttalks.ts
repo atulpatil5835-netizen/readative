@@ -15,17 +15,39 @@ import {
   renderAppDocument,
   renderJsonLd,
 } from "./_document.js";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+  extractSeoDocumentId,
+  isCanonicalSeoDocumentSegment,
+} from "../src/utils/seoUrls.js";
 
 function getQueryValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
 
-function smartTalkPath(id: string) {
-  return `/smarttalks/${encodeURIComponent(id)}`;
+function smartTalkPath(question: Pick<SeoSmartTalk, "id" | "title">) {
+  return buildSmartTalkSeoPath(question.id, question.title);
 }
 
 function absoluteUrl(path: string) {
   return `${SITE_URL}${path}`;
+}
+
+function shouldRedirectToCanonical(
+  requestedSegment: string,
+  canonicalQuestion: SeoSmartTalk,
+  legacy: string,
+) {
+  return (
+    Boolean(legacy) ||
+    !isCanonicalSeoDocumentSegment(
+      "smarttalk",
+      requestedSegment,
+      canonicalQuestion.id,
+      canonicalQuestion.title,
+    )
+  );
 }
 
 function getCategoryLabel(categoryId: string | null) {
@@ -94,7 +116,7 @@ function buildSmartTalkIndexSchemas(questions: SeoSmartTalk[]) {
           "@type": "ListItem",
           position: index + 1,
           name: question.title,
-          url: absoluteUrl(smartTalkPath(question.id)),
+          url: absoluteUrl(smartTalkPath(question)),
         })),
       },
     },
@@ -102,7 +124,7 @@ function buildSmartTalkIndexSchemas(questions: SeoSmartTalk[]) {
 }
 
 function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
-  const questionUrl = absoluteUrl(smartTalkPath(question.id));
+  const questionUrl = absoluteUrl(smartTalkPath(question));
 
   return [
     {
@@ -209,7 +231,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const questions = [...data.smartTalks].sort(
     (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
   );
-  const requestedId = getQueryValue(req.query.id);
+  const requestedSegment = getQueryValue(req.query.id);
+  const requestedId = extractSeoDocumentId(requestedSegment);
   const focusedQuestion = requestedId
     ? questions.find((question) => question.id === requestedId)
     : null;
@@ -242,8 +265,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (focusedQuestion) {
-    const canonicalPath = smartTalkPath(focusedQuestion.id);
+    const canonicalPath = smartTalkPath(focusedQuestion);
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
+    const legacy = getQueryValue(req.query.legacy);
+    if (shouldRedirectToCanonical(requestedSegment, focusedQuestion, legacy)) {
+      res.setHeader("Location", canonicalUrl);
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
+      return res.status(301).end();
+    }
+
     const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
     const pageDescription = focusedQuestion.description;
     const relatedQuestions = getRelatedQuestions(focusedQuestion, questions, 5);
@@ -280,21 +310,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const relatedQuestionList = relatedQuestions.length
       ? relatedQuestions
           .map(
-            (question) => `<li><a href="${smartTalkPath(question.id)}">${escapeHtml(question.title)}</a></li>`,
+            (question) => `<li><a href="${smartTalkPath(question)}">${escapeHtml(question.title)}</a></li>`,
           )
           .join("")
       : '<li><a href="/smarttalks">Browse all questions</a></li>';
     const relatedPostList = relatedPosts.length
       ? relatedPosts
           .map(
-            (post) => `<li><a href="/post/${encodeURIComponent(post.id)}">${escapeHtml(post.title)}</a></li>`,
+            (post) => `<li><a href="${buildPostSeoPath(post.id, post.title)}">${escapeHtml(post.title)}</a></li>`,
           )
           .join("")
       : '<li><a href="/posts">Browse all posts</a></li>';
     const nextReading = relatedPosts[0]
-      ? `<a href="/post/${encodeURIComponent(relatedPosts[0].id)}">${escapeHtml(relatedPosts[0].title)}</a>`
+      ? `<a href="${buildPostSeoPath(relatedPosts[0].id, relatedPosts[0].title)}">${escapeHtml(relatedPosts[0].title)}</a>`
       : relatedQuestions[0]
-        ? `<a href="${smartTalkPath(relatedQuestions[0].id)}">${escapeHtml(relatedQuestions[0].title)}</a>`
+        ? `<a href="${smartTalkPath(relatedQuestions[0])}">${escapeHtml(relatedQuestions[0].title)}</a>`
         : '<a href="/posts">Explore more knowledge</a>';
     const main = `<div class="seo-document"><div class="seo-shell">
       <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>
@@ -356,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .slice(0, 100)
     .map(
       (question) => `<li id="question-${escapeHtml(question.id)}">
-        <a href="${smartTalkPath(question.id)}">${escapeHtml(question.title)}</a>
+        <a href="${smartTalkPath(question)}">${escapeHtml(question.title)}</a>
         <span> — ${escapeHtml(getCategoryLabel(question.category) || "SmartTalk")} · ${question.answerCount} ${question.answerCount === 1 ? "answer" : "answers"}</span>
       </li>`,
     )

@@ -1,82 +1,87 @@
-# Release H2 Task Checklist
+# Release H5 Task Checklist
 
-Status: code fixes applied; local validation passed; authenticated Firestore E2E QA remains blocked by missing signed-in browser credentials.
-Date: 2026-07-06
+Status: PASS.
+Date: 2026-07-10
 
-## Root trace
+## Audit
 
-- [x] Trace `KnowledgeCard -> updateHelpful -> toggleKnowledgeEntryLike -> runTransaction -> Firestore -> repository result -> UI update`.
-- [x] Trace `KnowledgeCard -> updateMisleading -> toggleKnowledgeEntryMisleading -> runTransaction -> Firestore -> repository result -> UI update`.
-- [x] Capture collection and document paths in repository results.
-- [x] Capture transaction callback attempt counts in touched transaction paths.
-- [x] Document notification side-effect paths.
-- [x] Document UI rollback behavior.
-- [x] Fix confirmed Helpful/Misleading defects only.
+- [x] Audit post URL generation and consumption.
+- [x] Audit SmartTalk URL generation and consumption.
+- [x] Audit feed, journey, related content, Explore, profile, bookmarks/saved items, My Notes, share/copy, sitemap, canonical metadata, OpenGraph, Twitter, JSON-LD, and server-rendered discovery.
+- [x] Document findings in `seo_url_audit.md`.
 
-## Firestore read audit
+## Slug Engine
 
-- [x] Enumerate `getDoc`, `getDocs`, `onSnapshot`, and `runTransaction` call sites.
-- [x] Verify feed listener and pagination limits.
-- [x] Verify SmartTalk listener and pagination limits.
-- [x] Verify notification listener limit and fallback behavior.
-- [x] Verify notebook read paths.
-- [x] Verify profile read paths.
-- [x] Apply live-safe home feed read containment.
-- [x] Leave schema-level read/cache redesign as recommendation only.
+- [x] Add one shared deterministic slug utility.
+- [x] Normalize unicode.
+- [x] Lowercase.
+- [x] Remove punctuation.
+- [x] Replace separators with hyphens.
+- [x] Collapse duplicate hyphens.
+- [x] Preserve document IDs in every canonical URL.
+- [x] Support ID extraction from both legacy and slugged segments.
 
-## Firestore write audit
+## Routing
 
-- [x] Helpful write path repaired.
-- [x] Misleading write path repaired.
-- [x] Save write path repaired.
-- [x] Comment write path repaired.
-- [x] Publish notification coupling repaired.
-- [x] SmartTalk vote duplicate-click and silent-failure path repaired.
-- [x] SmartTalk save duplicate-click and silent-failure path repaired.
-- [x] Test helper now deletes its temporary Firestore post after execution.
+- [x] Support new post URLs: `/posts/<slug>--<id>`.
+- [x] Support old post URLs: `/post/<id>`.
+- [x] Support new SmartTalk URLs: `/smarttalk/<slug>--<id>`.
+- [x] Support old SmartTalk URLs: `/smarttalk/<id>` and `/smarttalks/<id>`.
+- [x] Add server-side legacy redirects to canonical URLs after document lookup.
+- [x] Preserve `/posts` discovery index.
+- [x] Preserve `/smarttalks` discovery index.
 
-## Interaction integrity
+## Internal Linking
 
-- [x] Helpful code path repaired.
-- [x] Helpful remove code path repaired.
-- [x] Misleading code path repaired.
-- [x] Misleading remove code path repaired.
-- [x] Comment code path repaired.
-- [x] Bookmark/save code path repaired.
-- [x] SmartTalk Helpful/Misleading vote code path repaired.
-- [x] SmartTalk save code path repaired.
-- [x] SmartTalk answer/reply error handling repaired.
-- [x] Confirm standalone post reply is not implemented.
-- [x] Confirm standalone SmartTalk comment/like surfaces are not implemented.
-- [ ] Authenticated Helpful E2E after refresh.
-- [ ] Authenticated Misleading E2E after refresh.
-- [ ] Authenticated Save E2E after refresh.
-- [ ] Authenticated Comment E2E after refresh.
-- [ ] Authenticated SmartTalk vote/save/reply E2E after refresh.
-- [ ] Authenticated Notebook save/delete/sync E2E after refresh.
-- [ ] Authenticated Profile counters E2E after refresh.
-- [ ] Authenticated Notifications E2E with existing notifications.
+- [x] Knowledge Card title links.
+- [x] Knowledge Card share/copy URL.
+- [x] Knowledge Feed desktop rails.
+- [x] Knowledge Journey Continue Reading.
+- [x] Knowledge Journey Related Posts.
+- [x] Knowledge Journey Related SmartTalk.
+- [x] Explore post links.
+- [x] Explore SmartTalk links.
+- [x] Explore search result links.
+- [x] Profile shared-post structured data.
+- [x] Profile saved SmartTalk opens.
+- [x] My Notes Continue Reading.
+- [x] Server-rendered related post links.
+- [x] Server-rendered related SmartTalk links.
+- [x] Sitemap URLs.
+- [x] Discovery index anchors.
+
+## SEO
+
+- [x] Canonical URL generation.
+- [x] OpenGraph URL generation.
+- [x] Twitter card metadata pairing.
+- [x] Article JSON-LD URL.
+- [x] DiscussionForumPosting JSON-LD URL.
+- [x] FAQPage JSON-LD URL.
+- [x] Breadcrumb URL.
+- [x] ItemList URL.
+- [x] Sitemap entries.
+- [x] SEO verifier updated for slug URL contract.
+
 ## Validation
 
-- [x] `npm run build`
 - [x] `npx tsc --noEmit`
-- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false`
+- [x] `npm run build`
+- [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`
+- [x] `npm run verify:seo`
 - [x] `git diff --check`
-- [x] Desktop smoke QA on production preview.
-- [x] Tablet smoke QA on production preview.
-- [x] Mobile smoke QA on production preview.
-- [x] Console-error smoke QA on Home, SmartTalk, Explore, and Profile.
+- [x] Local direct route smoke for old and new post URLs.
+- [x] Local direct route smoke for old and new SmartTalk URLs.
+- [x] Browser refresh/back/forward smoke for representative canonical post and SmartTalk routes.
+- [x] Browser canonical/OG smoke for Home, Explore, post, and SmartTalk routes.
+- [x] Static/code-path coverage for auth-personalized Bookmarks and Notifications URL opens.
 
-## Reports
+## Scope Guard
 
-- [x] `firestore_trace.md`
-- [x] `firestore_optimization_report.md`
-- [x] `interaction_audit.md`
-- [x] `performance_report.md`
-- [x] `walkthrough.md`
-- [x] `task.md`
-- [x] `final_report.md`
-
-## Stop condition
-
-H2 should not be marked fully production-complete until the implemented signed-in interactions are verified end-to-end with a real authenticated session after refresh. Local build/type/browser smoke gates are clean.
+- [x] No Firestore schema change.
+- [x] No feed ranking change.
+- [x] No SmartTalk logic change.
+- [x] No Notebook change.
+- [x] No Authentication change.
+- [x] No Notifications behavior change.
+- [x] No UI redesign.

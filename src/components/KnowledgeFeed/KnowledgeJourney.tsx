@@ -278,7 +278,7 @@ function createPostAction(
 ): KnowledgeJourneyAction {
   const route = {
     tab: "knowledge" as const,
-    options: { focusedEntryId: entry.id },
+    options: { focusedEntryId: entry.id, seoTitle: entry.title },
   };
 
   return {
@@ -340,6 +340,7 @@ export function getKnowledgeJourneyActions({
       options: {
         selectedTopic: relatedQuestion.category || entry.category,
         focusedEntryId: relatedQuestion.id,
+        seoTitle: relatedQuestion.content,
       },
     };
     const answerLabel =

@@ -7,8 +7,9 @@
 /knowledge / 301
 /jobs /explore 301
 /posts /api/discovery 200
+/posts/* /api/post?id=:splat 200
 /smarttalks /api/smarttalks 200
-/smarttalks/* /api/smarttalks?id=:splat 200
+/smarttalks/* /api/smarttalks?id=:splat&legacy=smarttalks 200
 /about /api/legal?slug=about 200
 /contact /api/legal?slug=contact 200
 /privacy /api/legal?slug=privacy 200
@@ -27,7 +28,7 @@
 /community-guidelines /community 301
 /smarttalk /api/smarttalk 200
 /smarttalk/ /api/smarttalk 200
-/smarttalk/* /api/smarttalk?id=:splat 200
+/smarttalk/* /api/smarttalks?id=:splat 200
 /explore /index.html 200
 /explore/ /index.html 200
 /explore/* /index.html 200
@@ -39,7 +40,7 @@
 /profile/* /index.html 200
 /post /index.html 200
 /post/ /index.html 200
-/post/* /api/post?id=:splat 200
+/post/* /api/post?id=:splat&legacy=post 200
 /category /index.html 200
 /category/ /index.html 200
 /category/* /index.html 200

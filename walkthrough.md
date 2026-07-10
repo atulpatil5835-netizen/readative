@@ -1,195 +1,94 @@
-# Release H3 Walkthrough
+# Release H5 Walkthrough
 
-Status: ❌ NOT READY FOR DEPLOY
-Date: 2026-07-08
+Status: PASS.
+Date: 2026-07-10
 
 ## Objective
 
-Treat Readative as a production product and fix only confirmed production issues without adding features, redesigning UI, changing Firestore schema, changing routing, changing SEO architecture, touching AdSense, or changing SmartTalk logic.
+Release H5 upgrades Readative's public post and SmartTalk item URLs to human-readable SEO paths while keeping every document ID in the URL and preserving legacy route compatibility.
 
-## H3 Code Walkthrough
+## What Changed
 
-1. Profile photo flow:
-   - Upload/save still writes `profileImage` to `userProfiles/{uid}` through the existing profile utilities.
-   - Profile saves now dispatch `readative:user-profile-updated` only after Firestore success.
-   - Knowledge Feed now collects visible author/comment/mention profile ids, loads only missing `userProfiles` docs, and caches loaded/loading ids for the session.
-   - Feed cards continue to render `ProfileAvatar` from the existing profile map.
+1. Shared SEO URL utility
 
-2. Edit Post:
-   - The modal still loads existing title/content/hashtags from the card entry.
-   - Save still writes the existing `knowledge/{postId}` fields.
-   - After Firestore success, the updated entry is propagated through `KnowledgeCard` -> `KnowledgeCardList` -> `FeedRenderer` -> `KnowledgeFeed`.
-   - Home/topic/focused feed state and feed cache now receive the saved title/content instead of stale entry data.
+- Added `src/utils/seoUrls.ts`.
+- Centralized slug generation, canonical post path creation, canonical SmartTalk path creation, and legacy segment ID extraction.
+- No second slug implementation was introduced.
 
-3. Helpful/Misleading:
-   - Existing transaction helpers remain the primary write path.
-   - Notification side effects remain best-effort.
-   - Profile tracking/cleanup remains best-effort.
-   - UI state continues to update from persisted arrays returned by the transaction helpers.
+2. App route parsing
 
-4. Accessibility:
-   - Cookie banner link text is now `Read Cookie Policy`.
-   - Trust badge exposes a descriptive accessible label.
-   - Existing toggle-style controls expose `aria-pressed`.
-   - Confirmed button semantics were tightened with explicit `type="button"`.
+- `/posts/<slug>--<id>` opens the same focused post as `/post/<id>`.
+- `/smarttalk/<slug>--<id>` opens the same focused question as `/smarttalk/<id>` and `/smarttalks/<id>`.
+- `/posts` remains the post discovery page.
+- `/smarttalks` remains the SmartTalk discovery page.
+- Client fallback URLs are replaced with title/content slugs after the focused document loads.
 
-5. Google:
-   - `trackPageView` now receives the app's accepted consent state and does not depend only on a storage reread.
-   - GA script loading remains deduplicated after consent.
-   - AdSense code was not touched.
+3. Internal linking
 
-## H3 Local Validation
+- Feed, card title, share/copy, desktop rails, journey actions, Explore cards, Explore search, Profile schema, saved SmartTalk, My Notes, and SmartTalk related links now use canonical builders.
+- Button-only open flows continue to work with IDs and canonicalize after load when title/content becomes available.
 
-Commands run from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
+4. Server SEO documents
+
+- `api/post.ts` now renders canonical `/posts/<slug>--<id>` metadata and redirects legacy `/post/<id>` requests to canonical after lookup.
+- `api/smarttalks.ts` now renders canonical `/smarttalk/<slug>--<id>` metadata and redirects plural legacy item requests to canonical.
+- `api/smarttalk.ts` now redirects old query-style SmartTalk entry links to canonical URLs.
+
+5. Sitemap and discovery
+
+- `api/_seoData.ts` emits canonical post and SmartTalk sitemap entries.
+- `api/discovery.ts` emits canonical anchors and canonical structured data item URLs.
+- `scripts/verify-seo-recovery.ts` now validates canonical slug URLs and writes `seo_report.md`.
+
+## Compatibility Walkthrough
+
+- Old post URL request: `/post/<id>` -> server resolves post -> 301 to `/posts/<title-slug>--<id>`.
+- New post URL request: `/posts/<title-slug>--<id>` -> server renders focused post document.
+- Old SmartTalk URL request: `/smarttalks/<id>` -> server resolves question -> 301 to `/smarttalk/<question-slug>--<id>`.
+- New SmartTalk URL request: `/smarttalk/<question-slug>--<id>` -> server renders focused SmartTalk document.
+- Client-side old/fallback route open -> focused document loads -> route is replaced with canonical title/content slug.
+
+## Validation Plan
+
+Commands from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
 
 ```text
 npm run build
 npx tsc --noEmit
 npx tsc --noEmit --noUnusedLocals --noUnusedParameters
-git diff --check
 npm run verify:seo
+git diff --check
 ```
 
-Results:
-
-- Build: PASS.
-- TypeScript: PASS.
-- Strict unused-symbol TypeScript: PASS.
-- Diff whitespace: PASS; CRLF conversion warnings only.
-- SEO verifier: PASS; 333 post URLs, 109 SmartTalk URLs, 33 profile URLs, 547 tag URLs, 509 sitemap URLs, 0 missing post URLs.
-
-## H3 Browser QA Walkthrough
-
-Preview URL: `http://127.0.0.1:4173/`
-
-Passed:
-
-1. Desktop 1280x900 Home loaded with feed content and loaded profile images.
-2. Tablet 768x1024 Home loaded with feed content and loaded profile images.
-3. Mobile 390x844 Home loaded with feed content and loaded profile images.
-4. SmartTalk route rendered.
-5. SPA navigation between Home and SmartTalk worked.
-6. GA script tag remained exactly once after consent/navigation.
-7. Cookie banner link text was verified as `Read Cookie Policy` before consent in the first browser pass.
-
-Blocked:
-
-1. Publish could not be completed because the browser session was not authenticated.
-2. Google sign-in attempt in local preview failed at Firebase auth handler with `The requested action is invalid`.
-3. Because auth failed, browser QA could not complete:
-   - Profile image upload/save.
-   - Edit Post save via authenticated ownership.
-   - Helpful count persistence after refresh and another browser.
-   - Misleading count persistence after refresh and another browser.
-   - Comments write.
-   - Notifications side-effect behavior.
-4. Direct LCP measurement was blocked because the in-app browser evaluation sandbox did not expose `window.performance`.
-
-## H3 Deployment Gate
-
-Before deploy approval, run authenticated browser QA with an approved signed-in account:
-
-1. Upload/change profile photo, then verify Knowledge Feed avatar after refresh.
-2. Edit an owned post, refresh, and verify the feed and focused post show saved content.
-3. Toggle Helpful, refresh, and verify another browser reflects the count.
-4. Remove Helpful and verify count restoration.
-5. Toggle Misleading, refresh, and verify another browser reflects the count.
-6. Remove Misleading and verify count restoration.
-7. Add a comment and verify persistence.
-8. Publish a temporary post and delete it.
-9. Open Notifications and verify notification failures do not affect primary writes.
-10. Verify LCP under 3 seconds using a browser/runtime that exposes performance entries.
-
-## H3 Verdict
-
-❌ NOT READY FOR DEPLOY
-
-# Release H2 Walkthrough
-
-Status: local code and smoke validation passed; authenticated write walkthrough still required.
-Date: 2026-07-06
-
-## Objective
-
-Restore interaction-based Firestore integrity without redesigning UI, routing, SEO, cookies, desktop workspace, or notification architecture.
-
-## What Changed
-
-Posts:
-
-- Helpful and Misleading now update UI only after the Firestore transaction returns persisted arrays.
-- Helpful profile tracking now runs best-effort after post trust updates, so profile-rule failures cannot break the button.
-- Save now updates UI only after the Firestore transaction returns persisted saved state.
-- Comments appear only after the `knowledge/{postId}` write succeeds.
-- Comment and publish notifications now run best-effort after primary persistence.
-
-SmartTalk:
-
-- Helpful/Misleading answer votes throw on missing discussion docs instead of silently returning.
-- Vote buttons disable while a vote transaction is in flight.
-- Save uses a shared awaited helper and blocks duplicate writes.
-- Vote/save failures show visible messages.
-- Question and answer validation failures clean up loading state and show visible messages.
-
-Auth:
-
-- Google sign-in waits for Firebase auth persistence setup.
-- Session restore waits for persistence setup and reports restore errors.
-- Sign-out is awaited, duplicate-submit guarded, and visibly reports failure.
-
-Trace and test helpers:
-
-- Touched transaction paths now record transaction callback attempt counts.
-- Repository results include collection/document/profile paths where applicable.
-- The temporary Firestore test helper deletes its test post in `finally`.
-
-## Local Validation Performed
-
-Commands run from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
+Route smoke targets:
 
 ```text
-npm run build
-npx tsc --noEmit
-npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false
-git diff --check
+/post/<id>
+/posts/<slug>--<id>
+/smarttalk/<id>
+/smarttalks/<id>
+/smarttalk/<slug>--<id>
+/posts
+/smarttalks
+/sitemap.xml
+/robots.txt
 ```
 
-Results:
+## Final Evidence
 
-- Build: PASS.
-- TypeScript: PASS.
-- Strict unused-symbol TypeScript: PASS.
-- Diff whitespace: PASS; Git printed CRLF conversion warnings only.
+- `npx tsc --noEmit`: PASS.
+- `npm run build`: PASS.
+- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`: PASS.
+- `npm run verify:seo`: PASS.
+- `git diff --check`: PASS; line-ending warnings only.
+- SEO verifier: 336 post URLs, 109 SmartTalk URLs, 512 sitemap URLs, 0 missing post URLs, 0 missing SmartTalk URLs, 0 duplicate sitemap URL groups.
+- Handler smoke: canonical post and SmartTalk URLs returned 200.
+- Handler smoke: `/post/<id>`, `/smarttalks/<id>`, `/smarttalk/<id>`, and `/smarttalk?id=<id>` returned 301 to canonical slug URLs.
+- Browser smoke: Home desktop, Explore mobile, canonical post, canonical SmartTalk, post refresh, browser back, and browser forward passed on the built preview bundle.
+- Browser smoke: old client `/post/<id>` and `/smarttalk/<id>` canonicalized to slug URLs.
+- Browser console: no errors on the fresh preview origin used for final verification.
 
-## Browser Smoke Walkthrough
+## QA Notes
 
-1. Built the app with `npm run build`.
-2. Started production preview at `http://127.0.0.1:4173/`.
-3. Loaded Home, SmartTalk, Explore, and Profile on desktop 1280x720.
-4. Repeated Home, SmartTalk, Explore, and Profile on tablet 768x1024.
-5. Repeated Home, SmartTalk, Explore, and Profile on mobile 390x844.
-6. Verified no console errors on those routes.
-7. Verified no horizontal overflow on those routes.
-8. Did not perform production Firestore writes because no signed-in browser credentials were available.
-
-## Authenticated Walkthrough Still Required
-
-After signing in with a disposable or approved account:
-
-1. Toggle Helpful and verify count, refresh persistence, and another-session visibility.
-2. Remove Helpful and verify count, refresh persistence, and another-session visibility.
-3. Toggle Misleading and verify Helpful cleanup, count sync, refresh persistence, and another-session visibility.
-4. Remove Misleading and verify count and refresh persistence.
-5. Save and unsave a post; verify profile saved state/count and refresh persistence.
-6. Add a comment; verify count and refresh persistence.
-7. Verify notification failure cannot roll back a saved comment or published post.
-8. Verify SmartTalk answer Helpful/Misleading vote, duplicate-click disable, counts, refresh persistence, and error messaging.
-9. Verify SmartTalk save/unsave and answer/reply flow.
-10. Verify Notebook highlight save/delete, My Notes, feed highlights, notebook count, and refresh persistence.
-11. Verify profile counters after real actions.
-12. Verify notifications panel, badge, mark-read state, and open behavior with existing notifications.
-13. Verify logout and session restore.
-
-## Verdict
-
-H2 is locally clean and interaction code paths are repaired, but authenticated persistence QA remains the release gate before calling it fully production-complete.
+- SmartTalk index metadata was verified on tablet; the index did not expose `data-publisher-content="smarttalk-question"` markers in the smoke target, so focused SmartTalk route markers were used for item-route validation.
+- Auth-personalized Bookmarks and Notifications were not exercised with a signed-in browser account. Their H5 URL behavior is covered by code-path/static verification: saved post surfaces reuse canonical card links, saved SmartTalk passes question content into `navigateToRoute`, and notification opens resolve by ID then canonicalize after the focused document loads.

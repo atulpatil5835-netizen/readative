@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import { buildSitemapEntries, loadSeoData, SITE_URL } from "../api/_seoData.js";
+import {
+  buildPostSeoPath,
+  buildSmartTalkSeoPath,
+} from "../src/utils/seoUrls.js";
 
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 dotenv.config({ path: path.join(process.cwd(), ".env") });
@@ -33,12 +37,17 @@ async function main() {
   const entries = buildSitemapEntries(data);
   const sitemapUrls = new Set(entries.map((entry) => entry.loc));
   const postUrls = data.posts.map(
-    (post) => `${SITE_URL}/post/${encodeURIComponent(post.id)}`,
+    (post) => `${SITE_URL}${buildPostSeoPath(post.id, post.title)}`,
+  );
+  const smartTalkUrls = data.smartTalks.map(
+    (question) => `${SITE_URL}${buildSmartTalkSeoPath(question.id, question.title)}`,
   );
   const missingPostUrls = postUrls.filter((url) => !sitemapUrls.has(url));
+  const missingSmartTalkUrls = smartTalkUrls.filter((url) => !sitemapUrls.has(url));
   const nonCanonicalUrls = entries.filter(
     (entry) => !entry.loc.startsWith(`${SITE_URL}/`),
   );
+  const duplicateSitemapUrlGroups = uniqueDuplicateGroups(entries, (entry) => entry.loc);
   const duplicateTitleGroups = uniqueDuplicateGroups(data.posts, (post) => post.title);
   const duplicateDescriptionGroups = uniqueDuplicateGroups(
     data.posts,
@@ -46,7 +55,7 @@ async function main() {
   );
   const robots = readFile("public/robots.txt");
   const robotsAllowsAll = /User-agent:\s*\*/i.test(robots) && /Allow:\s*\//i.test(robots);
-  const robotsBlocksPosts = /Disallow:\s*\/post/i.test(robots);
+  const robotsBlocksCanonicalDocuments = /Disallow:\s*\/(?:posts|smarttalk)\b/i.test(robots);
   const vercel = JSON.parse(readFile("vercel.json")) as {
     redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
     rewrites?: Array<{ source: string; destination: string }>;
@@ -80,37 +89,63 @@ async function main() {
     (rewrite) =>
       rewrite.source === "/posts" && rewrite.destination === "/api/discovery",
   );
+  const hasPostCanonicalRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/posts/:id" && rewrite.destination === "/api/post?id=:id",
+  );
+  const hasPostLegacyRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/post/:id" &&
+      rewrite.destination === "/api/post?id=:id&legacy=post",
+  );
   const hasSmartTalkRewrite = rewrites.some(
     (rewrite) =>
       rewrite.source === "/smarttalks" && rewrite.destination === "/api/smarttalks",
   );
+  const hasSmartTalkCanonicalRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/smarttalk/:id" &&
+      rewrite.destination === "/api/smarttalks?id=:id",
+  );
+  const hasSmartTalkLegacyRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/smarttalks/:id" &&
+      rewrite.destination === "/api/smarttalks?id=:id&legacy=smarttalks",
+  );
   const changedFiles = [
     "api/_seoData.ts",
     "api/discovery.ts",
-    "api/sitemap.xml.ts",
+    "api/post.ts",
+    "api/smarttalk.ts",
     "api/smarttalks.ts",
-    "src/components/AppShell.tsx",
     "src/components/Explore.tsx",
-    "src/components/Header.tsx",
-    "src/components/KnowledgeCard.tsx",
-    "src/components/KnowledgeFeed.tsx",
-    "src/components/SEO.tsx",
+    "src/components/KnowledgeCard/CardContent.tsx",
+    "src/components/KnowledgeCard/KnowledgeCard.tsx",
+    "src/components/KnowledgeFeed/FeedRenderer.tsx",
+    "src/components/KnowledgeFeed/KnowledgeFeed.tsx",
+    "src/components/KnowledgeFeed/KnowledgeJourney.tsx",
+    "src/components/KnowledgeFeed/feedHelpers.ts",
+    "src/components/Profile.tsx",
+    "src/components/ProfileMyNotes.tsx",
     "src/components/SmartTalk.tsx",
-    "src/utils/renderRichText.tsx",
+    "src/utils/loadThirdPartyScripts.ts",
     "src/utils/routes.ts",
+    "src/utils/seoUrls.ts",
     "public/_redirects",
-    "public/robots.txt",
     "vercel.json",
-    "package.json",
-    "package-lock.json",
     "scripts/verify-seo-recovery.ts",
+    "seo_url_audit.md",
+    "seo_report.md",
+    "walkthrough.md",
+    "task.md",
+    "final_report.md",
   ];
   const postInboundLinkCoverage = data.posts.length;
   const canonicalStatus =
     nonCanonicalUrls.length === 0
       ? "PASS - all sitemap URLs use https://www.readative.com"
       : `FAIL - ${nonCanonicalUrls.length} non-canonical URLs found`;
-  const report = `# SEO Recovery Implementation Report
+  const report = `# Release H5 SEO URL Report
 
 Generated: ${new Date().toISOString()}
 
@@ -119,6 +154,8 @@ Generated: ${new Date().toISOString()}
 - Sitemap URL: ${SITE_URL}/sitemap.xml
 - Crawlable discovery index: ${SITE_URL}/posts
 - Crawlable SmartTalk index: ${SITE_URL}/smarttalks
+- Canonical post shape: ${SITE_URL}/posts/{seo-slug}--{documentId}
+- Canonical SmartTalk shape: ${SITE_URL}/smarttalk/{seo-slug}--{documentId}
 - Firestore SEO data source: ${data.source}
 - Published post URLs discovered: ${data.posts.length}
 - SmartTalk discussions discovered: ${data.smartTalks.length}
@@ -134,6 +171,8 @@ ${markdownList(changedFiles)}
 
 - Published posts in sitemap: ${data.posts.length - missingPostUrls.length} / ${data.posts.length}
 - Missing post URLs: ${missingPostUrls.length}
+- SmartTalk discussions in sitemap: ${data.smartTalks.length - missingSmartTalkUrls.length} / ${data.smartTalks.length}
+- Missing SmartTalk URLs: ${missingSmartTalkUrls.length}
 - Categories in sitemap: ${entries.filter((entry) => entry.type === "category").length}
 - Topics in sitemap: ${entries.filter((entry) => entry.type === "topic").length}
 - Tags in sitemap: ${entries.filter((entry) => entry.type === "tag").length}
@@ -144,13 +183,18 @@ ${markdownList(changedFiles)}
 
 - Canonical host: ${SITE_URL}
 - Sitemap canonical status: ${canonicalStatus}
+- Duplicate sitemap URLs: ${duplicateSitemapUrlGroups.length === 0 ? "PASS" : `FAIL (${duplicateSitemapUrlGroups.length} duplicate groups)`}
 - Duplicate URL redirects:
-  - /knowledge/:id -> /post/:id: ${hasKnowledgePostRedirect ? "PASS" : "FAIL"}
+  - /knowledge/:id -> /post/:id legacy bridge: ${hasKnowledgePostRedirect ? "PASS" : "FAIL"}
   - /knowledge -> /: ${hasKnowledgeHomeRedirect ? "PASS" : "FAIL"}
   - /jobs -> /explore: ${hasJobsRedirect ? "PASS" : "FAIL"}
 - Dynamic sitemap rewrite: ${hasSitemapRewrite ? "PASS" : "FAIL"}
 - Discovery index rewrite: ${hasDiscoveryRewrite ? "PASS" : "FAIL"}
+- Canonical post rewrite (/posts/:slug--id): ${hasPostCanonicalRewrite ? "PASS" : "FAIL"}
+- Legacy post rewrite (/post/:id): ${hasPostLegacyRewrite ? "PASS" : "FAIL"}
 - SmartTalk index rewrite: ${hasSmartTalkRewrite ? "PASS" : "FAIL"}
+- Canonical SmartTalk rewrite (/smarttalk/:slug--id): ${hasSmartTalkCanonicalRewrite ? "PASS" : "FAIL"}
+- Legacy SmartTalk rewrite (/smarttalks/:id): ${hasSmartTalkLegacyRewrite ? "PASS" : "FAIL"}
 
 ## Post Metadata Verification
 
@@ -162,11 +206,12 @@ ${markdownList(changedFiles)}
 ## Crawlability And Indexability
 
 - Every published post has sitemap coverage: ${missingPostUrls.length === 0 ? "PASS" : "FAIL"}
+- Every public SmartTalk has sitemap coverage: ${missingSmartTalkUrls.length === 0 ? "PASS" : "FAIL"}
 - Every published post has at least one crawlable inbound link: ${postInboundLinkCoverage === data.posts.length ? "PASS" : "FAIL"}
-- Inbound source: ${SITE_URL}/posts links every /post/{id} with real HTML anchors.
-- Related/recent post links: PASS - focused post pages render crawlable related and recent /post/{id} anchors.
+- Inbound source: ${SITE_URL}/posts links every /posts/{slug}--{id} with real HTML anchors.
+- Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
 - Category/topic/tag/profile links: PASS - discovery index plus in-app surfaces expose real anchors.
-- robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksPosts ? "PASS" : "FAIL"}
+- robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
 
@@ -174,7 +219,7 @@ ${markdownList(changedFiles)}
 
 1. Submit ${SITE_URL}/sitemap.xml in the www/domain property.
 2. Inspect ${SITE_URL}/posts and confirm Google sees the post anchor list.
-3. Inspect a few /post/{id} URLs from the sitemap.
+3. Inspect a few /posts/{slug}--{id} URLs from the sitemap.
 4. Inspect ${SITE_URL}/smarttalks to seed SmartTalk discussion discovery.
 5. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
 
@@ -182,11 +227,11 @@ ${markdownList(changedFiles)}
 
 - Existing post URLs, profile URLs, Firebase collections, and the Vite/React framework were preserved.
 - No Next.js migration or major architecture rewrite was introduced.
-- The SmartTalk index is a server-rendered support page because the app does not currently have individual SmartTalk discussion routes.
+- Legacy post and SmartTalk item URLs are preserved as redirect-compatible inputs.
 `;
 
   fs.writeFileSync(
-    path.join(process.cwd(), "SEO_RECOVERY_IMPLEMENTATION_REPORT.md"),
+    path.join(process.cwd(), "seo_report.md"),
     report,
   );
 
@@ -203,10 +248,12 @@ ${markdownList(changedFiles)}
         tagUrlsDiscovered: data.tags.length,
         sitemapUrls: entries.length,
         missingPostUrls: missingPostUrls.length,
+        missingSmartTalkUrls: missingSmartTalkUrls.length,
+        duplicateSitemapUrlGroups: duplicateSitemapUrlGroups.length,
         duplicateTitleGroups: duplicateTitleGroups.length,
         duplicateDescriptionGroups: duplicateDescriptionGroups.length,
         canonicalStatus,
-        robotsAllowsAll: robotsAllowsAll && !robotsBlocksPosts,
+        robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
       },
       null,
       2,

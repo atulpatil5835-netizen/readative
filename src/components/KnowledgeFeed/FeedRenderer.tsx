@@ -13,7 +13,7 @@ import {
 } from "../Skeletons";
 import { SEO } from "../SEO";
 import { type SeoCategoryDefinition, type SeoTopicDefinition } from "../../utils/seoTaxonomy";
-import { navigateToRoute } from "../../utils/routes";
+import { buildPublicPath, navigateToRoute } from "../../utils/routes";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { type FeedTopicFilter, type FeedTopicId } from "./feedTypes";
 import { FEED_TOPIC_FILTERS } from "./feedFilters";
@@ -183,7 +183,10 @@ function createDesktopPostItem(
     label,
     title: entry.title,
     description: entry.author,
-    href: `/post/${entry.id}`,
+    href: buildPublicPath("knowledge", {
+      focusedEntryId: entry.id,
+      seoTitle: entry.title,
+    }),
     onClick: () => onOpenEntry(entry.id),
   };
 }
