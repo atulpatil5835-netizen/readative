@@ -876,7 +876,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       id={`knowledge-${entry.id}`}
       data-publisher-content="knowledge-post"
       className={cn(
-        "readative-card-surface readative-card-surface-hover overflow-hidden",
+        "readative-card-surface readative-card-surface-hover scroll-mt-24 overflow-hidden md:scroll-mt-28",
         focused &&
           "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
       )}

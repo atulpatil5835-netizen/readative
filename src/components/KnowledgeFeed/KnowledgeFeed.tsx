@@ -1293,7 +1293,11 @@ export function KnowledgeFeed({
     const target = document.getElementById(`knowledge-${focusedEntryId}`);
     if (!target) return;
 
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+      inline: "nearest",
+    });
   }, [entries.length, focusedEntryId]);
 
   useEffect(() => {
