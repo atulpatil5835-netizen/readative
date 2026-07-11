@@ -1,10 +1,11 @@
 import { Fragment, type ReactNode } from "react";
 import { TaggedUser } from "../types";
+import { getProfilePathForIdentity } from "./usernames";
 
 interface RenderRichTextOptions {
   text: string;
   mentions?: TaggedUser[];
-  onOpenProfile?: (authorId: string) => void;
+  onOpenProfile?: (authorId: string, username?: string) => void;
   linkClassName?: string;
   mentionClassName?: string;
 }
@@ -138,10 +139,14 @@ function renderRichTextNodes({
         nodes.push(
           <a
             key={`${keyPrefix}-mention-${index++}`}
-            href={`/profile/${encodeURIComponent(mention.authorId)}`}
+            href={getProfilePathForIdentity({
+              id: mention.authorId,
+              username: mention.username,
+              usernameLower: mention.username,
+            })}
             onClick={(event) => {
               event.preventDefault();
-              onOpenProfile(mention.authorId);
+              onOpenProfile(mention.authorId, mention.username);
             }}
             className={mentionClassName}
           >

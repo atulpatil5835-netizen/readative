@@ -12,7 +12,7 @@ import {
   KnowledgeVisibility,
 } from "../../types";
 import { arrayUnion, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
+import { db } from "../../firebase/firebaseDb";
 import { cn } from "../../utils/classNames";
 import { recordKnowledgeFeedActivity } from "../../utils/feedPersonalization";
 import {
@@ -82,7 +82,7 @@ interface KnowledgeCardProps {
     type: "helpful" | "misleading" | "comment" | "save" | "ink";
     entryId: string;
   }) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag?: (tag: string) => void;
   onLikeChange?: (
@@ -340,7 +340,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     });
   }, [entry, onVisible]);
 
-  const handleOpenAuthorProfile = (authorId: string) => {
+  const handleOpenAuthorProfile = (authorId: string, username?: string) => {
     if (!authorId) return;
 
     recordKnowledgeFeedActivity({
@@ -348,7 +348,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       entry,
       authorId,
     });
-    onOpenProfile(authorId);
+    onOpenProfile(authorId, username);
   };
 
   const handleOpenEntryDetails = () => {
@@ -922,6 +922,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           entry={entry}
           contentSections={contentSections}
           mentions={mentions}
+          profileMap={profileMap}
           onOpenAuthorProfile={handleOpenAuthorProfile}
           onOpenEntryDetails={handleOpenEntryDetails}
           onSelectHashtag={handleSelectHashtag}

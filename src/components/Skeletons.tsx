@@ -154,7 +154,36 @@ export function SmartTalkSkeleton() {
   );
 }
 
-export function SmartTalkQuestionSkeleton() {
+export function SmartTalkQuestionSkeleton({
+  variant = "detail",
+}: {
+  variant?: "detail" | "list";
+}) {
+  if (variant === "list") {
+    return (
+      <div
+        className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_4px_12px_rgba(15,23,42,0.03)]"
+        aria-hidden="true"
+      >
+        <div className="space-y-2">
+          <SkeletonBlock className="h-4 w-[86%] rounded-xl" />
+          <SkeletonBlock className="h-4 w-[58%] rounded-xl" />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <SkeletonBlock className="h-3 w-24" />
+            <SkeletonBlock className="h-3 w-14" />
+            <SkeletonBlock className="h-3 w-20" />
+          </div>
+          <div className="flex gap-1.5">
+            <SkeletonBlock className="h-5 w-16 rounded-full" />
+            <SkeletonBlock className="h-5 w-14 rounded-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"

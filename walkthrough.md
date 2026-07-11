@@ -1,54 +1,77 @@
-# Release H5 Walkthrough
+# Release H7 Walkthrough
 
-Status: PASS.
-Date: 2026-07-10
+Status: PASS
+Date: 2026-07-11
 
 ## Objective
 
-Release H5 upgrades Readative's public post and SmartTalk item URLs to human-readable SEO paths while keeping every document ID in the URL and preserving legacy route compatibility.
+Release H7 adds durable premium profile identity to Readative with canonical `/@username` URLs, global username uniqueness, crawlable author profile pages, and consistent author linking without redesigning the product or expanding Firestore listeners.
 
 ## What Changed
 
-1. Shared SEO URL utility
+1. Username engine
 
-- Added `src/utils/seoUrls.ts`.
-- Centralized slug generation, canonical post path creation, canonical SmartTalk path creation, and legacy segment ID extraction.
-- No second slug implementation was introduced.
+- Added `src/utils/usernames.ts`.
+- Centralized normalization, validation, reserved-word checks, profile path building, and handle parsing.
+- Tightened validation so leading/trailing underscores, reserved handles, too-short handles, and emoji-derived invalid handles reject.
 
-2. App route parsing
+2. Username uniqueness
 
-- `/posts/<slug>--<id>` opens the same focused post as `/post/<id>`.
-- `/smarttalk/<slug>--<id>` opens the same focused question as `/smarttalk/<id>` and `/smarttalks/<id>`.
-- `/posts` remains the post discovery page.
-- `/smarttalks` remains the SmartTalk discovery page.
-- Client fallback URLs are replaced with title/content slugs after the focused document loads.
+- Added a lightweight `usernames/{username}` mapping.
+- Profile creation and username changes now reserve usernames inside a single Firestore transaction.
+- Removed the old username duplicate query against `userProfiles`.
+- Removed username-change scans that rewrote knowledge and notification documents.
 
-3. Internal linking
+3. Profile routing
 
-- Feed, card title, share/copy, desktop rails, journey actions, Explore cards, Explore search, Profile schema, saved SmartTalk, My Notes, and SmartTalk related links now use canonical builders.
-- Button-only open flows continue to work with IDs and canonicalize after load when title/content becomes available.
+- `/@username` opens profile routes.
+- `/profile/:authorId` still works and canonicalizes to `/@username`.
+- Mixed-case handles canonicalize to lowercase in the app and server handler.
+- Vercel and `_redirects` route profile handles through the profile SEO handler.
 
-4. Server SEO documents
+4. Profile SEO
 
-- `api/post.ts` now renders canonical `/posts/<slug>--<id>` metadata and redirects legacy `/post/<id>` requests to canonical after lookup.
-- `api/smarttalks.ts` now renders canonical `/smarttalk/<slug>--<id>` metadata and redirects plural legacy item requests to canonical.
-- `api/smarttalk.ts` now redirects old query-style SmartTalk entry links to canonical URLs.
+- Added `api/profile.ts` to render crawlable profile pages.
+- Profile pages emit unique title, description, canonical, OpenGraph, Twitter, Person JSON-LD, ProfilePage JSON-LD, BreadcrumbList, and ItemList.
+- Sitemap profile URLs now use `/@username`.
+- Discovery, post, and SmartTalk server-rendered documents link authors to canonical profile handles when profile data exists.
 
-5. Sitemap and discovery
+5. Author surfaces
 
-- `api/_seoData.ts` emits canonical post and SmartTalk sitemap entries.
-- `api/discovery.ts` emits canonical anchors and canonical structured data item URLs.
-- `scripts/verify-seo-recovery.ts` now validates canonical slug URLs and writes `seo_report.md`.
+- Knowledge card headers, comments, mention chips, inline rich-text mentions, Explore contributors, Profile shared posts, saved posts, and Notifications now route with username when trusted profile data is available.
+- SmartTalk in-app author links use the stable legacy author ID route when no trusted current profile is loaded, letting the profile page canonicalize to the current handle and avoiding stale stored username dead ends.
 
-## Compatibility Walkthrough
+6. Search and share
 
-- Old post URL request: `/post/<id>` -> server resolves post -> 301 to `/posts/<title-slug>--<id>`.
-- New post URL request: `/posts/<title-slug>--<id>` -> server renders focused post document.
-- Old SmartTalk URL request: `/smarttalks/<id>` -> server resolves question -> 301 to `/smarttalk/<question-slug>--<id>`.
-- New SmartTalk URL request: `/smarttalk/<question-slug>--<id>` -> server renders focused SmartTalk document.
-- Client-side old/fallback route open -> focused document loads -> route is replaced with canonical title/content slug.
+- Feed search now matches current profile username, display name, and already-loaded identity fields.
+- Explore people search continues to support username/display name.
+- Profile Copy Link uses the canonical `/@username` absolute URL.
 
-## Validation Plan
+## Firestore Safety Walkthrough
+
+Username creation/change:
+
+```text
+validate username
+run one transaction
+read usernames/{username}
+reject if owned by another author
+write usernames/{username}
+merge userProfiles/{authorId}
+delete previous username mapping when owned by same author
+```
+
+No polling, no listeners, no knowledge collection scans, and no notification collection scans are used for username changes.
+
+Direct `/@username` page load:
+
+```text
+read usernames/{username}
+load userProfiles/{authorId}
+legacy fallback query only if mapping is missing
+```
+
+## Validation Evidence
 
 Commands from `C:\Users\Atul\OneDrive\Documents\readative (1)`:
 
@@ -60,35 +83,26 @@ npm run verify:seo
 git diff --check
 ```
 
-Route smoke targets:
+Browser/profile smoke:
 
-```text
-/post/<id>
-/posts/<slug>--<id>
-/smarttalk/<id>
-/smarttalks/<id>
-/smarttalk/<slug>--<id>
-/posts
-/smarttalks
-/sitemap.xml
-/robots.txt
-```
+- Desktop in-app browser: `/@atul_hinge` rendered Atul Hinge, `@atul_hinge`, canonical `https://www.readative.com/@atul_hinge`, OG URL match, console errors 0.
+- Legacy route: `/profile/wGp2Tb5R6Mcfw7N34sXQnimb9PS2` canonicalized to `/@atul_hinge`.
+- Mixed-case route: `/@Atul_Hinge` canonicalized to `/@atul_hinge`.
+- Headless Chrome mobile `390x844`: profile rendered, no horizontal overflow, canonical/OG matched, errors 0.
+- Headless Chrome tablet `768x1024`: profile rendered, no horizontal overflow, canonical/OG matched, errors 0.
 
-## Final Evidence
+SEO verifier evidence:
 
-- `npx tsc --noEmit`: PASS.
-- `npm run build`: PASS.
-- `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`: PASS.
-- `npm run verify:seo`: PASS.
-- `git diff --check`: PASS; line-ending warnings only.
-- SEO verifier: 336 post URLs, 109 SmartTalk URLs, 512 sitemap URLs, 0 missing post URLs, 0 missing SmartTalk URLs, 0 duplicate sitemap URL groups.
-- Handler smoke: canonical post and SmartTalk URLs returned 200.
-- Handler smoke: `/post/<id>`, `/smarttalks/<id>`, `/smarttalk/<id>`, and `/smarttalk?id=<id>` returned 301 to canonical slug URLs.
-- Browser smoke: Home desktop, Explore mobile, canonical post, canonical SmartTalk, post refresh, browser back, and browser forward passed on the built preview bundle.
-- Browser smoke: old client `/post/<id>` and `/smarttalk/<id>` canonicalized to slug URLs.
-- Browser console: no errors on the fresh preview origin used for final verification.
+- Firestore SEO data source: `rest`.
+- Published post URLs: 337.
+- SmartTalk URLs: 109.
+- Profile URLs: 33.
+- Sitemap URLs: 513.
+- Missing profile URLs: 0.
+- Duplicate username groups: 0.
+- Blocking failures: 0.
 
-## QA Notes
+## QA Limits
 
-- SmartTalk index metadata was verified on tablet; the index did not expose `data-publisher-content="smarttalk-question"` markers in the smoke target, so focused SmartTalk route markers were used for item-route validation.
-- Auth-personalized Bookmarks and Notifications were not exercised with a signed-in browser account. Their H5 URL behavior is covered by code-path/static verification: saved post surfaces reuse canonical card links, saved SmartTalk passes question content into `navigateToRoute`, and notification opens resolve by ID then canonicalize after the focused document loads.
+- No real production username creation or duplicate-username write was performed. The engine behavior and transaction implementation were verified without creating live test accounts.
+- Browser automation could not read clipboard contents after clicking Copy Link, but the Copy Link control was present and canonical URL generation was verified.

@@ -39,7 +39,7 @@ interface KnowledgeCardListProps {
     type: "helpful" | "misleading" | "comment" | "save" | "ink";
     entryId: string;
   }) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
   onVisible?: (entry: KnowledgeEntry) => void;
   onSelectHashtag?: (tag: string) => void;

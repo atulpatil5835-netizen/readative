@@ -5,6 +5,7 @@ import {
   type SeoPost,
   type SeoProfile,
   type SeoSmartTalk,
+  buildSeoProfilePath,
   escapeXml,
   loadSeoData,
 } from "./_seoData.js";
@@ -111,7 +112,7 @@ function buildDiscoverySchemas({
             "@type": "ListItem",
             position: posts.slice(0, 30).length + smartTalks.slice(0, 20).length + index + 1,
             name: profile.name,
-            url: absoluteUrl(`/profile/${encodeURIComponent(profile.id)}`),
+            url: absoluteUrl(buildSeoProfilePath(profile)),
           })),
         ],
       },
@@ -130,13 +131,24 @@ function renderSection(title: string, links: string[]) {
 </section>`;
 }
 
-function renderPostLink(post: SeoPost) {
+function getAuthorProfilePath(
+  authorId: string,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
+  const profile = profileById.get(authorId);
+  return profile ? buildSeoProfilePath(profile) : `/profile/${encodeURIComponent(authorId)}`;
+}
+
+function renderPostLink(
+  post: SeoPost,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
   const metaLinks = [
     post.category
       ? `<a href="/category/${escapeHtml(encodeURIComponent(post.category))}">${escapeHtml(post.category)}</a>`
       : "",
     post.authorId
-      ? `<a href="/profile/${escapeHtml(encodeURIComponent(post.authorId))}">by @${escapeHtml(post.authorName)}</a>`
+      ? `<a href="${escapeHtml(getAuthorProfilePath(post.authorId, profileById))}">by @${escapeHtml(post.authorName)}</a>`
       : `by @${escapeHtml(post.authorName)}`,
     ...post.hashtags.slice(0, 4).map(
       (tag) => `<a href="/tag/${escapeHtml(encodeURIComponent(tag))}">#${escapeHtml(tag)}</a>`,
@@ -148,13 +160,16 @@ function renderPostLink(post: SeoPost) {
   }</li>`;
 }
 
-function renderSmartTalkLink(question: SeoSmartTalk) {
+function renderSmartTalkLink(
+  question: SeoSmartTalk,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
   const metaLinks = [
     question.category
       ? `<a href="/category/${escapeHtml(encodeURIComponent(question.category))}">${escapeHtml(question.category)}</a>`
       : "",
     question.authorId
-      ? `<a href="/profile/${escapeHtml(encodeURIComponent(question.authorId))}">by @${escapeHtml(question.authorName)}</a>`
+      ? `<a href="${escapeHtml(getAuthorProfilePath(question.authorId, profileById))}">by @${escapeHtml(question.authorName)}</a>`
       : `by @${escapeHtml(question.authorName)}`,
     `${question.answerCount} answers`,
   ].filter(Boolean);
@@ -164,7 +179,7 @@ function renderSmartTalkLink(question: SeoSmartTalk) {
 
 function renderProfileLink(profile: SeoProfile) {
   return renderLink(
-    `/profile/${encodeURIComponent(profile.id)}`,
+    buildSeoProfilePath(profile),
     profile.name,
     `@${profile.username} / ${profile.postCount} posts / ${profile.smartTalkCount} SmartTalk discussions`,
   );
@@ -189,6 +204,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const recentPosts = [...data.posts].slice(0, 24);
   const recentPostIds = new Set(recentPosts.map((post) => post.id));
+  const profileById = new Map(data.profiles.map((profile) => [profile.id, profile] as const));
   const allPosts = [...data.posts]
     .filter((post) => !recentPostIds.has(post.id))
     .sort((left, right) => left.title.localeCompare(right.title));
@@ -281,15 +297,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   )}
   ${renderSection(
     "Recent Posts",
-    recentPosts.map(renderPostLink),
+    recentPosts.map((post) => renderPostLink(post, profileById)),
   )}
   ${renderSection(
     "SmartTalk Discussions",
-    data.smartTalks.map(renderSmartTalkLink),
+    data.smartTalks.map((question) => renderSmartTalkLink(question, profileById)),
   )}
   ${renderSection(
     "All Published Posts",
-    allPosts.map(renderPostLink),
+    allPosts.map((post) => renderPostLink(post, profileById)),
   )}
   ${renderSection(
     "Profiles",

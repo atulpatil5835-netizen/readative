@@ -6,7 +6,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import type { KnowledgeEntry } from "../types";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import { recordKnowledgeFeedActivity } from "./feedPersonalization";
 import { getTrustMetrics } from "./trustSystem";
 import { trackPostLiked } from "./analytics";

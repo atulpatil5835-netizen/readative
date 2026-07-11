@@ -4,6 +4,10 @@ import {
   buildSmartTalkSeoPath,
   extractSeoDocumentId,
 } from "./seoUrls";
+import {
+  getProfileUsernamePath,
+  parseProfileUsernameHandle,
+} from "./usernames";
 
 export type AppTab = "knowledge" | "smarttalk" | "explore" | "profile";
 export type AppRouteTab = AppTab | "legal" | "notFound";
@@ -13,6 +17,7 @@ export const CANONICAL_SITE_ORIGIN = "https://www.readative.com";
 export interface RouteOptions {
   focusedEntryId?: string | null;
   profileAuthorId?: string | null;
+  profileUsername?: string | null;
   selectedHashtag?: string | null;
   selectedTopic?: string | null;
   section?: string | null;
@@ -25,6 +30,7 @@ export interface ParsedAppRoute {
   tab: AppRouteTab;
   focusedEntryId: string | null;
   profileAuthorId: string | null;
+  profileUsername: string | null;
   selectedHashtag: string | null;
   selectedTopic: string | null;
   legalSlug: LegalSlug | null;
@@ -131,6 +137,7 @@ function createRoute(
     attemptedLocation,
     focusedEntryId: options.focusedEntryId ?? null,
     profileAuthorId: options.profileAuthorId ?? null,
+    profileUsername: options.profileUsername ?? null,
     selectedHashtag: options.selectedHashtag ?? null,
     selectedTopic: options.selectedTopic ?? null,
     legalSlug: options.legalSlug ?? null,
@@ -189,6 +196,18 @@ function parseProfileRoute(
   source: "hash" | "path",
   attemptedLocation: string
 ) {
+  const usernameHandle =
+    source === "path" && routePart.startsWith("/@")
+      ? parseProfileUsernameHandle(routePart.slice(1))
+      : source === "hash" && routePart.startsWith("@")
+        ? parseProfileUsernameHandle(routePart)
+        : null;
+  if (usernameHandle) {
+    return createRoute("profile", source, attemptedLocation, {
+      profileUsername: usernameHandle,
+    });
+  }
+
   if (routePart === "profile" || routePart === "/profile") {
     return createRoute("profile", source, attemptedLocation);
   }
@@ -461,7 +480,17 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "profile" && options.profileAuthorId) {
+    if (options.profileUsername) {
+      const base = getProfileUsernamePath(options.profileUsername);
+      return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
+    }
+
     const base = `/profile/${encodeURIComponent(options.profileAuthorId)}`;
+    return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
+  }
+
+  if (tab === "profile" && options.profileUsername) {
+    const base = getProfileUsernamePath(options.profileUsername);
     return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
   }
 
@@ -528,7 +557,17 @@ export function buildHashRoute(tab: AppTab, options: RouteOptions = {}) {
   }
 
   if (tab === "profile" && options.profileAuthorId) {
+    if (options.profileUsername) {
+      const base = `#@${encodeURIComponent(options.profileUsername)}`;
+      return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
+    }
+
     const base = `#profile/${encodeURIComponent(options.profileAuthorId)}`;
+    return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
+  }
+
+  if (tab === "profile" && options.profileUsername) {
+    const base = `#@${encodeURIComponent(options.profileUsername)}`;
     return options.section ? `${base}?tab=${encodeURIComponent(options.section)}` : base;
   }
 

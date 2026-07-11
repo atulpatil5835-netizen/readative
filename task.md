@@ -1,87 +1,98 @@
-# Release H5 Task Checklist
+# Release H7 Task Checklist
 
-Status: PASS.
-Date: 2026-07-10
+Status: PASS
+Date: 2026-07-11
 
 ## Audit
 
-- [x] Audit post URL generation and consumption.
-- [x] Audit SmartTalk URL generation and consumption.
-- [x] Audit feed, journey, related content, Explore, profile, bookmarks/saved items, My Notes, share/copy, sitemap, canonical metadata, OpenGraph, Twitter, JSON-LD, and server-rendered discovery.
-- [x] Document findings in `seo_url_audit.md`.
+- [x] Profile routing audited.
+- [x] Authentication/profile creation audited.
+- [x] Author rendering audited across feed, cards, comments, mentions, Explore, SmartTalk, Profile, Bookmarks, and Notifications.
+- [x] Search, share URLs, canonical tags, OpenGraph, Twitter, JSON-LD, and sitemap audited.
+- [x] Firestore profile model audited.
+- [x] `username_audit.md` created.
 
-## Slug Engine
+## Username Engine
 
-- [x] Add one shared deterministic slug utility.
-- [x] Normalize unicode.
-- [x] Lowercase.
-- [x] Remove punctuation.
-- [x] Replace separators with hyphens.
-- [x] Collapse duplicate hyphens.
-- [x] Preserve document IDs in every canonical URL.
-- [x] Support ID extraction from both legacy and slugged segments.
+- [x] One reusable engine in `src/utils/usernames.ts`.
+- [x] 3-20 character validation.
+- [x] Lowercase canonical usernames.
+- [x] Letters, numbers, and underscore only.
+- [x] Whitespace normalization.
+- [x] Duplicate underscore collapse.
+- [x] Leading/trailing underscore rejection.
+- [x] Reserved word rejection.
+- [x] Emoji/invalid input rejection verified.
 
-## Routing
+## Uniqueness
 
-- [x] Support new post URLs: `/posts/<slug>--<id>`.
-- [x] Support old post URLs: `/post/<id>`.
-- [x] Support new SmartTalk URLs: `/smarttalk/<slug>--<id>`.
-- [x] Support old SmartTalk URLs: `/smarttalk/<id>` and `/smarttalks/<id>`.
-- [x] Add server-side legacy redirects to canonical URLs after document lookup.
-- [x] Preserve `/posts` discovery index.
-- [x] Preserve `/smarttalks` discovery index.
+- [x] Added `usernames/{username}` mapping.
+- [x] Username creation/change uses one transaction.
+- [x] Duplicate username rejects in the transaction.
+- [x] Removed username-change collection scans.
+- [x] No username polling.
+- [x] No username listeners.
 
-## Internal Linking
+## Profile URLs
 
-- [x] Knowledge Card title links.
-- [x] Knowledge Card share/copy URL.
-- [x] Knowledge Feed desktop rails.
-- [x] Knowledge Journey Continue Reading.
-- [x] Knowledge Journey Related Posts.
-- [x] Knowledge Journey Related SmartTalk.
-- [x] Explore post links.
-- [x] Explore SmartTalk links.
-- [x] Explore search result links.
-- [x] Profile shared-post structured data.
-- [x] Profile saved SmartTalk opens.
-- [x] My Notes Continue Reading.
-- [x] Server-rendered related post links.
-- [x] Server-rendered related SmartTalk links.
-- [x] Sitemap URLs.
-- [x] Discovery index anchors.
+- [x] Canonical `/@username` route.
+- [x] Legacy `/profile/:id` route support.
+- [x] Legacy profile route canonicalizes to `/@username`.
+- [x] Mixed-case handle canonicalizes to lowercase.
+- [x] Vercel rewrites updated.
+- [x] `_redirects` parity updated.
+
+## Author Experience
+
+- [x] Knowledge card author links.
+- [x] Comment author links.
+- [x] Mention chips and inline mentions.
+- [x] Feed schema author URL.
+- [x] Explore contributor cards.
+- [x] Profile share/copy URL generation.
+- [x] Notifications profile opens with available actor username.
+- [x] SmartTalk avoids stale stored usernames by using author ID fallback when current profile data is not loaded.
 
 ## SEO
 
-- [x] Canonical URL generation.
-- [x] OpenGraph URL generation.
-- [x] Twitter card metadata pairing.
-- [x] Article JSON-LD URL.
-- [x] DiscussionForumPosting JSON-LD URL.
-- [x] FAQPage JSON-LD URL.
-- [x] Breadcrumb URL.
-- [x] ItemList URL.
-- [x] Sitemap entries.
-- [x] SEO verifier updated for slug URL contract.
+- [x] Profile server SEO handler.
+- [x] Profile title and description.
+- [x] Profile canonical tag.
+- [x] Profile OpenGraph.
+- [x] Profile Twitter tags.
+- [x] Profile Person JSON-LD.
+- [x] ProfilePage JSON-LD.
+- [x] BreadcrumbList JSON-LD.
+- [x] ItemList JSON-LD.
+- [x] Sitemap profile entries use `/@username`.
+- [x] SEO verifier updated for H7 profile handles.
 
 ## Validation
 
-- [x] `npx tsc --noEmit`
 - [x] `npm run build`
+- [x] `npx tsc --noEmit`
 - [x] `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`
 - [x] `npm run verify:seo`
 - [x] `git diff --check`
-- [x] Local direct route smoke for old and new post URLs.
-- [x] Local direct route smoke for old and new SmartTalk URLs.
-- [x] Browser refresh/back/forward smoke for representative canonical post and SmartTalk routes.
-- [x] Browser canonical/OG smoke for Home, Explore, post, and SmartTalk routes.
-- [x] Static/code-path coverage for auth-personalized Bookmarks and Notifications URL opens.
+- [x] Username engine smoke.
+- [x] Profile canonical smoke.
+- [x] Browser desktop profile route smoke.
+- [x] Headless Chrome mobile viewport smoke.
+- [x] Headless Chrome tablet viewport smoke.
 
-## Scope Guard
+## Production Safety
 
-- [x] No Firestore schema change.
 - [x] No feed ranking change.
 - [x] No SmartTalk logic change.
 - [x] No Notebook change.
-- [x] No Authentication change.
-- [x] No Notifications behavior change.
-- [x] No UI redesign.
+- [x] No Analytics change.
+- [x] No Cookies change.
+- [x] No Desktop Workspace change.
+- [x] No new background listeners.
+- [x] No username-change content rewrite scans.
+- [x] Firestore schema change limited to username mapping.
+
+## QA Notes
+
+- Production username creation/duplicate/reserved flows were not executed as real writes against live Firestore. The username engine and transaction code path were verified statically and with local smoke checks.
+- Browser clipboard contents could not be read by automation after clicking Copy Link, but the profile URL generation, Copy Link button visibility, and canonical profile URL were verified.

@@ -12,15 +12,18 @@ import {
   type Query,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
+import { db } from "../../firebase/firebaseDb";
 import {
   type KnowledgeComment,
   type KnowledgeEntry,
+  type UserProfile,
 } from "../../types";
 import {
   buildAbsoluteRouteUrl,
+  CANONICAL_SITE_ORIGIN,
   parseRouteFromLocation,
 } from "../../utils/routes";
+import { getProfilePathForIdentity } from "../../utils/usernames";
 import {
   getKnowledgeFeedSnapshot,
   reconcileKnowledgeFeedOrder,
@@ -88,12 +91,17 @@ const knowledgeFeedMemoryCache = new Map<string, CachedKnowledgeFeed>();
 const knowledgeFeedScrollPositions = new Map<string, number>();
 const pendingFeedStorageWrites = new Map<string, PendingFeedStorageWrite>();
 
-export function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
+export function matchesKnowledgeSearch(
+  entry: KnowledgeEntry,
+  terms: string[],
+  identityText = "",
+) {
   if (terms.length === 0) return true;
 
   const hashtags = entry.hashtags.map((tag) => tag.toLowerCase());
   const people = [
     entry.author,
+    identityText,
     ...(entry.mentions || []).map((mention) => mention.username),
     ...(entry.comments || []).map((comment) => comment.author || ""),
   ].map((value) => value.toLowerCase());
@@ -101,6 +109,7 @@ export function matchesKnowledgeSearch(entry: KnowledgeEntry, terms: string[]) {
     entry.title,
     entry.content,
     entry.author,
+    identityText,
     ...entry.hashtags,
     ...(entry.mentions || []).map((mention) => mention.username),
     ...(entry.comments || []).map((comment) => comment.text),
@@ -273,12 +282,14 @@ export function buildKnowledgeSchemas({
   selectedHashtag,
   entries,
   pageUrl,
+  profiles = [],
 }: {
   entry: KnowledgeEntry | null;
   activeTopic: FeedTopicFilter;
   selectedHashtag: string | null;
   entries: KnowledgeEntry[];
   pageUrl: string;
+  profiles?: UserProfile[];
 }) {
   const category = activeTopic.category;
   const collectionName = entry
@@ -344,15 +355,25 @@ export function buildKnowledgeSchemas({
   }
 
   const primaryImage = getKnowledgeEntryImages(entry)[0] || null;
+  const authorProfile = entry.authorId
+    ? profiles.find((profile) => profile.id === entry.authorId)
+    : null;
+  const authorUsername =
+    authorProfile?.usernameLower || authorProfile?.username || entry.author;
+  const authorName = authorProfile?.displayName || entry.author;
 
   return [
     ...baseSchemas,
     buildArticleSchema({
       headline: entry.title,
       description: createExcerpt(entry.content),
-      authorName: `@${entry.author}`,
+      authorName,
       authorUrl: entry.authorId
-        ? buildAbsoluteRouteUrl("profile", { profileAuthorId: entry.authorId })
+        ? `${CANONICAL_SITE_ORIGIN}${getProfilePathForIdentity({
+            id: entry.authorId,
+            username: authorUsername,
+            usernameLower: authorUsername,
+          })}`
         : undefined,
       datePublished: new Date(entry.createdAt).toISOString(),
       dateModified: entry.updatedAt ? new Date(entry.updatedAt).toISOString() : undefined,

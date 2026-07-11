@@ -4,6 +4,9 @@
     "api/post.ts": {
       "includeFiles": "dist/index.html"
     },
+    "api/profile.ts": {
+      "includeFiles": "dist/index.html"
+    },
     "api/smarttalks.ts": {
       "includeFiles": "dist/index.html"
     }
@@ -71,6 +74,15 @@
           "value": "text/html; charset=utf-8"
         }
       ]
+    },
+    {
+      "source": "/@:username",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
     }
   ],
   "redirects": [
@@ -87,6 +99,7 @@
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/posts/:id", "destination": "/api/post?id=:id" },
+    { "source": "/@:username", "destination": "/api/profile?username=:username" },
     { "source": "/smarttalks", "destination": "/api/smarttalks" },
     { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id&legacy=smarttalks" },
     { "source": "/about", "destination": "/api/legal?slug=about" },
@@ -114,6 +127,7 @@
     { "source": "/post", "destination": "/index.html" },
     { "source": "/post/:id", "destination": "/api/post?id=:id&legacy=post" },
     { "source": "/profile", "destination": "/index.html" },
+    { "source": "/profile/:id", "destination": "/api/profile?id=:id&legacy=profile" },
     { "source": "/profile/:path*", "destination": "/index.html" },
     { "source": "/smarttalk", "destination": "/api/smarttalk" },
     { "source": "/smarttalk/:id", "destination": "/api/smarttalks?id=:id" },

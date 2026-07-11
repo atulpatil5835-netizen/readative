@@ -1,4 +1,5 @@
 import { UserProfile, KnowledgeEntry } from "../../types";
+import { getProfilePathForIdentity } from "../../utils/usernames";
 
 export function getProfileDisplayName(profile: UserProfile | undefined, fallback: string) {
   return profile?.displayName?.trim() || fallback;
@@ -124,8 +125,12 @@ export function observeEntryVisibilityOnce(target: Element, onVisible: () => voi
   };
 }
 
-export function buildProfilePath(authorId: string) {
-  return `/profile/${encodeURIComponent(authorId)}`;
+export function buildProfilePath(authorId: string, username?: string | null) {
+  return getProfilePathForIdentity({
+    id: authorId,
+    username,
+    usernameLower: username,
+  });
 }
 
 export function buildTagPath(tag: string) {

@@ -59,7 +59,11 @@ export function CardHeader({
     void action();
   };
 
-  const authorProfilePath = buildProfilePath(resolvedAuthorId);
+  const canonicalAuthorUsername = authorProfile?.username || authorUsername;
+  const authorProfilePath = buildProfilePath(
+    resolvedAuthorId,
+    canonicalAuthorUsername,
+  );
 
   return (
     <div className="px-4 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-5">
@@ -68,7 +72,7 @@ export function CardHeader({
           href={authorProfilePath}
           onClick={(event) => {
             event.preventDefault();
-            onOpenAuthorProfile(resolvedAuthorId);
+            onOpenAuthorProfile(resolvedAuthorId, canonicalAuthorUsername);
           }}
           className="shrink-0 rounded-full transition-transform hover:scale-[1.01]"
           aria-label={`Open ${authorDisplayName}'s profile`}
@@ -88,7 +92,7 @@ export function CardHeader({
               href={authorProfilePath}
               onClick={(event) => {
                 event.preventDefault();
-                onOpenAuthorProfile(resolvedAuthorId);
+                onOpenAuthorProfile(resolvedAuthorId, canonicalAuthorUsername);
               }}
               className="min-w-0 truncate text-left text-sm font-extrabold text-slate-900 transition-colors hover:text-emerald-700 sm:text-[15px]"
             >

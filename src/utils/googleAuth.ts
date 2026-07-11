@@ -5,19 +5,17 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
+import { auth, authPersistenceReady } from "../firebase/firebaseAuth";
 import {
-  auth,
   firebaseConfigMissingKeys,
   firebaseConfigReady,
-  authPersistenceReady,
   firebaseAuthDomain,
-} from "../firebase/firebase";
+} from "../firebase/firebaseConfig";
 import {
   clearKnowledgeIdentity,
   saveKnowledgeIdentity,
   type KnowledgeIdentity,
 } from "./knowledgeIdentity";
-import { ensureGoogleProfile } from "./userProfiles";
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("email");
@@ -121,6 +119,7 @@ function getFirebaseAuthErrorMessage(error: unknown) {
 export async function resolveGoogleUserIdentity(
   user: User,
 ): Promise<KnowledgeIdentity> {
+  const { ensureGoogleProfile } = await import("./userProfiles");
   const profile = await ensureGoogleProfile(user);
   return saveKnowledgeIdentity(profile.username, profile.id, profile.email);
 }

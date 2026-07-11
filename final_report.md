@@ -1,85 +1,72 @@
-# Release H5 Final Report
+# Release H7 Final Report
 
-Status: PASS.
-Date: 2026-07-10
+Status: PASS
+Date: 2026-07-11
 
 ## Summary
 
-Release H5 implements the SEO URL architecture for Readative posts and SmartTalk discussions without changing Firestore schema, ranking, SmartTalk behavior, Notebook, Authentication, Notifications, UI design, or product workflows.
-
-Canonical item URL formats are now:
-
-- Posts: `/posts/<seo-slug>--<documentId>`
-- SmartTalk: `/smarttalk/<seo-slug>--<documentId>`
-
-Legacy item URL families remain supported and redirect-compatible.
+Release H7 implements Readative's premium username and author identity system with canonical `/@username` profile URLs, global username uniqueness through a lightweight mapping collection, crawlable profile SEO documents, and consistent author routing across the main app surfaces.
 
 ## Implemented
 
-- Added one shared slug and canonical URL utility in `src/utils/seoUrls.ts`.
-- Updated route parsing/building in `src/utils/routes.ts`.
-- Updated post and SmartTalk server-rendered SEO documents.
-- Updated sitemap generation.
-- Updated server-rendered discovery anchors and JSON-LD.
-- Updated in-app canonical links across feed, cards, journey, Explore, Profile, My Notes, and SmartTalk.
-- Updated production rewrites in `vercel.json` and `public/_redirects`.
-- Updated `npm run verify:seo` to validate the new canonical URL contract and write `seo_report.md`.
+- Added `src/utils/usernames.ts` as the single username engine.
+- Added `api/profile.ts` for server-rendered profile SEO pages.
+- Added canonical profile routing for `/@username`.
+- Preserved legacy `/profile/:id` and canonicalized it to `/@username`.
+- Added `usernames/{username}` transaction-based uniqueness.
+- Updated sitemap profile URLs to `/@username`.
+- Updated author links in feed cards, comments, mentions, Explore, Profile, Notifications, and server-rendered SEO documents.
+- Updated `npm run verify:seo` for H7 profile handle coverage.
+- Updated `public/_redirects` and `vercel.json` profile rewrites.
 
-## Safety
+## Firestore Safety
 
-- Firestore document IDs are preserved in every canonical URL.
-- Existing legacy URLs remain usable.
-- No Firestore reads/writes were added to client product flows for slug persistence.
-- No schema migration is required.
-- No UI redesign or layout change was made.
+- Username uniqueness uses one transaction.
+- Username change no longer scans or rewrites knowledge documents.
+- Username change no longer scans notifications.
+- No new background listeners were added.
+- New schema surface is limited to `usernames/{username}` mapping documents.
+- Existing content collections are not migrated or rewritten for usernames.
 
 ## Validation
 
-- `npx tsc --noEmit`: PASS.
 - `npm run build`: PASS.
+- `npx tsc --noEmit`: PASS.
 - `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`: PASS.
 - `npm run verify:seo`: PASS.
 - `git diff --check`: PASS; line-ending warnings only.
-- Handler route smoke: PASS.
-- Browser public-route smoke: PASS.
+- Username engine smoke: PASS.
+- Profile canonical smoke: PASS.
+- Browser route QA: PASS.
 
 Measured SEO verifier output:
 
-- Firestore SEO data source: `rest`.
-- Published post URLs discovered: 336.
+- Firestore SEO source: `rest`.
+- Published post URLs discovered: 337.
 - SmartTalk discussions discovered: 109.
-- Sitemap URLs generated: 512.
+- Profile URLs discovered: 33.
+- Total sitemap URLs: 513.
 - Missing post URLs: 0.
 - Missing SmartTalk URLs: 0.
+- Missing profile URLs: 0.
 - Duplicate sitemap URL groups: 0.
-- Canonical host status: PASS.
-- robots.txt crawl status: PASS.
+- Duplicate username groups: 0.
+- Profile handle status: PASS.
+- Blocking failures: 0.
 
-Route smoke:
+Browser QA:
 
-- Canonical post URL: 200.
-- Legacy `/post/<id>`: 301 to canonical post URL.
-- Canonical SmartTalk URL: 200.
-- Legacy `/smarttalks/<id>`: 301 to canonical SmartTalk URL.
-- Legacy `/smarttalk/<id>`: 301 to canonical SmartTalk URL.
-- Legacy `/smarttalk?id=<id>`: 301 to canonical SmartTalk URL.
+- Desktop `/@atul_hinge`: rendered profile, canonical and OG matched, console errors 0.
+- Legacy `/profile/wGp2Tb5R6Mcfw7N34sXQnimb9PS2`: canonicalized to `/@atul_hinge`.
+- Mixed-case `/@Atul_Hinge`: canonicalized to `/@atul_hinge`.
+- Mobile `390x844`: rendered profile, no horizontal overflow, canonical and OG matched, console errors 0.
+- Tablet `768x1024`: rendered profile, no horizontal overflow, canonical and OG matched, console errors 0.
 
-Browser smoke:
+## Notes
 
-- Home desktop rendered with canonical `https://www.readative.com/`.
-- Explore mobile rendered with canonical `https://www.readative.com/explore`.
-- Canonical post route rendered with matching canonical and OpenGraph URL.
-- Canonical SmartTalk route rendered with matching canonical and OpenGraph URL.
-- Old client `/post/<id>` canonicalized to `/posts/<slug>--<id>`.
-- Old client `/smarttalk/<id>` canonicalized to `/smarttalk/<slug>--<id>`.
-- Post refresh preserved canonical URL and metadata.
-- Browser back and forward between representative post and SmartTalk routes preserved canonical URLs and did not show the app error page on the fresh preview origin.
-- Fresh preview origin console errors: 0.
-
-Coverage note:
-
-- Auth-personalized Bookmarks and Notifications were not E2E exercised with signed-in saved/notification data. H5 URL behavior for those surfaces was verified statically/code-path wise: saved post cards use canonical links, saved SmartTalk passes content for slugging, and notification opens resolve by ID then canonicalize after the focused document loads.
+- Production write QA for username creation, duplicate username rejection, and reserved username rejection was not executed against live Firestore. The username engine and transaction implementation were validated without creating production test users.
+- Clipboard contents could not be read by browser automation after Copy Link, so the share URL generation and Copy Link control presence were verified instead.
 
 ## Verdict
 
-PASS for Release H5 SEO URL architecture.
+PASS for Release H7 premium username and author identity implementation.

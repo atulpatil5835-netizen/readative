@@ -16,6 +16,10 @@ import {
   buildSmartTalkSeoPath,
   extractSeoDocumentId,
 } from "../src/utils/seoUrls.js";
+import {
+  getProfilePathForIdentity,
+  normalizeUsernameInput,
+} from "../src/utils/usernames.js";
 
 export const SITE_URL = "https://www.readative.com";
 export const DISCOVERY_INDEX_PATH = "/posts";
@@ -82,6 +86,7 @@ export interface SeoData {
 export interface SeoPostPageData {
   source: "admin" | "rest";
   post: SeoPost;
+  authorProfile: SeoProfile | null;
   relatedPosts: SeoPost[];
   relatedSmartTalks: SeoSmartTalk[];
 }
@@ -358,11 +363,16 @@ function normalizeProfile(
     normalizeString(data.displayName) ||
     normalizeString(data.username);
   if (!name) return null;
+  const username =
+    normalizeUsernameInput(normalizeString(data.username)) ||
+    normalizeUsernameInput(name) ||
+    normalizeSeoSlug(name) ||
+    id;
 
   return {
     id,
     name,
-    username: normalizeString(data.username) || normalizeSeoSlug(name) || name,
+    username,
     description:
       normalizeString(data.bio) ||
       "A Readative contributor publishing and curating practical knowledge.",
@@ -370,6 +380,26 @@ function normalizeProfile(
     postCount: 0,
     smartTalkCount: 0,
   };
+}
+
+export function buildSeoProfilePath(
+  profile: Pick<SeoProfile, "id" | "username"> | null | undefined,
+) {
+  if (!profile) return "/profile";
+
+  return getProfilePathForIdentity({
+    id: profile.id,
+    username: profile.username,
+    usernameLower: profile.username,
+  });
+}
+
+export function findSeoProfileByAuthorId(
+  profiles: SeoProfile[],
+  authorId: string | null | undefined,
+) {
+  if (!authorId) return null;
+  return profiles.find((profile) => profile.id === authorId) || null;
 }
 
 function normalizeSmartTalk(
@@ -620,6 +650,7 @@ export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | nul
   return {
     source: data.source,
     post,
+    authorProfile: findSeoProfileByAuthorId(data.profiles, post.authorId),
     relatedPosts: getRelatedPosts(post, data.posts, 4),
     relatedSmartTalks: getRelatedQuestions(post, data.smartTalks, 4),
   };
@@ -743,7 +774,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   for (const profile of data.profiles) {
     entries.push(
       buildEntry(
-        `/profile/${encodeURIComponent(profile.id)}`,
+        buildSeoProfilePath(profile),
         "profile",
         profile.updatedAt,
         "weekly",

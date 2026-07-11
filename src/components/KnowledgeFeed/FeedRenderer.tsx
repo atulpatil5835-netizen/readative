@@ -450,7 +450,7 @@ export interface FeedRendererProps {
   onLoadMoreActiveEntries: () => void;
   onVisibleEntry: (entry: KnowledgeEntry) => void;
   onIdentityRequired: (action: { type: "helpful" | "misleading" | "comment" | "save" | "ink"; entryId: string }) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
   onSelectHashtag: (tag: string) => void;
   onLikeChange: (entryId: string, likes: string[], misleadingIds?: string[]) => void;
@@ -828,6 +828,7 @@ export function FeedRenderer({
             selectedHashtag: normalizedSelectedHashtag,
             entries: filteredEntries,
             pageUrl,
+            profiles,
           })}
           robots={shouldNoIndexKnowledgePage ? "noindex" : "index"}
           image={

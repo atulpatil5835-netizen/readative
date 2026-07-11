@@ -8,6 +8,7 @@
 /jobs /explore 301
 /posts /api/discovery 200
 /posts/* /api/post?id=:splat 200
+/@* /api/profile?username=:splat 200
 /smarttalks /api/smarttalks 200
 /smarttalks/* /api/smarttalks?id=:splat&legacy=smarttalks 200
 /about /api/legal?slug=about 200
@@ -37,7 +38,7 @@
 /topic/* /index.html 200
 /profile /index.html 200
 /profile/ /index.html 200
-/profile/* /index.html 200
+/profile/* /api/profile?id=:splat&legacy=profile 200
 /post /index.html 200
 /post/ /index.html 200
 /post/* /api/post?id=:splat&legacy=post 200

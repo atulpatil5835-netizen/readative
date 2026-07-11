@@ -13,6 +13,7 @@ import {
   BookOpenText,
   Check,
   Clock3,
+  Copy,
   Github,
   Globe,
   ImagePlus,
@@ -37,6 +38,7 @@ import {
   type DocumentData,
   documentId,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -46,7 +48,7 @@ import {
   startAfter,
   where,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import {
   KnowledgeEntry,
   KnowledgeImageAsset,
@@ -70,6 +72,7 @@ import {
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { buildAbsoluteRouteUrl, buildPublicPath, navigateToRoute } from "../utils/routes";
 import { hydrateUserProfile } from "../utils/profileData";
+import { getProfilePathForIdentity, normalizeUsernameInput } from "../utils/usernames";
 import { signInWithGoogleAccount } from "../utils/googleAuth";
 import {
   canViewKnowledgeEntry,
@@ -91,6 +94,7 @@ import {
   buildItemListSchema,
   buildOrganizationSchema,
 } from "../utils/seoSchemas";
+import { copyShareTextToClipboard } from "./KnowledgeCard/cardHelpers";
 
 const ProfileMyNotes = lazy(() => import("./ProfileMyNotes"));
 
@@ -158,8 +162,9 @@ const EXPERTISE_KEYWORDS = [
 interface ProfileProps {
   currentIdentity: KnowledgeIdentity | null;
   viewedAuthorId: string | null;
+  viewedUsername: string | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
 }
 
@@ -804,6 +809,7 @@ function isMissingFirestoreIndexError(error: unknown) {
 export function Profile({
   currentIdentity,
   viewedAuthorId,
+  viewedUsername,
   onIdentityChange,
   onOpenProfile,
   onOpenEntry,
@@ -835,8 +841,23 @@ export function Profile({
   const [bannerSaveError, setBannerSaveError] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileEditError, setProfileEditError] = useState<string | null>(null);
+  const [profileLinkCopied, setProfileLinkCopied] = useState(false);
   const [smartTalkSummary, setSmartTalkSummary] =
     useState<ProfileSmartTalkSummary>(EMPTY_PROFILE_SMARTTALK_SUMMARY);
+  const [usernameResolution, setUsernameResolution] = useState<{
+    username: string | null;
+    authorId: string | null;
+    isLoading: boolean;
+    notFound: boolean;
+  }>(() => {
+    const username = viewedUsername ? normalizeUsernameInput(viewedUsername) : null;
+    return {
+      username,
+      authorId: null,
+      isLoading: Boolean(username),
+      notFound: false,
+    };
+  });
   const [section, setSection] = useState<ProfileSection>("shared");
   const { inkPostIds } = useInk();
   const [pendingAction, setPendingAction] =
@@ -849,10 +870,100 @@ export function Profile({
     [],
   );
 
-  const activeAuthorId = viewedAuthorId || currentIdentity?.authorId || null;
+  const requestedUsername = viewedUsername
+    ? normalizeUsernameInput(viewedUsername)
+    : null;
+  const isResolvingUsername =
+    Boolean(requestedUsername) &&
+    usernameResolution.username === requestedUsername &&
+    usernameResolution.isLoading;
+  const isUsernameRouteNotFound =
+    Boolean(requestedUsername) &&
+    usernameResolution.username === requestedUsername &&
+    usernameResolution.notFound;
+  const activeAuthorId = requestedUsername
+    ? usernameResolution.authorId
+    : viewedAuthorId || currentIdentity?.authorId || null;
   const isOwnProfile =
     Boolean(currentIdentity?.authorId) &&
     activeAuthorId === currentIdentity?.authorId;
+
+  useEffect(() => {
+    if (!requestedUsername) {
+      setUsernameResolution({
+        username: null,
+        authorId: null,
+        isLoading: false,
+        notFound: false,
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setUsernameResolution({
+      username: requestedUsername,
+      authorId: null,
+      isLoading: true,
+      notFound: false,
+    });
+
+    const resolveUsernameRoute = async () => {
+      try {
+        const mappingSnapshot = await getDoc(doc(db, "usernames", requestedUsername));
+        const mappedAuthorId = mappingSnapshot.exists()
+          ? mappingSnapshot.data().authorId
+          : null;
+        if (typeof mappedAuthorId === "string" && mappedAuthorId.trim()) {
+          if (!cancelled) {
+            setUsernameResolution({
+              username: requestedUsername,
+              authorId: mappedAuthorId.trim(),
+              isLoading: false,
+              notFound: false,
+            });
+          }
+          return;
+        }
+
+        const profileSnapshot = await getDocs(
+          query(
+            collection(db, "userProfiles"),
+            where("usernameLower", "==", requestedUsername),
+            limit(1),
+          ),
+        );
+        const profileDocument = profileSnapshot.docs[0];
+
+        if (!cancelled) {
+          setUsernameResolution({
+            username: requestedUsername,
+            authorId: profileDocument?.id || null,
+            isLoading: false,
+            notFound: !profileDocument,
+          });
+        }
+      } catch (error) {
+        console.error("Profile username resolution failed:", error);
+        if (!cancelled) {
+          setUsernameResolution({
+            username: requestedUsername,
+            authorId: null,
+            isLoading: false,
+            notFound: true,
+          });
+          setProfileLoadError(
+            "Could not resolve this profile username right now. Please refresh in a moment.",
+          );
+        }
+      }
+    };
+
+    void resolveUsernameRoute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedUsername]);
 
   useEffect(() => {
     activeAuthorIdRef.current = activeAuthorId;
@@ -942,10 +1053,13 @@ export function Profile({
       setSharedEntryCursor(null);
       setHasMoreSharedEntries(false);
       setSharedPaginationMode(null);
-      setIsLoadingProfile(false);
+      setIsLoadingProfile(isResolvingUsername);
       setIsLoadingSharedEntries(false);
       setIsLoadingSavedItems(false);
       setIsLoadingMoreSharedEntries(false);
+      if (isUsernameRouteNotFound) {
+        setProfileLoadError(null);
+      }
       isLoadingMoreSharedEntriesRef.current = false;
       return;
     }
@@ -1107,7 +1221,13 @@ export function Profile({
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [activeAuthorId, currentIdentity?.authorId, isOwnProfile]);
+  }, [
+    activeAuthorId,
+    currentIdentity?.authorId,
+    isOwnProfile,
+    isResolvingUsername,
+    isUsernameRouteNotFound,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1266,9 +1386,13 @@ export function Profile({
     savedEntries.length + savedQuestions.length,
   );
   const profileDisplayName = profile ? getProfileDisplayName(profile) : "";
+  const profilePath = profile ? getProfilePathForIdentity(profile) : "/profile";
   const profileUrl =
     profile
-      ? buildAbsoluteRouteUrl("profile", { profileAuthorId: profile.id })
+      ? buildAbsoluteRouteUrl("profile", {
+          profileAuthorId: profile.id,
+          profileUsername: profile.usernameLower || profile.username,
+        })
       : buildAbsoluteRouteUrl("profile");
   const profileCategories = [
     ...new Set(
@@ -1368,6 +1492,55 @@ export function Profile({
         .slice(0, 3),
     [activityTimeline],
   );
+
+  useEffect(() => {
+    if (!profile || typeof window === "undefined") return;
+    if (!viewedAuthorId && !viewedUsername) return;
+
+    const canonicalPath = buildPublicPath("profile", {
+      profileAuthorId: profile.id,
+      profileUsername: profile.usernameLower || profile.username,
+      section: section !== "shared" ? section : null,
+    });
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+
+    if (currentPath !== canonicalPath) {
+      navigateToRoute(
+        "profile",
+        {
+          profileAuthorId: profile.id,
+          profileUsername: profile.usernameLower || profile.username,
+          section: section !== "shared" ? section : null,
+        },
+        "replace",
+      );
+    }
+  }, [
+    profile,
+    section,
+    viewedAuthorId,
+    viewedUsername,
+  ]);
+
+  useEffect(() => {
+    if (!profileLinkCopied) return;
+
+    const timeoutId = window.setTimeout(() => setProfileLinkCopied(false), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [profileLinkCopied]);
+
+  const handleCopyProfileLink = async () => {
+    if (!profile) return;
+
+    try {
+      await copyShareTextToClipboard(profileUrl);
+      setProfileLinkCopied(true);
+      setProfileLoadError(null);
+    } catch (error) {
+      console.error("Profile link copy failed:", error);
+      setProfileLoadError("Could not copy the profile link right now.");
+    }
+  };
 
   useEffect(() => {
     if (!profile || section !== "saved") {
@@ -1678,7 +1851,7 @@ export function Profile({
     setPendingAction(null);
   };
 
-  if (!currentIdentity && !viewedAuthorId) {
+  if (!currentIdentity && !viewedAuthorId && !viewedUsername) {
     return (
       <div className="space-y-6 pb-40 md:pb-20">
         <SEO
@@ -1869,6 +2042,18 @@ export function Profile({
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
                     </span>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleCopyProfileLink}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                  >
+                    {profileLinkCopied ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                    {profileLinkCopied ? "Copied" : "Copy Link"}
+                  </button>
                   {isOwnProfile && (
                     <button
                       onClick={() => {
@@ -1896,9 +2081,13 @@ export function Profile({
                   />
                 </div>
 
-                <p className="mt-1 text-sm font-semibold text-slate-500">
+                <a
+                  href={profilePath}
+                  className="mt-1 inline-flex text-sm font-semibold text-slate-500 transition-colors hover:text-emerald-700"
+                  aria-label={`Open @${profile.username} profile link`}
+                >
                   @{profile.username}
-                </p>
+                </a>
 
                 {profile.jobTitle && (
                   <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-800">
@@ -2731,7 +2920,7 @@ function ProfileSavedSection({
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: KnowledgePendingAction) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
 }) {
   if (isLoading) {
@@ -2867,7 +3056,7 @@ function KnowledgeSection({
   currentIdentity: KnowledgeIdentity | null;
   profiles: UserProfile[];
   onIdentityRequired: (action: KnowledgePendingAction) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
 }) {
   return (

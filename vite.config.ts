@@ -32,6 +32,7 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         output: {
+          experimentalMinChunkSize: 5000,
           manualChunks: {
             react: ["react", "react-dom", "react-helmet-async"],
             "firebase-app": ["firebase/app"],

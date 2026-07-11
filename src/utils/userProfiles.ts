@@ -6,15 +6,14 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   query,
-  setDoc,
+  runTransaction,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { type User } from "firebase/auth";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import {
   type KnowledgeEntry,
   type KnowledgeImageAsset,
@@ -25,6 +24,12 @@ import { getGuestId, getSavedGuestId, saveGuestName } from "./guestIdentity";
 import { saveKnowledgeIdentity } from "./knowledgeIdentity";
 import { hydrateUserProfile } from "./profileData";
 import { getTrustMetrics } from "./trustSystem";
+import {
+  buildUsernameCandidate,
+  normalizeUsernameInput,
+  validateUsernameInput,
+  withUsernameSuffix,
+} from "./usernames";
 
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 5;
 export const USERNAME_CHANGE_COOLDOWN_MS =
@@ -78,19 +83,16 @@ function buildGoogleUsernameBase(user: User): string {
     user.displayName ||
     user.email?.split("@")[0] ||
     `reader_${user.uid.slice(0, 8)}`;
-  const username = sanitizeUsername(source.replace(/\s+/g, "_"));
 
-  if (username.length >= 3) {
-    return username;
-  }
-
-  return sanitizeUsername(`reader_${user.uid.slice(0, 8)}`);
+  return buildUsernameCandidate(source, `reader_${user.uid.slice(0, 8)}`);
 }
 
-function withUsernameSuffix(base: string, suffix: string) {
-  const cleanSuffix = sanitizeUsername(suffix);
-  const safeBase = base.slice(0, Math.max(3, 20 - cleanSuffix.length));
-  return sanitizeUsername(`${safeBase}${cleanSuffix}`);
+function buildGoogleUsernameCandidate(user: User) {
+  const base = buildGoogleUsernameBase(user);
+  const uidSuffix = user.uid.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return validateUsernameInput(
+    withUsernameSuffix(base, uidSuffix.slice(0, 6) || user.uid.slice(0, 6)),
+  );
 }
 
 async function commitUpdates(
@@ -121,20 +123,11 @@ async function commitUpdates(
 }
 
 export function sanitizeUsername(input: string): string {
-  return input.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20);
+  return normalizeUsernameInput(input);
 }
 
 export function validateUsername(rawInput: string): string {
-  const username = sanitizeUsername(rawInput);
-  if (username.length < 3) {
-    throw new Error("Username must be at least 3 characters.");
-  }
-
-  if (!/^[a-z0-9_]+$/.test(username)) {
-    throw new Error("Username can use lowercase letters, numbers, and underscores.");
-  }
-
-  return username;
+  return validateUsernameInput(rawInput);
 }
 
 function validateDisplayName(rawInput: string, fallbackUsername: string): string {
@@ -226,115 +219,82 @@ function normalizeSocialLinksInput(
   };
 }
 
-async function isUsernameTaken(usernameLower: string, authorId?: string) {
-  const snapshot = await getDocs(
-    query(
-      collection(db, "userProfiles"),
-      where("usernameLower", "==", usernameLower),
-      limit(2),
-    )
-  );
+async function commitUsernameMappingTransaction({
+  authorId,
+  username,
+  previousUsername,
+  profilePayload,
+}: {
+  authorId: string;
+  username: string;
+  previousUsername?: string | null;
+  profilePayload: Record<string, unknown>;
+}) {
+  const normalizedUsername = validateUsername(username);
+  const normalizedPreviousUsername = previousUsername
+    ? normalizeUsernameInput(previousUsername)
+    : "";
+  const profileRef = doc(db, "userProfiles", authorId);
+  const usernameRef = doc(db, "usernames", normalizedUsername);
+  const previousUsernameRef =
+    normalizedPreviousUsername && normalizedPreviousUsername !== normalizedUsername
+      ? doc(db, "usernames", normalizedPreviousUsername)
+      : null;
 
-  return snapshot.docs.some((item) => item.id !== authorId);
-}
+  await runTransaction(db, async (transaction) => {
+    const usernameSnapshot = await transaction.get(usernameRef);
+    const previousUsernameSnapshot = previousUsernameRef
+      ? await transaction.get(previousUsernameRef)
+      : null;
+    const existingAuthorId = usernameSnapshot.exists()
+      ? usernameSnapshot.data().authorId
+      : null;
 
-async function getAvailableGoogleUsername(user: User) {
-  const base = buildGoogleUsernameBase(user);
-  const uidSuffix = user.uid.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const candidates = [
-    base,
-    withUsernameSuffix(base, `_${uidSuffix.slice(0, 4)}`),
-    withUsernameSuffix(base, `_${uidSuffix.slice(0, 6)}`),
-    withUsernameSuffix("reader", `_${uidSuffix.slice(0, 8)}`),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate.length >= 3 && !(await isUsernameTaken(candidate, user.uid))) {
-      return candidate;
-    }
-  }
-
-  for (let index = 0; index < 12; index += 1) {
-    const candidate = withUsernameSuffix(
-      "reader",
-      `_${uidSuffix.slice(0, 6)}${index}`,
-    );
-    if (!(await isUsernameTaken(candidate, user.uid))) {
-      return candidate;
-    }
-  }
-
-  throw new Error("Could not create a unique username for this Google account.");
-}
-
-async function syncUsernameAcrossContent(authorId: string, username: string) {
-  const updates: Array<{
-    ref: DocumentReference;
-    data: Record<string, unknown>;
-  }> = [];
-
-  const allKnowledgeSnapshot = await getDocs(collection(db, "knowledge"));
-  allKnowledgeSnapshot.docs.forEach((item) => {
-    const data = item.data() as Partial<KnowledgeEntry>;
-    const payload: Record<string, unknown> = {};
-
-    if (data.authorId === authorId && data.author !== username) {
-      payload.author = username;
+    if (
+      typeof existingAuthorId === "string" &&
+      existingAuthorId &&
+      existingAuthorId !== authorId
+    ) {
+      throw new Error("That username is already taken.");
     }
 
-    const currentComments = Array.isArray(data.comments) ? data.comments : [];
-    const currentMentions = Array.isArray(data.mentions) ? data.mentions : [];
-    const nextComments = currentComments.map((comment) =>
-      comment.authorId === authorId && comment.author !== username
-        ? {
-            ...comment,
-            author: username,
-          }
-        : comment
-    );
-    const nextMentions = currentMentions.map((mention) =>
-      mention.authorId === authorId && mention.username !== username
-        ? {
-            ...mention,
-            username,
-          }
-        : mention
-    );
-
-    const commentsChanged =
-      JSON.stringify(nextComments) !== JSON.stringify(currentComments);
-    const mentionsChanged =
-      JSON.stringify(nextMentions) !== JSON.stringify(currentMentions);
-
-    if (!commentsChanged && !mentionsChanged) {
-      if (Object.keys(payload).length === 0) {
-        return;
-      }
-    }
-
-    if (commentsChanged) payload.comments = nextComments;
-    if (mentionsChanged) payload.mentions = nextMentions;
-
-    updates.push({
-      ref: item.ref,
-      data: payload,
-    });
-  });
-
-  const notificationSnapshot = await getDocs(
-    query(collection(db, "notifications"), where("actorAuthorId", "==", authorId))
-  );
-
-  notificationSnapshot.docs.forEach((item) => {
-    updates.push({
-      ref: item.ref,
-      data: {
-        actorUsername: username,
+    const now = Date.now();
+    transaction.set(
+      usernameRef,
+      {
+        authorId,
+        username: normalizedUsername,
+        usernameLower: normalizedUsername,
+        createdAt:
+          usernameSnapshot.exists() && typeof usernameSnapshot.data().createdAt === "number"
+            ? usernameSnapshot.data().createdAt
+            : now,
+        updatedAt: now,
       },
-    });
+      { merge: true },
+    );
+
+    if (
+      previousUsernameRef &&
+      previousUsernameSnapshot?.exists() &&
+      previousUsernameSnapshot.data().authorId === authorId
+    ) {
+      transaction.delete(previousUsernameRef);
+    }
+
+    transaction.set(
+      profileRef,
+      {
+        ...profilePayload,
+        username: normalizedUsername,
+        usernameLower: normalizedUsername,
+        updatedAt: typeof profilePayload.updatedAt === "number" ? profilePayload.updatedAt : now,
+      },
+      { merge: true },
+    );
   });
 
-  await commitUpdates(updates);
+  return normalizedUsername;
 }
 
 export async function getUserProfile(authorId: string): Promise<UserProfile | null> {
@@ -522,7 +482,7 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
 
     let profile = currentProfile;
     if (!currentProfile.usernameLower) {
-      const username = await getAvailableGoogleUsername(user);
+      const username = buildGoogleUsernameCandidate(user);
       payload.username = username;
       payload.usernameLower = username;
       profile = {
@@ -551,13 +511,25 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
 
     if (shouldUpdateProfile) {
       payload.updatedAt = now;
-      await setDoc(reference, payload, { merge: true });
       profile = {
         ...profile,
         email,
         photoUrl,
         updatedAt: now,
       };
+    }
+
+    if (profile.usernameLower) {
+      await commitUsernameMappingTransaction({
+        authorId: user.uid,
+        username: profile.usernameLower,
+        previousUsername: currentProfile.usernameLower || currentProfile.username,
+        profilePayload: shouldUpdateProfile
+          ? payload
+          : {
+              updatedAt: profile.updatedAt,
+            },
+      });
     }
 
     syncLocalProfileIdentity(profile);
@@ -571,7 +543,7 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     return profile;
   }
 
-  const username = await getAvailableGoogleUsername(user);
+  const username = buildGoogleUsernameCandidate(user);
   const profile: UserProfile = {
     id: user.uid,
     email,
@@ -593,10 +565,14 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     lastUsernameChangedAt: null,
   };
 
-  await setDoc(reference, {
-    ...profile,
-    authProvider: "google",
-    googleDisplayName: user.displayName || "",
+  await commitUsernameMappingTransaction({
+    authorId: user.uid,
+    username,
+    profilePayload: {
+      ...profile,
+      authProvider: "google",
+      googleDisplayName: user.displayName || "",
+    },
   });
   syncLocalProfileIdentity(profile);
 
@@ -621,14 +597,21 @@ export async function ensureGuestProfile(
       existing.data() as Partial<UserProfile>,
       existing.id,
     );
+    if (profile.usernameLower) {
+      await commitUsernameMappingTransaction({
+        authorId,
+        username: profile.usernameLower,
+        previousUsername: profile.username,
+        profilePayload: {
+          updatedAt: profile.updatedAt,
+        },
+      });
+    }
     syncLocalProfileIdentity(profile);
     return profile;
   }
 
   const username = validateUsername(requestedUsername);
-  if (await isUsernameTaken(username, authorId)) {
-    throw new Error("That username is already taken.");
-  }
 
   const now = Date.now();
   const profile: UserProfile = {
@@ -651,7 +634,11 @@ export async function ensureGuestProfile(
     lastUsernameChangedAt: null,
   };
 
-  await setDoc(reference, profile);
+  await commitUsernameMappingTransaction({
+    authorId,
+    username,
+    profilePayload: { ...profile },
+  });
   syncLocalProfileIdentity(profile);
   return profile;
 }
@@ -679,10 +666,6 @@ export async function changeProfileUsername(
     );
   }
 
-  if (await isUsernameTaken(nextUsername, profile.id)) {
-    throw new Error("That username is already taken.");
-  }
-
   const updated: UserProfile = {
     ...profile,
     username: nextUsername,
@@ -691,14 +674,16 @@ export async function changeProfileUsername(
     lastUsernameChangedAt: Date.now(),
   };
 
-  await updateDoc(doc(db, "userProfiles", profile.id), {
+  await commitUsernameMappingTransaction({
+    authorId: profile.id,
     username: updated.username,
-    usernameLower: updated.usernameLower,
-    updatedAt: updated.updatedAt,
-    lastUsernameChangedAt: updated.lastUsernameChangedAt,
+    previousUsername: profile.usernameLower || profile.username,
+    profilePayload: {
+      updatedAt: updated.updatedAt,
+      lastUsernameChangedAt: updated.lastUsernameChangedAt,
+    },
   });
 
-  await syncUsernameAcrossContent(profile.id, updated.username);
   syncLocalProfileIdentity(updated);
   announceUserProfileUpdated(updated);
   return updated;

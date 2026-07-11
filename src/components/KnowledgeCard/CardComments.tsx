@@ -132,6 +132,12 @@ export function CardComments({
               comment.author,
             );
             const commentUsername = commentProfile?.username || comment.author;
+            const commentMentions = (comment.mentions || []).map((mention) => {
+              const profile = profileMap.get(mention.authorId);
+              return profile?.username
+                ? { ...mention, username: profile.username }
+                : mention;
+            });
 
             return (
               <div
@@ -151,10 +157,10 @@ export function CardComments({
                     <div className="flex flex-wrap items-center gap-2">
                       {comment.authorId ? (
                         <a
-                          href={buildProfilePath(comment.authorId)}
+                          href={buildProfilePath(comment.authorId, commentUsername)}
                           onClick={(event) => {
                             event.preventDefault();
-                            onOpenAuthorProfile(comment.authorId);
+                            onOpenAuthorProfile(comment.authorId, commentUsername);
                           }}
                           className="text-xs font-bold text-slate-800 transition-colors hover:text-emerald-700"
                         >
@@ -175,7 +181,7 @@ export function CardComments({
                     <p className="text-sm leading-6 text-slate-600">
                       {renderRichText({
                         text: comment.text,
-                        mentions: comment.mentions || [],
+                        mentions: commentMentions,
                         onOpenProfile: onOpenAuthorProfile,
                       })}
                     </p>

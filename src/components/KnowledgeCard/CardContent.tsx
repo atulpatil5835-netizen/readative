@@ -38,6 +38,7 @@ export function CardContent({
   entry,
   contentSections,
   mentions,
+  profileMap,
   onOpenAuthorProfile,
   onOpenEntryDetails,
   onSelectHashtag,
@@ -57,6 +58,17 @@ export function CardContent({
   const paragraphIds = useMemo(
     () => buildNotebookParagraphIds(contentSections),
     [contentSections],
+  );
+  const resolvedMentions = useMemo(
+    () =>
+      mentions.map((mention) => {
+        const profile = profileMap.get(mention.authorId);
+
+        return profile?.username
+          ? { ...mention, username: profile.username }
+          : mention;
+      }),
+    [mentions, profileMap],
   );
   const {
     cacheVersion,
@@ -248,7 +260,7 @@ export function CardContent({
               );
               const richText = renderRichText({
                 text: section,
-                mentions,
+                mentions: resolvedMentions,
                 onOpenProfile: onOpenAuthorProfile,
               });
               const isArmed = armedParagraphId === paragraphId;
@@ -332,15 +344,15 @@ export function CardContent({
         </div>
       )}
 
-      {mentions.length > 0 && (
+      {resolvedMentions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {mentions.map((mention) => (
+          {resolvedMentions.map((mention) => (
             <a
               key={`${mention.authorId}-${mention.username}`}
-              href={buildProfilePath(mention.authorId)}
+              href={buildProfilePath(mention.authorId, mention.username)}
               onClick={(event) => {
                 event.preventDefault();
-                onOpenAuthorProfile(mention.authorId);
+                onOpenAuthorProfile(mention.authorId, mention.username);
               }}
               className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
             >
@@ -371,10 +383,16 @@ export function CardContent({
             <div className="min-w-0 flex-1">
               {topComment.authorId ? (
                 <a
-                  href={buildProfilePath(topComment.authorId)}
+                  href={buildProfilePath(
+                    topComment.authorId,
+                    topCommentProfile?.username || topCommentUsername,
+                  )}
                   onClick={(event) => {
                     event.preventDefault();
-                    onOpenAuthorProfile(topComment.authorId);
+                    onOpenAuthorProfile(
+                      topComment.authorId,
+                      topCommentProfile?.username || topCommentUsername,
+                    );
                   }}
                   className="text-xs font-semibold text-slate-800 transition-colors hover:text-emerald-700"
                 >
@@ -393,7 +411,12 @@ export function CardContent({
               <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                 {renderRichText({
                   text: topComment.text,
-                  mentions: topComment.mentions || [],
+                  mentions: (topComment.mentions || []).map((mention) => {
+                    const profile = profileMap.get(mention.authorId);
+                    return profile?.username
+                      ? { ...mention, username: profile.username }
+                      : mention;
+                  }),
                   onOpenProfile: onOpenAuthorProfile,
                 })}
               </p>

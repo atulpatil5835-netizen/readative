@@ -30,10 +30,9 @@ import {
   subscribeToGoogleIdentity,
 } from "./utils/googleAuth";
 import {
-  db,
   firebaseConfigMissingKeys,
   firebaseConfigReady,
-} from "./firebase/firebase";
+} from "./firebase/firebaseConfig";
 import type { UserNotification } from "./types";
 import {
   navigateToRoute,
@@ -111,6 +110,9 @@ export default function App() {
   const [profileAuthorId, setProfileAuthorId] = useState<string | null>(
     initialRoute.profileAuthorId
   );
+  const [profileUsername, setProfileUsername] = useState<string | null>(
+    initialRoute.profileUsername
+  );
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(
     initialRoute.focusedEntryId
   );
@@ -152,6 +154,7 @@ export default function App() {
     const route = parseRouteFromLocation();
     setActiveTab(route.tab);
     setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
+    setProfileUsername(route.tab === "profile" ? route.profileUsername : null);
     setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
     setExploreTopic(route.tab === "explore" ? route.selectedTopic : null);
     setSmartTalkCategory(route.tab === "smarttalk" ? route.selectedTopic : null);
@@ -163,17 +166,19 @@ export default function App() {
   const handleTabChange = useCallback((
     tab: AppTab,
     nextProfileAuthorId: string | null = null,
-    nextFocusedEntryId: string | null = null
+    nextFocusedEntryId: string | null = null,
+    nextProfileUsername: string | null = null,
   ) => {
     setShowNotificationsPanel(false);
     navigateToRoute(tab, {
       profileAuthorId: nextProfileAuthorId,
+      profileUsername: nextProfileUsername,
       focusedEntryId: nextFocusedEntryId,
     });
   }, []);
 
-  const handleOpenProfile = useCallback((authorId: string) => {
-    handleTabChange("profile", authorId);
+  const handleOpenProfile = useCallback((authorId: string, username?: string) => {
+    handleTabChange("profile", authorId, null, username || null);
   }, [handleTabChange]);
 
   const handleOpenEntry = useCallback((entryId: string) => {
@@ -272,6 +277,7 @@ export default function App() {
           route.tab,
           {
             profileAuthorId: route.profileAuthorId,
+            profileUsername: route.profileUsername,
             focusedEntryId: route.focusedEntryId,
             selectedHashtag: route.selectedHashtag,
             selectedTopic: route.selectedTopic,
@@ -298,7 +304,7 @@ export default function App() {
 
   useEffect(() => {
     trackPageView(cookieConsentAccepted);
-  }, [activeTab, profileAuthorId, focusedEntryId, exploreTopic, legalSlug, routeErrorPath, cookieConsentAccepted]);
+  }, [activeTab, profileAuthorId, profileUsername, focusedEntryId, exploreTopic, legalSlug, routeErrorPath, cookieConsentAccepted]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -348,11 +354,13 @@ export default function App() {
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
 
-    void import("firebase/firestore")
-      .then((firestore) => {
+    void Promise.all([import("firebase/firestore"), import("./firebase/firebaseDb")])
+      .then(([firestore, firebaseDb]) => {
         if (cancelled) {
           return;
         }
+
+        const { db } = firebaseDb;
 
         const applyNotificationSnapshot = (snapshot: {
           docs: Array<{
@@ -576,6 +584,7 @@ export default function App() {
               <Profile
                 currentIdentity={hydratedIdentity}
                 viewedAuthorId={profileAuthorId}
+                viewedUsername={profileUsername}
                 onIdentityChange={setIdentity}
                 onOpenProfile={handleOpenProfile}
                 onOpenEntry={handleOpenEntry}
@@ -610,9 +619,9 @@ export default function App() {
               unreadNotificationCount={unreadNotificationCount}
               notificationsError={notificationsError}
               onClose={() => setShowNotificationsPanel(false)}
-              onOpenProfile={(authorId) => {
+              onOpenProfile={(authorId, username) => {
                 setShowNotificationsPanel(false);
-                handleOpenProfile(authorId);
+                handleOpenProfile(authorId, username);
               }}
               onOpenEntry={(entryId) => {
                 setShowNotificationsPanel(false);

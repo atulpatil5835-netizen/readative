@@ -72,7 +72,7 @@ export function ComposerModal({
   updateMentionState,
 }: {
   identity: KnowledgeIdentity | null;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onClose: () => void;
   draftTitle: string;
   setDraftTitle: (value: string) => void;
@@ -178,7 +178,7 @@ export function ComposerModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onOpenProfile(identity.authorId)}
+                  onClick={() => onOpenProfile(identity.authorId, identity.displayName)}
                   className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700"
                 >
                   Profile

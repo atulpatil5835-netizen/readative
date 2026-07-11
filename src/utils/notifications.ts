@@ -5,7 +5,7 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import { KnowledgeComment, KnowledgeEntry, TaggedUser, UserNotification } from "../types";
 
 interface NotificationActor {

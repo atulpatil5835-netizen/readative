@@ -38,7 +38,7 @@ export interface CardHeaderProps {
   isSaved: boolean;
   isUpdatingSave: boolean;
   isDeleting: boolean;
-  onOpenAuthorProfile: (authorId: string) => void;
+  onOpenAuthorProfile: (authorId: string, username?: string) => void;
   onSaveToggle: () => void;
   onShare: () => void;
   setShowEditModal: (show: boolean) => void;
@@ -66,7 +66,8 @@ export interface CardContentProps {
   entry: KnowledgeEntry;
   contentSections: string[];
   mentions: { authorId: string; username: string }[];
-  onOpenAuthorProfile: (authorId: string) => void;
+  profileMap: ReadonlyMap<string, UserProfile>;
+  onOpenAuthorProfile: (authorId: string, username?: string) => void;
   onOpenEntryDetails: () => void;
   onSelectHashtag: (tag: string) => void;
   topComment: KnowledgeComment | null;
@@ -109,7 +110,7 @@ export interface CardCommentsProps {
   profileMap: ReadonlyMap<string, UserProfile>;
   onCommentSubmit: () => void;
   onCommentMentionInsert: (profile: UserProfile) => void;
-  onOpenAuthorProfile: (authorId: string) => void;
+  onOpenAuthorProfile: (authorId: string, username?: string) => void;
   updateCommentMentionState: (value: string, cursorPosition: number) => void;
   setCommentMessage: (msg: string | null) => void;
   onIdentityRequired: (action: {

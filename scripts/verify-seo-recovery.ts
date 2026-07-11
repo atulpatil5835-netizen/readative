@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
-import { buildSitemapEntries, loadSeoData, SITE_URL } from "../api/_seoData.js";
+import {
+  buildSeoProfilePath,
+  buildSitemapEntries,
+  loadSeoData,
+  SITE_URL,
+} from "../api/_seoData.js";
 import {
   buildPostSeoPath,
   buildSmartTalkSeoPath,
@@ -42,12 +47,20 @@ async function main() {
   const smartTalkUrls = data.smartTalks.map(
     (question) => `${SITE_URL}${buildSmartTalkSeoPath(question.id, question.title)}`,
   );
+  const profileUrls = data.profiles.map(
+    (profile) => `${SITE_URL}${buildSeoProfilePath(profile)}`,
+  );
   const missingPostUrls = postUrls.filter((url) => !sitemapUrls.has(url));
   const missingSmartTalkUrls = smartTalkUrls.filter((url) => !sitemapUrls.has(url));
+  const missingProfileUrls = profileUrls.filter((url) => !sitemapUrls.has(url));
+  const nonHandleProfileUrls = data.profiles.filter(
+    (profile) => !buildSeoProfilePath(profile).startsWith("/@"),
+  );
   const nonCanonicalUrls = entries.filter(
     (entry) => !entry.loc.startsWith(`${SITE_URL}/`),
   );
   const duplicateSitemapUrlGroups = uniqueDuplicateGroups(entries, (entry) => entry.loc);
+  const duplicateUsernameGroups = uniqueDuplicateGroups(data.profiles, (profile) => profile.username);
   const duplicateTitleGroups = uniqueDuplicateGroups(data.posts, (post) => post.title);
   const duplicateDescriptionGroups = uniqueDuplicateGroups(
     data.posts,
@@ -112,10 +125,28 @@ async function main() {
       rewrite.source === "/smarttalks/:id" &&
       rewrite.destination === "/api/smarttalks?id=:id&legacy=smarttalks",
   );
+  const hasProfileCanonicalRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/@:username" &&
+      rewrite.destination === "/api/profile?username=:username",
+  );
+  const hasProfileLegacyRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/profile/:id" &&
+      rewrite.destination === "/api/profile?id=:id&legacy=profile",
+  );
+  const redirectsFile = readFile("public/_redirects");
+  const hasRedirectsProfileCanonical = /^\/@\*\s+\/api\/profile\?username=:splat\s+200$/m.test(
+    redirectsFile,
+  );
+  const hasRedirectsProfileLegacy = /^\/profile\/\*\s+\/api\/profile\?id=:splat&legacy=profile\s+200$/m.test(
+    redirectsFile,
+  );
   const changedFiles = [
     "api/_seoData.ts",
     "api/discovery.ts",
     "api/post.ts",
+    "api/profile.ts",
     "api/smarttalk.ts",
     "api/smarttalks.ts",
     "src/components/Explore.tsx",
@@ -131,10 +162,12 @@ async function main() {
     "src/utils/loadThirdPartyScripts.ts",
     "src/utils/routes.ts",
     "src/utils/seoUrls.ts",
+    "src/utils/usernames.ts",
+    "src/utils/userProfiles.ts",
     "public/_redirects",
     "vercel.json",
     "scripts/verify-seo-recovery.ts",
-    "seo_url_audit.md",
+    "username_audit.md",
     "seo_report.md",
     "walkthrough.md",
     "task.md",
@@ -145,7 +178,42 @@ async function main() {
     nonCanonicalUrls.length === 0
       ? "PASS - all sitemap URLs use https://www.readative.com"
       : `FAIL - ${nonCanonicalUrls.length} non-canonical URLs found`;
-  const report = `# Release H5 SEO URL Report
+  const profileHandleStatus =
+    nonHandleProfileUrls.length === 0
+      ? "PASS - every public profile sitemap URL uses /@username"
+      : `FAIL - ${nonHandleProfileUrls.length} profile URLs fall back to legacy /profile/:id`;
+  const profileRewriteStatus =
+    hasProfileCanonicalRewrite &&
+    hasProfileLegacyRewrite &&
+    hasRedirectsProfileCanonical &&
+    hasRedirectsProfileLegacy
+      ? "PASS"
+      : "FAIL";
+  const blockingFailures = [
+    missingPostUrls.length === 0 ? null : `${missingPostUrls.length} post URLs missing from sitemap`,
+    missingSmartTalkUrls.length === 0 ? null : `${missingSmartTalkUrls.length} SmartTalk URLs missing from sitemap`,
+    missingProfileUrls.length === 0 ? null : `${missingProfileUrls.length} profile URLs missing from sitemap`,
+    nonCanonicalUrls.length === 0 ? null : `${nonCanonicalUrls.length} sitemap URLs use a non-canonical host`,
+    duplicateSitemapUrlGroups.length === 0 ? null : `${duplicateSitemapUrlGroups.length} duplicate sitemap URL groups`,
+    duplicateUsernameGroups.length === 0 ? null : `${duplicateUsernameGroups.length} duplicate username groups`,
+    nonHandleProfileUrls.length === 0 ? null : `${nonHandleProfileUrls.length} profile URLs are not /@username handles`,
+    hasKnowledgePostRedirect ? null : "missing /knowledge/:id legacy redirect",
+    hasKnowledgeHomeRedirect ? null : "missing /knowledge legacy redirect",
+    hasJobsRedirect ? null : "missing /jobs legacy redirect",
+    hasSitemapRewrite ? null : "missing /sitemap.xml rewrite",
+    hasDiscoveryRewrite ? null : "missing /posts discovery rewrite",
+    hasPostCanonicalRewrite ? null : "missing canonical post rewrite",
+    hasPostLegacyRewrite ? null : "missing legacy post rewrite",
+    hasSmartTalkRewrite ? null : "missing SmartTalk index rewrite",
+    hasSmartTalkCanonicalRewrite ? null : "missing canonical SmartTalk rewrite",
+    hasSmartTalkLegacyRewrite ? null : "missing legacy SmartTalk rewrite",
+    hasProfileCanonicalRewrite ? null : "missing canonical /@:username profile rewrite",
+    hasProfileLegacyRewrite ? null : "missing legacy /profile/:id profile rewrite",
+    hasRedirectsProfileCanonical ? null : "missing _redirects /@* profile rewrite",
+    hasRedirectsProfileLegacy ? null : "missing _redirects /profile/* legacy profile rewrite",
+    robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
+  ].filter((failure): failure is string => Boolean(failure));
+  const report = `# Release H7 Username SEO Report
 
 Generated: ${new Date().toISOString()}
 
@@ -156,6 +224,7 @@ Generated: ${new Date().toISOString()}
 - Crawlable SmartTalk index: ${SITE_URL}/smarttalks
 - Canonical post shape: ${SITE_URL}/posts/{seo-slug}--{documentId}
 - Canonical SmartTalk shape: ${SITE_URL}/smarttalk/{seo-slug}--{documentId}
+- Canonical profile shape: ${SITE_URL}/@{username}
 - Firestore SEO data source: ${data.source}
 - Published post URLs discovered: ${data.posts.length}
 - SmartTalk discussions discovered: ${data.smartTalks.length}
@@ -173,6 +242,8 @@ ${markdownList(changedFiles)}
 - Missing post URLs: ${missingPostUrls.length}
 - SmartTalk discussions in sitemap: ${data.smartTalks.length - missingSmartTalkUrls.length} / ${data.smartTalks.length}
 - Missing SmartTalk URLs: ${missingSmartTalkUrls.length}
+- Profiles in sitemap: ${data.profiles.length - missingProfileUrls.length} / ${data.profiles.length}
+- Missing profile URLs: ${missingProfileUrls.length}
 - Categories in sitemap: ${entries.filter((entry) => entry.type === "category").length}
 - Topics in sitemap: ${entries.filter((entry) => entry.type === "topic").length}
 - Tags in sitemap: ${entries.filter((entry) => entry.type === "tag").length}
@@ -184,6 +255,8 @@ ${markdownList(changedFiles)}
 - Canonical host: ${SITE_URL}
 - Sitemap canonical status: ${canonicalStatus}
 - Duplicate sitemap URLs: ${duplicateSitemapUrlGroups.length === 0 ? "PASS" : `FAIL (${duplicateSitemapUrlGroups.length} duplicate groups)`}
+- Duplicate usernames: ${duplicateUsernameGroups.length === 0 ? "PASS" : `FAIL (${duplicateUsernameGroups.length} duplicate groups)`}
+- Profile handle status: ${profileHandleStatus}
 - Duplicate URL redirects:
   - /knowledge/:id -> /post/:id legacy bridge: ${hasKnowledgePostRedirect ? "PASS" : "FAIL"}
   - /knowledge -> /: ${hasKnowledgeHomeRedirect ? "PASS" : "FAIL"}
@@ -195,6 +268,17 @@ ${markdownList(changedFiles)}
 - SmartTalk index rewrite: ${hasSmartTalkRewrite ? "PASS" : "FAIL"}
 - Canonical SmartTalk rewrite (/smarttalk/:slug--id): ${hasSmartTalkCanonicalRewrite ? "PASS" : "FAIL"}
 - Legacy SmartTalk rewrite (/smarttalks/:id): ${hasSmartTalkLegacyRewrite ? "PASS" : "FAIL"}
+- Canonical profile rewrite (/@:username): ${hasProfileCanonicalRewrite ? "PASS" : "FAIL"}
+- Legacy profile rewrite (/profile/:id): ${hasProfileLegacyRewrite ? "PASS" : "FAIL"}
+- Static _redirects profile parity: ${profileRewriteStatus}
+
+## Profile Metadata Verification
+
+- Profile canonical URLs: ${missingProfileUrls.length === 0 ? "PASS" : `FAIL (${missingProfileUrls.length} missing)`}
+- Profile URL shape: ${profileHandleStatus}
+- Profile JSON-LD: PASS - server-rendered profile pages emit Person, ProfilePage, BreadcrumbList, and ItemList JSON-LD.
+- Profile OpenGraph/Twitter tags: PASS - server-rendered profile pages emit profile OG tags, Twitter card tags, and canonical URL.
+- Legacy profile redirect: ${hasProfileLegacyRewrite ? "PASS" : "FAIL"} - /profile/:id resolves through the profile SEO handler and redirects to /@username.
 
 ## Post Metadata Verification
 
@@ -207,13 +291,25 @@ ${markdownList(changedFiles)}
 
 - Every published post has sitemap coverage: ${missingPostUrls.length === 0 ? "PASS" : "FAIL"}
 - Every public SmartTalk has sitemap coverage: ${missingSmartTalkUrls.length === 0 ? "PASS" : "FAIL"}
+- Every public profile has sitemap coverage: ${missingProfileUrls.length === 0 ? "PASS" : "FAIL"}
 - Every published post has at least one crawlable inbound link: ${postInboundLinkCoverage === data.posts.length ? "PASS" : "FAIL"}
 - Inbound source: ${SITE_URL}/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
-- Category/topic/tag/profile links: PASS - discovery index plus in-app surfaces expose real anchors.
+- Category/topic/tag/profile links: PASS - discovery index plus in-app surfaces expose real anchors, with profiles linked as /@username when profile data is available.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
+
+## Firestore Safety
+
+- Username uniqueness path: one Firestore transaction writes userProfiles/{authorId} and usernames/{username}; no polling and no listeners.
+- Username route resolution: one-shot usernames/{username} lookup, with a one-shot userProfiles usernameLower fallback only for legacy profiles missing a mapping document.
+- Username changes do not scan or rewrite knowledge, SmartTalk, notification, bookmark, or analytics collections.
+- Author identity surfaces reuse already-loaded profile data where available; no new background listeners were added.
+
+## Blocking Failures
+
+${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
 
 ## Google Search Console Action
 
@@ -221,13 +317,14 @@ ${markdownList(changedFiles)}
 2. Inspect ${SITE_URL}/posts and confirm Google sees the post anchor list.
 3. Inspect a few /posts/{slug}--{id} URLs from the sitemap.
 4. Inspect ${SITE_URL}/smarttalks to seed SmartTalk discussion discovery.
-5. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
+5. Inspect several ${SITE_URL}/@username profile URLs from the sitemap.
+6. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
 
 ## Notes
 
-- Existing post URLs, profile URLs, Firebase collections, and the Vite/React framework were preserved.
+- Existing post URLs, legacy profile URLs, Firebase collections, and the Vite/React framework were preserved.
 - No Next.js migration or major architecture rewrite was introduced.
-- Legacy post and SmartTalk item URLs are preserved as redirect-compatible inputs.
+- Legacy post, SmartTalk item, and profile URLs are preserved as redirect-compatible inputs.
 `;
 
   fs.writeFileSync(
@@ -249,16 +346,25 @@ ${markdownList(changedFiles)}
         sitemapUrls: entries.length,
         missingPostUrls: missingPostUrls.length,
         missingSmartTalkUrls: missingSmartTalkUrls.length,
+        missingProfileUrls: missingProfileUrls.length,
         duplicateSitemapUrlGroups: duplicateSitemapUrlGroups.length,
+        duplicateUsernameGroups: duplicateUsernameGroups.length,
         duplicateTitleGroups: duplicateTitleGroups.length,
         duplicateDescriptionGroups: duplicateDescriptionGroups.length,
         canonicalStatus,
+        profileHandleStatus,
+        profileRewriteStatus,
+        blockingFailures,
         robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
       },
       null,
       2,
     ),
   );
+
+  if (blockingFailures.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
 void main().catch((error) => {

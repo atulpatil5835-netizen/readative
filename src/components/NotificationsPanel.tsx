@@ -21,7 +21,7 @@ interface NotificationsPanelProps {
   unreadNotificationCount: number;
   notificationsError: string | null;
   onClose: () => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
   onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
   onOpenSignIn: () => void;
@@ -63,7 +63,12 @@ export function NotificationsPanel({
         notification.type === "level-up" ||
         notification.type === "trust-score"
       ) {
-        onOpenProfile(notification.targetAuthorId);
+        onOpenProfile(
+          notification.targetAuthorId,
+          notification.targetAuthorId === identity?.authorId
+            ? identity.displayName
+            : undefined,
+        );
         return;
       }
 
@@ -111,6 +116,12 @@ export function NotificationsPanel({
       notification.actorAuthorId === "readative-system"
         ? notification.targetAuthorId
         : notification.actorAuthorId;
+    const actorUsername =
+      notification.actorAuthorId === "readative-system"
+        ? notification.targetAuthorId === identity?.authorId
+          ? identity.displayName
+          : undefined
+        : notification.actorUsername;
 
     return (
       <div
@@ -128,7 +139,7 @@ export function NotificationsPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => onOpenProfile(actorProfileId)}
+              onClick={() => onOpenProfile(actorProfileId, actorUsername)}
               className="text-xs font-black text-slate-900 transition-colors hover:text-emerald-700"
             >
               @{notification.actorUsername}

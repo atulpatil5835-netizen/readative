@@ -15,7 +15,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import type { KnowledgeEntry } from "../types";
 import {
   MAX_NOTEBOOK_HIGHLIGHTS_PER_POST,

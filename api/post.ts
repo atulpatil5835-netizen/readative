@@ -3,6 +3,7 @@ import {
   SITE_URL,
   type SeoPost,
   type SeoSmartTalk,
+  buildSeoProfilePath,
   loadSeoPostPage,
 } from "./_seoData.js";
 import {
@@ -113,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).send(renderNotFound(id));
     }
 
-    const { post, relatedPosts, relatedSmartTalks } = page;
+    const { post, authorProfile, relatedPosts, relatedSmartTalks } = page;
     const canonicalPath = postPath(post);
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
     const legacy = getQueryValue(req.query.legacy);
@@ -124,9 +125,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const pageTitle = `${post.title} | Readative`;
-    const authorUrl = post.authorId
-      ? `${SITE_URL}/profile/${encodeURIComponent(post.authorId)}`
-      : undefined;
+    const authorPath = authorProfile
+      ? buildSeoProfilePath(authorProfile)
+      : post.authorId
+        ? `/profile/${encodeURIComponent(post.authorId)}`
+        : "";
+    const authorUrl = authorPath ? `${SITE_URL}${authorPath}` : undefined;
     const categoryPath = post.category
       ? `/category/${encodeURIComponent(post.category)}`
       : null;
@@ -211,7 +215,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ${SEO_DOCUMENT_STYLES}`;
 
     const meta = [
-      authorUrl ? `<a href="/profile/${encodeURIComponent(post.authorId)}">By ${escapeHtml(post.authorName)}</a>` : `By ${escapeHtml(post.authorName)}`,
+      authorUrl ? `<a href="${escapeHtml(authorPath)}">By ${escapeHtml(post.authorName)}</a>` : `By ${escapeHtml(post.authorName)}`,
       categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : "",
       post.createdAt ? `<time datetime="${new Date(post.createdAt).toISOString()}">${new Date(post.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" })}</time>` : "",
     ].filter(Boolean).join("");
@@ -242,7 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             <section><h3>Related Posts</h3><ul class="seo-list">${renderPostList(relatedPosts)}</ul></section>
             <section><h3>Related SmartTalk</h3><ul class="seo-list">${renderSmartTalkList(relatedSmartTalks)}</ul></section>
             <section><h3>Same Category</h3><ul class="seo-list"><li>${categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : '<a href="/posts">Browse categories</a>'}</li></ul></section>
-            <section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="/profile/${encodeURIComponent(post.authorId)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>
+            <section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="${escapeHtml(authorPath)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>
           </div>
           <section><h3>Similar Topics</h3><div class="seo-tags">${tags || '<a href="/explore">Explore topics</a>'}</div></section>
           <div class="seo-meta">

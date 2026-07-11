@@ -33,7 +33,7 @@ import {
   query,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import {
   type KnowledgeComment,
   type KnowledgeEntry,
@@ -84,6 +84,7 @@ import {
   type SeoTopicDefinition,
 } from "../utils/seoTaxonomy";
 import { tokenizeSearch } from "../utils/searchHelpers";
+import { getProfilePathForIdentity } from "../utils/usernames";
 
 const EXPLORE_POST_LIMIT = 80;
 const EXPLORE_SMARTTALK_LIMIT = 50;
@@ -125,7 +126,7 @@ interface ContributorDiscovery {
 interface ExploreProps {
   currentIdentity: KnowledgeIdentity | null;
   selectedTopic: string | null;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenEntry: (entryId: string) => void;
   onOpenTopic: (topicId: string | null) => void;
   onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
@@ -1593,7 +1594,7 @@ function UnifiedSearchResults({
     count: number;
   };
   onOpenEntry: (entryId: string) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   onOpenTopic: (topicId: string | null) => void;
   onOpenSmartTalk: (questionId?: string, selectedCategory?: string | null) => void;
 }) {
@@ -1762,17 +1763,21 @@ function ContributorList({
   onOpenProfile,
 }: {
   contributors: ContributorDiscovery[];
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
 }) {
   return (
     <div className="space-y-2">
       {contributors.map((contributor) => (
         <a
           key={contributor.authorId}
-          href={`/profile/${encodeURIComponent(contributor.authorId)}`}
+          href={getProfilePathForIdentity({
+            id: contributor.authorId,
+            username: contributor.username,
+            usernameLower: contributor.username,
+          })}
           onClick={(event) => {
             event.preventDefault();
-            onOpenProfile(contributor.authorId);
+            onOpenProfile(contributor.authorId, contributor.username);
           }}
           className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
         >

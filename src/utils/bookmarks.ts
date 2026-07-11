@@ -4,7 +4,7 @@ import {
   doc,
   runTransaction,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../firebase/firebaseDb";
 import type { KnowledgeEntry, SmartQuestion } from "../types";
 import { mergeTrustIds, normalizeTrustIdArray } from "./trustSystem";
 

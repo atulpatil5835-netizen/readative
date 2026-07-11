@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   SITE_URL,
+  type SeoProfile,
   type SeoSmartTalk,
+  buildSeoProfilePath,
   loadSeoData,
 } from "./_seoData.js";
 import { SEO_CATEGORIES } from "../src/utils/seoTaxonomy.js";
@@ -34,6 +36,14 @@ function absoluteUrl(path: string) {
   return `${SITE_URL}${path}`;
 }
 
+function getAuthorProfilePath(
+  authorId: string,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
+  const profile = profileById.get(authorId);
+  return profile ? buildSeoProfilePath(profile) : `/profile/${encodeURIComponent(authorId)}`;
+}
+
 function shouldRedirectToCanonical(
   requestedSegment: string,
   canonicalQuestion: SeoSmartTalk,
@@ -55,10 +65,13 @@ function getCategoryLabel(categoryId: string | null) {
   return SEO_CATEGORIES.find((category) => category.id === categoryId)?.label || categoryId;
 }
 
-function renderQuestionMeta(question: SeoSmartTalk) {
+function renderQuestionMeta(
+  question: SeoSmartTalk,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
   const metaLinks = [
     question.authorId
-      ? `<a href="/profile/${escapeHtml(encodeURIComponent(question.authorId))}">@${escapeHtml(question.authorName)}</a>`
+      ? `<a href="${escapeHtml(getAuthorProfilePath(question.authorId, profileById))}">@${escapeHtml(question.authorName)}</a>`
       : `@${escapeHtml(question.authorName)}`,
     question.category
       ? `<a href="/category/${escapeHtml(encodeURIComponent(question.category))}">${escapeHtml(getCategoryLabel(question.category))}</a>`
@@ -123,7 +136,10 @@ function buildSmartTalkIndexSchemas(questions: SeoSmartTalk[]) {
   ];
 }
 
-function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
+function buildSmartTalkQuestionSchemas(
+  question: SeoSmartTalk,
+  profileById: ReadonlyMap<string, SeoProfile>,
+) {
   const questionUrl = absoluteUrl(smartTalkPath(question));
 
   return [
@@ -162,7 +178,7 @@ function buildSmartTalkQuestionSchemas(question: SeoSmartTalk) {
         "@type": "Person",
         name: question.authorName,
         url: question.authorId
-          ? absoluteUrl(`/profile/${encodeURIComponent(question.authorId)}`)
+          ? absoluteUrl(getAuthorProfilePath(question.authorId, profileById))
           : undefined,
       },
       datePublished: new Date(question.createdAt).toISOString(),
@@ -231,6 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const questions = [...data.smartTalks].sort(
     (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
   );
+  const profileById = new Map(data.profiles.map((profile) => [profile.id, profile] as const));
   const requestedSegment = getQueryValue(req.query.id);
   const requestedId = extractSeoDocumentId(requestedSegment);
   const focusedQuestion = requestedId
@@ -298,7 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
       <meta name="twitter:image" content="${SITE_URL}/logo.png" />
       <meta name="twitter:image:alt" content="Readative SmartTalk" />
-      ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion))}
+      ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion, profileById))}
       ${SEO_DOCUMENT_STYLES}`;
     const answerList = focusedQuestion.answers.length
       ? `<ul class="seo-list">${focusedQuestion.answers
@@ -332,14 +349,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <article class="seo-hero" id="question-${escapeHtml(focusedQuestion.id)}"><div class="seo-hero-inner">
           <p class="seo-kicker">SmartTalk discussion</p>
           <h1>${escapeHtml(focusedQuestion.title)}</h1>
-          <div class="seo-meta">${renderQuestionMeta(focusedQuestion)}</div>
+          <div class="seo-meta">${renderQuestionMeta(focusedQuestion, profileById)}</div>
         </div><section class="seo-card" style="border:0;border-top:1px solid #e2e8f0;border-radius:0;box-shadow:none;margin:0"><h2>Community answers</h2>${answerList}</section></article>
         <section class="seo-card"><div class="seo-grid">
           <section><h2>Related Questions</h2><ul class="seo-list">${relatedQuestionList}</ul></section>
           <section><h2>Related Posts</h2><ul class="seo-list">${relatedPostList}</ul></section>
         </div><div class="seo-meta">
           ${focusedQuestion.category ? `<a href="/category/${encodeURIComponent(focusedQuestion.category)}">Related Category: ${escapeHtml(getCategoryLabel(focusedQuestion.category))}</a>` : ""}
-          ${focusedQuestion.authorId ? `<a href="/profile/${encodeURIComponent(focusedQuestion.authorId)}">Author: ${escapeHtml(focusedQuestion.authorName)}</a>` : ""}
+          ${focusedQuestion.authorId ? `<a href="${escapeHtml(getAuthorProfilePath(focusedQuestion.authorId, profileById))}">Author: ${escapeHtml(focusedQuestion.authorName)}</a>` : ""}
           <span>Continue Learning: ${nextReading}</span>
         </div></section>
       </main>

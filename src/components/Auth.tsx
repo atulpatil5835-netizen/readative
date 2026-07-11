@@ -9,7 +9,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { firebaseAuthDomain } from "../firebase/firebase";
+import { firebaseAuthDomain } from "../firebase/firebaseConfig";
 
 interface GoogleSignInPromptProps {
   title?: string;

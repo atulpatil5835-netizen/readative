@@ -22,7 +22,7 @@ import {
   type QueryDocumentSnapshot,
   where,
 } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
+import { db } from "../../firebase/firebaseDb";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -35,7 +35,6 @@ import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { trackPostCreated } from "../../utils/analytics";
 import { hydrateUserProfile } from "../../utils/profileData";
 import { signInWithGoogleAccount } from "../../utils/googleAuth";
-import { USER_PROFILE_UPDATED_EVENT } from "../../utils/userProfiles";
 import {
   buildAbsoluteRouteUrl,
   buildPublicPath,
@@ -118,6 +117,7 @@ const DEFAULT_IMAGE_LAYOUT: KnowledgeImageLayout = "wide";
 const JOURNEY_SMARTTALK_LIMIT = 12;
 const JOURNEY_SMARTTALK_CACHE_KEY = "readativeJourneySmartTalkPreview:v1";
 const JOURNEY_SMARTTALK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const USER_PROFILE_UPDATED_EVENT = "readative:user-profile-updated";
 
 interface CachedJourneySmartTalkPreview {
   questions: KnowledgeJourneyQuestion[];
@@ -359,7 +359,7 @@ function writeJourneySmartTalkPreviewCache(questions: KnowledgeJourneyQuestion[]
 interface KnowledgeFeedProps {
   identity: KnowledgeIdentity | null;
   onIdentityChange: (identity: KnowledgeIdentity | null) => void;
-  onOpenProfile: (authorId: string) => void;
+  onOpenProfile: (authorId: string, username?: string) => void;
   focusedEntryId: string | null;
   onOpenEntry: (entryId: string) => void;
   composerOpenSignal: number;
@@ -1333,6 +1333,10 @@ export function KnowledgeFeed({
   // ── Derived state ──
 
   const currentAuthorId = identity?.authorId || null;
+  const profileById = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    [profiles],
+  );
   const activeFeedTopic =
     FEED_TOPIC_FILTERS.find((topic) => topic.id === selectedFeedTopic) ||
     FEED_TOPIC_FILTERS[0];
@@ -1456,10 +1460,20 @@ export function KnowledgeFeed({
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
     if (searchTerms.length === 0) return visibleEntries;
 
-    return visibleEntries.filter((entry) =>
-      matchesKnowledgeSearch(entry, searchTerms),
-    );
-  }, [deferredFeedSearchQuery, visibleEntries]);
+    return visibleEntries.filter((entry) => {
+      const authorProfile = profileById.get(entry.authorId);
+      const identityText = [
+        authorProfile?.username,
+        authorProfile?.usernameLower,
+        authorProfile?.displayName,
+        authorProfile?.email,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return matchesKnowledgeSearch(entry, searchTerms, identityText);
+    });
+  }, [deferredFeedSearchQuery, profileById, visibleEntries]);
   const feedProfileIds = useMemo(
     () => collectFeedProfileIds(filteredEntries),
     [filteredEntries],
