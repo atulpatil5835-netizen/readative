@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "projectionVersion": 1,
+  "builderVersion": "seo-v2-builder-1",
+  "generatedAt": "2026-07-19T14:55:18.898Z",
+  "buildId": "seo-v2-resume-self-test",
+  "source": "fixture",
+  "mode": "write",
+  "adminOnlyWritePath": false,
+  "featureFlagExpected": "v1",
+  "options": {
+    "collection": "all",
+    "sourceId": null,
+    "retryReportPath": null,
+    "resume": true,
+    "resetCheckpoint": false,
+    "batchSize": 2,
+    "pageSize": 1,
+    "checkpointId": "seo_v2_backfill_checkpoint"
+  },
+  "backfillReport": {
+    "processed": 4,
+    "written": 2,
+    "skipped": 1,
+    "unchanged": 0,
+    "failed": 0,
+    "elapsedMs": 4.97,
+    "estimatedRemainingMs": null,
+    "averageThroughputPerSecond": 804.83,
+    "currentCollection": "complete"
+  },
+  "validationReport": {
+    "successfulProjections": 3,
+    "failedProjections": 0,
+    "validationFailures": 0,
+    "warnings": 1,
+    "duplicateIds": 0
+  },
+  "checkpointReport": {
+    "version": 1,
+    "buildId": "seo-v2-resume-self-test",
+    "currentCollection": "complete",
+    "lastProcessedDocument": null,
+    "processedCount": 4,
+    "successCount": 3,
+    "skippedCount": 1,
+    "failedCount": 0,
+    "startedAt": 1784472918836,
+    "updatedAt": 1784472918898
+  },
+  "parityReport": {
+    "sourceCount": 4,
+    "projectionCount": 3,
+    "missingProjections": [],
+    "duplicateIds": [],
+    "validationFailures": [],
+    "warnings": [
+      {
+        "collection": "knowledge",
+        "sourceId": "private_post",
+        "code": "source_skipped",
+        "message": "post is not public or is incomplete"
+      }
+    ],
+    "errors": []
+  },
+  "metrics": {
+    "totalReads": 8,
+    "sourceReads": 4,
+    "existingProjectionReads": 3,
+    "checkpointReads": 1,
+    "totalWrites": 11,
+    "seoDocumentWrites": 3,
+    "checkpointWrites": 8,
+    "networkRequests": 0,
+    "skippedWrites": 0,
+    "unchangedProjections": 0,
+    "failedWrites": 0,
+    "batchCount": 2,
+    "batchAttempts": 2,
+    "averageBatchDurationMs": 0.07,
+    "averageDocumentSizeBytes": 770,
+    "largestDocument": {
+      "documentId": "smarttalk:smarttalk_alpha",
+      "sizeBytes": 976
+    },
+    "buildDurationMs": 4.97
+  },
+  "skippedDocuments": [
+    {
+      "collection": "knowledge",
+      "sourceId": "private_post",
+      "reason": "post is not public or is incomplete"
+    }
+  ],
+  "failures": [],
+  "warnings": [
+    {
+      "collection": "knowledge",
+      "sourceId": "private_post",
+      "code": "source_skipped",
+      "message": "post is not public or is incomplete"
+    }
+  ]
+}

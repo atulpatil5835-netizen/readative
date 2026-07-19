@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "projectionVersion": 1,
+  "builderVersion": "seo-v2-builder-1",
+  "generatedAt": "2026-07-19T14:54:55.732Z",
+  "buildId": "seo-v2-validation-self-test",
+  "source": "fixture",
+  "mode": "dry-run",
+  "adminOnlyWritePath": false,
+  "featureFlagExpected": "v1",
+  "options": {
+    "collection": "all",
+    "sourceId": null,
+    "retryReportPath": null,
+    "resume": false,
+    "resetCheckpoint": true,
+    "batchSize": 2,
+    "pageSize": 2,
+    "checkpointId": "seo_v2_backfill_checkpoint"
+  },
+  "backfillReport": {
+    "processed": 5,
+    "written": 0,
+    "skipped": 1,
+    "unchanged": 0,
+    "failed": 1,
+    "elapsedMs": 54.65,
+    "estimatedRemainingMs": null,
+    "averageThroughputPerSecond": 91.49,
+    "currentCollection": "complete"
+  },
+  "validationReport": {
+    "successfulProjections": 3,
+    "failedProjections": 1,
+    "validationFailures": 1,
+    "warnings": 1,
+    "duplicateIds": 0
+  },
+  "checkpointReport": {
+    "version": 1,
+    "buildId": "seo-v2-validation-self-test",
+    "currentCollection": "complete",
+    "lastProcessedDocument": null,
+    "processedCount": 5,
+    "successCount": 3,
+    "skippedCount": 1,
+    "failedCount": 1,
+    "startedAt": 1784472895678,
+    "updatedAt": 1784472895732
+  },
+  "parityReport": {
+    "sourceCount": 5,
+    "projectionCount": 3,
+    "missingProjections": [
+      {
+        "collection": "knowledge",
+        "sourceId": ""
+      }
+    ],
+    "duplicateIds": [],
+    "validationFailures": [
+      {
+        "collection": "knowledge",
+        "sourceId": "",
+        "documentId": "post:",
+        "issues": [
+          {
+            "severity": "error",
+            "code": "required_string",
+            "path": "sourceId",
+            "message": "sourceId is required."
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      {
+        "collection": "knowledge",
+        "sourceId": "private_post",
+        "code": "source_skipped",
+        "message": "post is not public or is incomplete"
+      }
+    ],
+    "errors": []
+  },
+  "metrics": {
+    "totalReads": 5,
+    "sourceReads": 5,
+    "existingProjectionReads": 0,
+    "checkpointReads": 0,
+    "totalWrites": 0,
+    "seoDocumentWrites": 0,
+    "checkpointWrites": 0,
+    "networkRequests": 0,
+    "skippedWrites": 3,
+    "unchangedProjections": 0,
+    "failedWrites": 0,
+    "batchCount": 0,
+    "batchAttempts": 0,
+    "averageBatchDurationMs": 0,
+    "averageDocumentSizeBytes": 800,
+    "largestDocument": {
+      "documentId": "smarttalk:smarttalk_alpha",
+      "sizeBytes": 976
+    },
+    "buildDurationMs": 54.65
+  },
+  "skippedDocuments": [
+    {
+      "collection": "knowledge",
+      "sourceId": "private_post",
+      "reason": "post is not public or is incomplete"
+    }
+  ],
+  "failures": [],
+  "warnings": [
+    {
+      "collection": "knowledge",
+      "sourceId": "private_post",
+      "code": "source_skipped",
+      "message": "post is not public or is incomplete"
+    }
+  ]
+}

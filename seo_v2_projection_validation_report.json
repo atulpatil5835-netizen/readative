@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "projectionVersion": 1,
+  "builderVersion": "seo-v2-builder-1",
+  "generatedAt": "2026-07-19T14:17:38.207Z",
+  "source": "fixture",
+  "dryRun": true,
+  "firestoreWrites": 0,
+  "networkRequests": 0,
+  "counts": {
+    "postsProcessed": 1,
+    "profilesProcessed": 1,
+    "smartTalksProcessed": 1,
+    "successfulProjections": 3,
+    "failedProjections": 0,
+    "validationFailures": 0,
+    "warnings": 0,
+    "skippedDocuments": 0,
+    "deterministicFailures": 0
+  },
+  "performance": {
+    "projectionGenerationTimeMs": 87.9,
+    "averageGenerationTimeMs": 29.3
+  },
+  "architectureValidation": {
+    "deterministicOutput": true,
+    "validCanonicals": true,
+    "validPublicState": true,
+    "validIds": true,
+    "validRequiredFields": true,
+    "documentSizeGuard": true,
+    "previewSizeGuard": true,
+    "maxAnswerPreview": 5
+  },
+  "issueSummary": {},
+  "validationSelfTest": {
+    "passed": true,
+    "checkedCodes": [
+      "required_string",
+      "invalid_document_id",
+      "invalid_public_state",
+      "invalid_schema_version",
+      "invalid_projection_version",
+      "invalid_timestamp",
+      "absolute_canonical_path"
+    ],
+    "missingCodes": [],
+    "issuesDetected": 8
+  },
+  "items": [
+    {
+      "type": "post",
+      "sourceId": "post_alpha",
+      "documentId": "post:post_alpha",
+      "success": true,
+      "validation": [],
+      "deterministic": true
+    },
+    {
+      "type": "profile",
+      "sourceId": "user_atul",
+      "documentId": "profile:user_atul",
+      "success": true,
+      "validation": [],
+      "deterministic": true
+    },
+    {
+      "type": "smarttalk",
+      "sourceId": "smarttalk_alpha",
+      "documentId": "smarttalk:smarttalk_alpha",
+      "success": true,
+      "validation": [],
+      "deterministic": true
+    }
+  ]
+}

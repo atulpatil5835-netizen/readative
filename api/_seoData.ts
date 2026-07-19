@@ -21,6 +21,14 @@ import {
   normalizeUsernameInput,
 } from "../src/utils/usernames.js";
 
+export {
+  describeSeoV2Foundation,
+  getSeoArchitectureMode,
+  isSeoV2Enabled,
+  normalizeSeoArchitectureMode,
+} from "./_seoV2Data.js";
+export type { SeoArchitectureMode } from "../src/utils/seoV2Types.js";
+
 export const SITE_URL = "https://www.readative.com";
 export const DISCOVERY_INDEX_PATH = "/posts";
 

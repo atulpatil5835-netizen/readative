@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import {
   buildSeoProfilePath,
   buildSitemapEntries,
+  describeSeoV2Foundation,
   loadSeoData,
   SITE_URL,
 } from "../api/_seoData.js";
@@ -38,6 +39,7 @@ function markdownList(items: string[]) {
 }
 
 async function main() {
+  const seoArchitecture = describeSeoV2Foundation();
   const data = await loadSeoData();
   const entries = buildSitemapEntries(data);
   const sitemapUrls = new Set(entries.map((entry) => entry.loc));
@@ -225,6 +227,9 @@ Generated: ${new Date().toISOString()}
 - Canonical post shape: ${SITE_URL}/posts/{seo-slug}--{documentId}
 - Canonical SmartTalk shape: ${SITE_URL}/smarttalk/{seo-slug}--{documentId}
 - Canonical profile shape: ${SITE_URL}/@{username}
+- SEO architecture mode: ${seoArchitecture.mode}
+- SEO V2 schema version: ${seoArchitecture.schemaVersion}
+- SEO V2 projection version: ${seoArchitecture.projectionVersion}
 - Firestore SEO data source: ${data.source}
 - Published post URLs discovered: ${data.posts.length}
 - SmartTalk discussions discovered: ${data.smartTalks.length}
@@ -336,6 +341,7 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
     JSON.stringify(
       {
         source: data.source,
+        seoArchitecture,
         sitemapUrl: `${SITE_URL}/sitemap.xml`,
         discoveryIndexUrl: `${SITE_URL}/posts`,
         smartTalkIndexUrl: `${SITE_URL}/smarttalks`,

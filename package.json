@@ -9,7 +9,14 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "build": "vite build",
     "preview": "vite preview",
-    "verify:seo": "tsx scripts/verify-seo-recovery.ts"
+    "verify:seo": "tsx scripts/verify-seo-recovery.ts",
+    "verify:live-routes": "tsx scripts/verify-live-routes.ts",
+    "seo:v2:dry-run": "tsx scripts/build-seo-documents.ts --source=fixture",
+    "seo:v2:backfill:dry-run": "tsx scripts/backfill-seo-v2.ts --source=fixture --dry-run",
+    "seo:v2:backfill:validation-test": "tsx scripts/backfill-seo-v2.ts --validation-self-test",
+    "seo:v2:backfill:resume-test": "tsx scripts/backfill-seo-v2.ts --resume-self-test",
+    "seo:v2:backfill:idempotency-test": "tsx scripts/backfill-seo-v2.ts --idempotency-self-test",
+    "seo:v2:backfill:batch-retry-test": "tsx scripts/backfill-seo-v2.ts --batch-retry-self-test"
   },
   "dependencies": {
     "cors": "^2.8.6",
