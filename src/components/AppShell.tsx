@@ -4,6 +4,7 @@ import {
   ProfileSkeleton,
   SmartTalkSkeleton,
 } from "./Skeletons";
+import { Logo } from "./Logo";
 import { SEO } from "./SEO";
 
 export function SectionSkeleton({ label }: { label: string }) {
@@ -68,50 +69,102 @@ export function BannerNotice({
   );
 }
 
-const FOOTER_LINKS = [
-  { label: "About", href: "/about" },
-  { label: "Contact", href: "/contact" },
-  { label: "Privacy", href: "/privacy" },
-  { label: "Terms", href: "/terms" },
-  { label: "Disclaimer", href: "/disclaimer" },
-  { label: "Support", href: "/support" },
+const FOOTER_LINK_GROUPS = [
+  {
+    title: "ABOUT",
+    links: [
+      { label: "About", href: "/about" },
+      { label: "Mission", href: "/mission" },
+      { label: "Projects", href: "/projects" },
+      { label: "Contact Readative", href: "/contact" },
+      { label: "Support Independent Innovation", href: "/support" },
+    ],
+  },
+  {
+    title: "COMMUNITY",
+    links: [
+      { label: "Community Guidelines", href: "/community" },
+      { label: "Editorial Policy", href: "/editorial-policy" },
+      { label: "Content Policy", href: "/content-policy" },
+      { label: "Corrections Policy", href: "/corrections-policy" },
+    ],
+  },
+  {
+    title: "LEGAL",
+    links: [
+      { label: "Privacy Policy", href: "/privacy" },
+      { label: "Terms of Use", href: "/terms" },
+      { label: "Cookie Policy", href: "/cookies" },
+      { label: "Copyright Policy", href: "/copyright" },
+      { label: "DMCA Policy", href: "/dmca" },
+      { label: "Disclaimer", href: "/disclaimer" },
+    ],
+  },
+  {
+    title: "SUPPORT",
+    links: [{ label: "Support", href: "/support" }],
+  },
 ];
 
 export function AppFooter() {
   return (
-    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-2 text-slate-500 md:px-6 md:pb-10 min-[1280px]:max-w-[1328px]">
-      <div className="border-t border-slate-200/80 pt-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-black tracking-tight text-slate-800">
-              Readative
+    <footer className="mx-auto max-w-5xl px-4 pb-28 pt-8 text-slate-600 md:px-6 md:pb-10 min-[1280px]:max-w-[1328px]">
+      <div className="border-t border-slate-200/80 py-10 md:py-12">
+        <div className="grid gap-10 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-10 min-[1440px]:grid-cols-[18rem_minmax(0,1fr)] min-[1440px]:gap-14">
+          <div className="max-w-sm xl:max-w-[15rem] min-[1440px]:max-w-sm">
+            <a
+              href="/"
+              className="group inline-flex items-center gap-3 rounded-2xl transition-colors duration-200 hover:text-emerald-700"
+              aria-label="Readative home"
+            >
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-emerald-200 group-hover:shadow-md">
+                <Logo className="h-9 w-9" loading="lazy" />
+              </span>
+              <span className="text-lg font-black tracking-tight text-slate-950 transition-colors duration-200 group-hover:text-emerald-700">
+                Readative
+              </span>
+            </a>
+            <p className="mt-5 text-sm leading-6 text-slate-600">
+              Practical knowledge, creator posts, visual explainers, and
+              SmartTalk discussions for readers who want useful context.
             </p>
-            <p className="mt-1 text-xs leading-5">
-              Practical knowledge, creator posts, and SmartTalk discussions.
+            <p className="mt-6 text-xs font-medium text-slate-500">
+              © 2026 Readative. All rights reserved.
             </p>
           </div>
 
           <nav
             aria-label="Footer navigation"
-            className="flex flex-wrap items-center gap-x-2 gap-y-2"
+            className="grid min-w-0 grid-cols-1 items-start gap-y-8 md:grid-cols-2 md:gap-x-12 lg:grid-cols-4 lg:gap-x-6 min-[1440px]:gap-x-8"
           >
-            {FOOTER_LINKS.map((link, index) => (
-              <span key={link.href} className="inline-flex items-center gap-x-2">
-                {index > 0 ? <span aria-hidden="true">•</span> : null}
-                <a
-                  href={link.href}
-                  className="readative-footer-link text-xs font-semibold text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+            {FOOTER_LINK_GROUPS.map((group) => (
+              <section
+                key={group.title}
+                aria-labelledby={`footer-${group.title.toLowerCase()}`}
+                className="min-w-0"
+              >
+                <h2
+                  id={`footer-${group.title.toLowerCase()}`}
+                  className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-slate-900"
                 >
-                  {link.label}
-                </a>
-              </span>
+                  {group.title}
+                </h2>
+                <ul className="mt-4 space-y-2">
+                  {group.links.map((link) => (
+                    <li key={`${group.title}-${link.label}`}>
+                      <a
+                        href={link.href}
+                        className="readative-footer-link text-sm font-semibold text-slate-600 hover:text-emerald-700"
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
           </nav>
         </div>
-
-        <p className="mt-4 text-xs">
-          © 2026 Readative. All rights reserved.
-        </p>
       </div>
     </footer>
   );
