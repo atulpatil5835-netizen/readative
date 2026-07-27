@@ -84,15 +84,27 @@ function renderLinkCard(link: LegalLink) {
   </a>`;
 }
 
+function formatProjectHrefLabel(href: string) {
+  return href.replace(/^https?:\/\//i, "");
+}
+
 function renderProject(project: InnovationProject) {
+  const projectName = project.href
+    ? `<a href="${escapeHtml(project.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(project.name)}</a>`
+    : escapeHtml(project.name);
+  const projectWebsite = project.href
+    ? `<div style="grid-column:1/-1"><dt>Website</dt><dd><a href="${escapeHtml(project.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(formatProjectHrefLabel(project.href))}</a></dd></div>`
+    : "";
+
   return `<article class="seo-card" style="margin-top:0">
     <p class="seo-kicker">${escapeHtml(project.status)}</p>
-    <h3>${escapeHtml(project.name)}</h3>
+    <h3>${projectName}</h3>
     <p>${escapeHtml(project.description)}</p>
     <dl class="seo-meta" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem 1rem">
       <div><dt>Status</dt><dd>${escapeHtml(project.status)}</dd></div>
       <div><dt>Category</dt><dd>${escapeHtml(project.category)}</dd></div>
       <div style="grid-column:1/-1"><dt>Current Stage</dt><dd>${escapeHtml(project.currentStage)}</dd></div>
+      ${projectWebsite}
     </dl>
   </article>`;
 }
@@ -101,6 +113,7 @@ function renderPage(page: LegalPage) {
   const canonicalPath = `/${page.slug}`;
   const canonicalUrl = `${SITE_URL}${canonicalPath}`;
   const pageTitle = `${page.title} | Readative`;
+  const dateModified = page.dateModified || "2026-07-04";
   const schemas = [
     {
       "@context": "https://schema.org",
@@ -120,7 +133,7 @@ function renderPage(page: LegalPage) {
       url: canonicalUrl,
       name: page.title,
       description: page.description,
-      dateModified: "2026-07-04",
+      dateModified,
       isPartOf: { "@type": "WebSite", "@id": `${SITE_URL}/#website`, name: "Readative", url: SITE_URL },
       publisher: { "@type": "Organization", "@id": `${SITE_URL}/#organization`, name: "Readative", url: SITE_URL },
     },
@@ -145,6 +158,7 @@ function renderPage(page: LegalPage) {
               "@type": "CreativeWork",
               name: project.name,
               description: project.description,
+              url: project.href,
               genre: project.category,
               creativeWorkStatus: project.status,
               additionalProperty: [

@@ -41,6 +41,7 @@ export interface InnovationProject {
   status: "Live" | "Research" | "Planning" | "Prototype" | "Experimental" | "Completed" | "Archived";
   category: string;
   currentStage: string;
+  href?: string;
 }
 
 export interface LegalPage {
@@ -48,6 +49,7 @@ export interface LegalPage {
   title: string;
   eyebrow: string;
   description: string;
+  dateModified?: string;
   schemaType: "AboutPage" | "ContactPage" | "WebPage";
   sections: LegalSection[];
   projects?: InnovationProject[];
@@ -68,6 +70,14 @@ export const PROJECTS: InnovationProject[] = [
     status: "Live",
     category: "Knowledge Platform",
     currentStage: "Production foundation and trust platform expansion",
+  },
+  {
+    name: "FBPLY",
+    description: "A live finance budget planner for adding daily expenses, tracking spending, and keeping personal budgets easier to review.",
+    status: "Live",
+    category: "Finance Budget Planner",
+    currentStage: "Live daily expense tracking and budget planning tool",
+    href: "https://fbply.com",
   },
   {
     name: "Autonomous Water Cleanup System",
@@ -103,8 +113,9 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
   about: {
     slug: "about",
     title: "About Readative",
-    eyebrow: "First public project",
-    description: "Learn how Readative fits into Info Hub's independent innovation platform, product philosophy, mission, values, and roadmap.",
+    eyebrow: "Public innovation projects",
+    description: "Learn how Readative and FBPLY fit into Info Hub's independent innovation platform, product philosophy, mission, values, and roadmap.",
+    dateModified: "2026-07-27",
     schemaType: "AboutPage",
     sections: [
       {
@@ -153,7 +164,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       {
         title: "Vision",
         paragraphs: [
-          "The long-term vision is to build a small portfolio of public technology projects across knowledge, AI, education, environment, and sustainability. Readative is the live foundation, while future projects remain clearly labeled by lifecycle stage.",
+          "The long-term vision is to build a small portfolio of public technology projects across knowledge, finance, AI, education, environment, and sustainability. Readative and FBPLY are live projects, while research and planning ideas remain clearly labeled by lifecycle stage.",
           "Info Hub is not presenting research ideas as completed products. Projects in research, planning, prototype, experimental, completed, or archived stages are labeled transparently on the Projects page.",
         ],
         links: [
@@ -165,7 +176,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
         title: "Core values",
         items: [
           "Practical usefulness over noise.",
-          "Transparent lifecycle labels for future projects.",
+          "Transparent lifecycle labels for all projects.",
           "Human accountability for published content and product decisions.",
           "Reader safety, context, and correction paths.",
           "Responsible experimentation instead of exaggerated technology claims.",
@@ -184,7 +195,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
           "Start with a real public need and a small deployable release.",
           "Keep production routes crawlable and transparent.",
           "Use policy, editorial, and correction pages as part of the product foundation.",
-          "Keep future project ideas visibly separated from live products.",
+          "Keep research-stage project ideas visibly separated from live products.",
           "Avoid changing data structures or core product behavior without a scoped architecture review.",
         ],
       },
@@ -197,7 +208,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       {
         title: "Roadmap summary",
         paragraphs: [
-          "Readative remains the live knowledge platform. Future work may explore education AI, environmental robotics, sustainability tools, and small AI utilities, each with realistic lifecycle labels and no promise of guaranteed outcomes.",
+          "Readative remains the live knowledge platform, and FBPLY is live as a finance budget planner for daily expense tracking. Future work may explore education AI, environmental robotics, sustainability tools, and small AI utilities, each with realistic lifecycle labels and no promise of guaranteed outcomes.",
         ],
       },
     ],
@@ -512,14 +523,15 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     slug: "projects",
     title: "Projects",
     eyebrow: "Innovation platform",
-    description: "Explore Readative and future Info Hub technology projects with transparent lifecycle stages such as Live, Research, Planning, Prototype, Experimental, Completed, or Archived.",
+    description: "Explore Readative, FBPLY, and future Info Hub technology projects with transparent lifecycle stages such as Live, Research, Planning, Prototype, Experimental, Completed, or Archived.",
+    dateModified: "2026-07-27",
     schemaType: "WebPage",
     projects: PROJECTS,
     sections: [
       {
         title: "Project lifecycle transparency",
         paragraphs: [
-          "Every project listed here has a visible lifecycle stage. Readative is live. Future technology ideas are not presented as finished products unless they actually reach that stage.",
+          "Every project listed here has a visible lifecycle stage. Readative and FBPLY are live. Future technology ideas are not presented as finished products unless they actually reach that stage.",
           "Research and planning projects may evolve, pause, merge, or be archived as the work becomes clearer.",
         ],
       },

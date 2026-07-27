@@ -45,7 +45,20 @@ export function LegalPageRoute({ slug }: { slug: LegalSlug }) {
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-600">
                   {project.status}
                 </p>
-                <h3 className="mt-2 text-lg font-black text-slate-950">{project.name}</h3>
+                <h3 className="mt-2 text-lg font-black text-slate-950">
+                  {project.href ? (
+                    <a
+                      href={project.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline-offset-4 hover:text-emerald-700 hover:underline"
+                    >
+                      {project.name}
+                    </a>
+                  ) : (
+                    project.name
+                  )}
+                </h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{project.description}</p>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-600">
                   <div>
@@ -60,6 +73,21 @@ export function LegalPageRoute({ slug }: { slug: LegalSlug }) {
                     <dt className="font-black text-slate-900">Current Stage</dt>
                     <dd className="mt-1">{project.currentStage}</dd>
                   </div>
+                  {project.href ? (
+                    <div className="col-span-2">
+                      <dt className="font-black text-slate-900">Website</dt>
+                      <dd className="mt-1">
+                        <a
+                          href={project.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold text-emerald-700 underline-offset-4 hover:underline"
+                        >
+                          {project.href.replace(/^https?:\/\//i, "")}
+                        </a>
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
               </article>
             ))}
