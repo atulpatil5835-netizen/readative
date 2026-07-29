@@ -1,6 +1,6 @@
 # Release H7 Username SEO Report
 
-Generated: 2026-07-11T07:17:22.997Z
+Generated: 2026-07-29T06:27:44.725Z
 
 ## Summary
 
@@ -10,12 +10,15 @@ Generated: 2026-07-11T07:17:22.997Z
 - Canonical post shape: https://www.readative.com/posts/{seo-slug}--{documentId}
 - Canonical SmartTalk shape: https://www.readative.com/smarttalk/{seo-slug}--{documentId}
 - Canonical profile shape: https://www.readative.com/@{username}
+- SEO architecture mode: v1
+- SEO V2 schema version: 1
+- SEO V2 projection version: 1
 - Firestore SEO data source: rest
-- Published post URLs discovered: 337
+- Published post URLs discovered: 349
 - SmartTalk discussions discovered: 109
 - Profile URLs discovered: 33
-- Tag URLs discovered: 551
-- Total sitemap URLs generated: 513
+- Tag URLs discovered: 563
+- Total sitemap URLs generated: 525
 
 ## Files Changed
 
@@ -25,6 +28,7 @@ Generated: 2026-07-11T07:17:22.997Z
 - api/profile.ts
 - api/smarttalk.ts
 - api/smarttalks.ts
+- api/taxonomy.ts
 - src/components/Explore.tsx
 - src/components/KnowledgeCard/CardContent.tsx
 - src/components/KnowledgeCard/KnowledgeCard.tsx
@@ -51,7 +55,7 @@ Generated: 2026-07-11T07:17:22.997Z
 
 ## Sitemap Coverage
 
-- Published posts in sitemap: 337 / 337
+- Published posts in sitemap: 349 / 349
 - Missing post URLs: 0
 - SmartTalk discussions in sitemap: 109 / 109
 - Missing SmartTalk URLs: 0
@@ -81,9 +85,13 @@ Generated: 2026-07-11T07:17:22.997Z
 - SmartTalk index rewrite: PASS
 - Canonical SmartTalk rewrite (/smarttalk/:slug--id): PASS
 - Legacy SmartTalk rewrite (/smarttalks/:id): PASS
+- Explore taxonomy rewrite: PASS
+- Category taxonomy rewrite: PASS
+- Topic taxonomy rewrite: PASS
 - Canonical profile rewrite (/@:username): PASS
 - Legacy profile rewrite (/profile/:id): PASS
 - Static _redirects profile parity: PASS
+- Static _redirects taxonomy parity: PASS
 
 ## Profile Metadata Verification
 
@@ -108,7 +116,7 @@ Generated: 2026-07-11T07:17:22.997Z
 - Every published post has at least one crawlable inbound link: PASS
 - Inbound source: https://www.readative.com/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
-- Category/topic/tag/profile links: PASS - discovery index plus in-app surfaces expose real anchors, with profiles linked as /@username when profile data is available.
+- Category/topic/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
 - robots.txt allows crawling: PASS
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.

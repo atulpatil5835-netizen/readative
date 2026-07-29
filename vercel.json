@@ -7,6 +7,9 @@
     "api/profile.ts": {
       "includeFiles": "dist/index.html"
     },
+    "api/taxonomy.ts": {
+      "includeFiles": "dist/index.html"
+    },
     "api/smarttalks.ts": {
       "includeFiles": "dist/index.html"
     }
@@ -76,6 +79,33 @@
       ]
     },
     {
+      "source": "/explore",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/category/:path*",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/topic/:path*",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
       "source": "/@:username",
       "headers": [
         {
@@ -86,6 +116,12 @@
     }
   ],
   "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "readative.com" }],
+      "destination": "https://www.readative.com/:path*",
+      "permanent": true
+    },
     { "source": "/community-guidelines", "destination": "/community", "permanent": true },
     { "source": "/tags/Inspiration", "destination": "/tag/inspiration", "permanent": true },
     { "source": "/tags/LifeTruths", "destination": "/tag/lifetruths", "permanent": true },
@@ -102,6 +138,9 @@
     { "source": "/@:username", "destination": "/api/profile?username=:username" },
     { "source": "/smarttalks", "destination": "/api/smarttalks" },
     { "source": "/smarttalks/:id", "destination": "/api/smarttalks?id=:id&legacy=smarttalks" },
+    { "source": "/explore", "destination": "/api/taxonomy?view=explore" },
+    { "source": "/category/:slug", "destination": "/api/taxonomy?type=category&slug=:slug" },
+    { "source": "/topic/:slug", "destination": "/api/taxonomy?type=topic&slug=:slug" },
     { "source": "/about", "destination": "/api/legal?slug=about" },
     { "source": "/contact", "destination": "/api/legal?slug=contact" },
     { "source": "/privacy", "destination": "/api/legal?slug=privacy" },

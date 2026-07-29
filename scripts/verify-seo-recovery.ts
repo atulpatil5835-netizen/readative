@@ -127,6 +127,21 @@ async function main() {
       rewrite.source === "/smarttalks/:id" &&
       rewrite.destination === "/api/smarttalks?id=:id&legacy=smarttalks",
   );
+  const hasExploreRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/explore" &&
+      rewrite.destination === "/api/taxonomy?view=explore",
+  );
+  const hasCategoryRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/category/:slug" &&
+      rewrite.destination === "/api/taxonomy?type=category&slug=:slug",
+  );
+  const hasTopicRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/topic/:slug" &&
+      rewrite.destination === "/api/taxonomy?type=topic&slug=:slug",
+  );
   const hasProfileCanonicalRewrite = rewrites.some(
     (rewrite) =>
       rewrite.source === "/@:username" &&
@@ -144,6 +159,15 @@ async function main() {
   const hasRedirectsProfileLegacy = /^\/profile\/\*\s+\/api\/profile\?id=:splat&legacy=profile\s+200$/m.test(
     redirectsFile,
   );
+  const hasRedirectsExplore = /^\/explore\s+\/api\/taxonomy\?view=explore\s+200$/m.test(
+    redirectsFile,
+  );
+  const hasRedirectsCategory = /^\/category\/\*\s+\/api\/taxonomy\?type=category&slug=:splat\s+200$/m.test(
+    redirectsFile,
+  );
+  const hasRedirectsTopic = /^\/topic\/\*\s+\/api\/taxonomy\?type=topic&slug=:splat\s+200$/m.test(
+    redirectsFile,
+  );
   const changedFiles = [
     "api/_seoData.ts",
     "api/discovery.ts",
@@ -151,6 +175,7 @@ async function main() {
     "api/profile.ts",
     "api/smarttalk.ts",
     "api/smarttalks.ts",
+    "api/taxonomy.ts",
     "src/components/Explore.tsx",
     "src/components/KnowledgeCard/CardContent.tsx",
     "src/components/KnowledgeCard/KnowledgeCard.tsx",
@@ -191,6 +216,15 @@ async function main() {
     hasRedirectsProfileLegacy
       ? "PASS"
       : "FAIL";
+  const taxonomyRewriteStatus =
+    hasExploreRewrite &&
+    hasCategoryRewrite &&
+    hasTopicRewrite &&
+    hasRedirectsExplore &&
+    hasRedirectsCategory &&
+    hasRedirectsTopic
+      ? "PASS"
+      : "FAIL";
   const blockingFailures = [
     missingPostUrls.length === 0 ? null : `${missingPostUrls.length} post URLs missing from sitemap`,
     missingSmartTalkUrls.length === 0 ? null : `${missingSmartTalkUrls.length} SmartTalk URLs missing from sitemap`,
@@ -209,10 +243,16 @@ async function main() {
     hasSmartTalkRewrite ? null : "missing SmartTalk index rewrite",
     hasSmartTalkCanonicalRewrite ? null : "missing canonical SmartTalk rewrite",
     hasSmartTalkLegacyRewrite ? null : "missing legacy SmartTalk rewrite",
+    hasExploreRewrite ? null : "missing Explore taxonomy rewrite",
+    hasCategoryRewrite ? null : "missing category taxonomy rewrite",
+    hasTopicRewrite ? null : "missing topic taxonomy rewrite",
     hasProfileCanonicalRewrite ? null : "missing canonical /@:username profile rewrite",
     hasProfileLegacyRewrite ? null : "missing legacy /profile/:id profile rewrite",
     hasRedirectsProfileCanonical ? null : "missing _redirects /@* profile rewrite",
     hasRedirectsProfileLegacy ? null : "missing _redirects /profile/* legacy profile rewrite",
+    hasRedirectsExplore ? null : "missing _redirects /explore taxonomy rewrite",
+    hasRedirectsCategory ? null : "missing _redirects /category/* taxonomy rewrite",
+    hasRedirectsTopic ? null : "missing _redirects /topic/* taxonomy rewrite",
     robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
   ].filter((failure): failure is string => Boolean(failure));
   const report = `# Release H7 Username SEO Report
@@ -273,9 +313,13 @@ ${markdownList(changedFiles)}
 - SmartTalk index rewrite: ${hasSmartTalkRewrite ? "PASS" : "FAIL"}
 - Canonical SmartTalk rewrite (/smarttalk/:slug--id): ${hasSmartTalkCanonicalRewrite ? "PASS" : "FAIL"}
 - Legacy SmartTalk rewrite (/smarttalks/:id): ${hasSmartTalkLegacyRewrite ? "PASS" : "FAIL"}
+- Explore taxonomy rewrite: ${hasExploreRewrite ? "PASS" : "FAIL"}
+- Category taxonomy rewrite: ${hasCategoryRewrite ? "PASS" : "FAIL"}
+- Topic taxonomy rewrite: ${hasTopicRewrite ? "PASS" : "FAIL"}
 - Canonical profile rewrite (/@:username): ${hasProfileCanonicalRewrite ? "PASS" : "FAIL"}
 - Legacy profile rewrite (/profile/:id): ${hasProfileLegacyRewrite ? "PASS" : "FAIL"}
 - Static _redirects profile parity: ${profileRewriteStatus}
+- Static _redirects taxonomy parity: ${taxonomyRewriteStatus}
 
 ## Profile Metadata Verification
 
@@ -300,7 +344,7 @@ ${markdownList(changedFiles)}
 - Every published post has at least one crawlable inbound link: ${postInboundLinkCoverage === data.posts.length ? "PASS" : "FAIL"}
 - Inbound source: ${SITE_URL}/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
-- Category/topic/tag/profile links: PASS - discovery index plus in-app surfaces expose real anchors, with profiles linked as /@username when profile data is available.
+- Category/topic/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
@@ -360,6 +404,7 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         canonicalStatus,
         profileHandleStatus,
         profileRewriteStatus,
+        taxonomyRewriteStatus,
         blockingFailures,
         robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
       },
