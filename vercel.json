@@ -106,6 +106,15 @@
       ]
     },
     {
+      "source": "/tag/:path*",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
       "source": "/@:username",
       "headers": [
         {
@@ -141,6 +150,7 @@
     { "source": "/explore", "destination": "/api/taxonomy?view=explore" },
     { "source": "/category/:slug", "destination": "/api/taxonomy?type=category&slug=:slug" },
     { "source": "/topic/:slug", "destination": "/api/taxonomy?type=topic&slug=:slug" },
+    { "source": "/tag/:slug", "destination": "/api/taxonomy?type=tag&slug=:slug" },
     { "source": "/about", "destination": "/api/legal?slug=about" },
     { "source": "/contact", "destination": "/api/legal?slug=contact" },
     { "source": "/privacy", "destination": "/api/legal?slug=privacy" },

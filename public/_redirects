@@ -47,7 +47,7 @@
 /category/ /index.html 200
 /tag /index.html 200
 /tag/ /index.html 200
-/tag/* /index.html 200
+/tag/* /api/taxonomy?type=tag&slug=:splat 200
 /knowledge /index.html 200
 /knowledge/ /index.html 200
 /knowledge/* /index.html 200

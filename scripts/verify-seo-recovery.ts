@@ -7,6 +7,7 @@ import {
   describeSeoV2Foundation,
   loadSeoData,
   SITE_URL,
+  TAG_SITEMAP_MIN_POST_COUNT,
 } from "../api/_seoData.js";
 import {
   buildPostSeoPath,
@@ -52,9 +53,13 @@ async function main() {
   const profileUrls = data.profiles.map(
     (profile) => `${SITE_URL}${buildSeoProfilePath(profile)}`,
   );
+  const tagUrls = data.tags
+    .filter((tag) => tag.postCount >= TAG_SITEMAP_MIN_POST_COUNT)
+    .map((tag) => `${SITE_URL}/tag/${encodeURIComponent(tag.id)}`);
   const missingPostUrls = postUrls.filter((url) => !sitemapUrls.has(url));
   const missingSmartTalkUrls = smartTalkUrls.filter((url) => !sitemapUrls.has(url));
   const missingProfileUrls = profileUrls.filter((url) => !sitemapUrls.has(url));
+  const missingTagUrls = tagUrls.filter((url) => !sitemapUrls.has(url));
   const nonHandleProfileUrls = data.profiles.filter(
     (profile) => !buildSeoProfilePath(profile).startsWith("/@"),
   );
@@ -142,6 +147,11 @@ async function main() {
       rewrite.source === "/topic/:slug" &&
       rewrite.destination === "/api/taxonomy?type=topic&slug=:slug",
   );
+  const hasTagRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/tag/:slug" &&
+      rewrite.destination === "/api/taxonomy?type=tag&slug=:slug",
+  );
   const hasProfileCanonicalRewrite = rewrites.some(
     (rewrite) =>
       rewrite.source === "/@:username" &&
@@ -166,6 +176,9 @@ async function main() {
     redirectsFile,
   );
   const hasRedirectsTopic = /^\/topic\/\*\s+\/api\/taxonomy\?type=topic&slug=:splat\s+200$/m.test(
+    redirectsFile,
+  );
+  const hasRedirectsTag = /^\/tag\/\*\s+\/api\/taxonomy\?type=tag&slug=:splat\s+200$/m.test(
     redirectsFile,
   );
   const changedFiles = [
@@ -220,15 +233,18 @@ async function main() {
     hasExploreRewrite &&
     hasCategoryRewrite &&
     hasTopicRewrite &&
+    hasTagRewrite &&
     hasRedirectsExplore &&
     hasRedirectsCategory &&
-    hasRedirectsTopic
+    hasRedirectsTopic &&
+    hasRedirectsTag
       ? "PASS"
       : "FAIL";
   const blockingFailures = [
     missingPostUrls.length === 0 ? null : `${missingPostUrls.length} post URLs missing from sitemap`,
     missingSmartTalkUrls.length === 0 ? null : `${missingSmartTalkUrls.length} SmartTalk URLs missing from sitemap`,
     missingProfileUrls.length === 0 ? null : `${missingProfileUrls.length} profile URLs missing from sitemap`,
+    missingTagUrls.length === 0 ? null : `${missingTagUrls.length} tag URLs missing from sitemap`,
     nonCanonicalUrls.length === 0 ? null : `${nonCanonicalUrls.length} sitemap URLs use a non-canonical host`,
     duplicateSitemapUrlGroups.length === 0 ? null : `${duplicateSitemapUrlGroups.length} duplicate sitemap URL groups`,
     duplicateUsernameGroups.length === 0 ? null : `${duplicateUsernameGroups.length} duplicate username groups`,
@@ -246,6 +262,7 @@ async function main() {
     hasExploreRewrite ? null : "missing Explore taxonomy rewrite",
     hasCategoryRewrite ? null : "missing category taxonomy rewrite",
     hasTopicRewrite ? null : "missing topic taxonomy rewrite",
+    hasTagRewrite ? null : "missing tag taxonomy rewrite",
     hasProfileCanonicalRewrite ? null : "missing canonical /@:username profile rewrite",
     hasProfileLegacyRewrite ? null : "missing legacy /profile/:id profile rewrite",
     hasRedirectsProfileCanonical ? null : "missing _redirects /@* profile rewrite",
@@ -253,6 +270,7 @@ async function main() {
     hasRedirectsExplore ? null : "missing _redirects /explore taxonomy rewrite",
     hasRedirectsCategory ? null : "missing _redirects /category/* taxonomy rewrite",
     hasRedirectsTopic ? null : "missing _redirects /topic/* taxonomy rewrite",
+    hasRedirectsTag ? null : "missing _redirects /tag/* taxonomy rewrite",
     robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
   ].filter((failure): failure is string => Boolean(failure));
   const report = `# Release H7 Username SEO Report
@@ -289,6 +307,8 @@ ${markdownList(changedFiles)}
 - Missing SmartTalk URLs: ${missingSmartTalkUrls.length}
 - Profiles in sitemap: ${data.profiles.length - missingProfileUrls.length} / ${data.profiles.length}
 - Missing profile URLs: ${missingProfileUrls.length}
+- High-volume tags in sitemap (${TAG_SITEMAP_MIN_POST_COUNT}+ posts): ${tagUrls.length - missingTagUrls.length} / ${tagUrls.length}
+- Missing tag URLs: ${missingTagUrls.length}
 - Categories in sitemap: ${entries.filter((entry) => entry.type === "category").length}
 - Topics in sitemap: ${entries.filter((entry) => entry.type === "topic").length}
 - Tags in sitemap: ${entries.filter((entry) => entry.type === "tag").length}
@@ -316,6 +336,7 @@ ${markdownList(changedFiles)}
 - Explore taxonomy rewrite: ${hasExploreRewrite ? "PASS" : "FAIL"}
 - Category taxonomy rewrite: ${hasCategoryRewrite ? "PASS" : "FAIL"}
 - Topic taxonomy rewrite: ${hasTopicRewrite ? "PASS" : "FAIL"}
+- Tag taxonomy rewrite: ${hasTagRewrite ? "PASS" : "FAIL"}
 - Canonical profile rewrite (/@:username): ${hasProfileCanonicalRewrite ? "PASS" : "FAIL"}
 - Legacy profile rewrite (/profile/:id): ${hasProfileLegacyRewrite ? "PASS" : "FAIL"}
 - Static _redirects profile parity: ${profileRewriteStatus}
@@ -341,6 +362,7 @@ ${markdownList(changedFiles)}
 - Every published post has sitemap coverage: ${missingPostUrls.length === 0 ? "PASS" : "FAIL"}
 - Every public SmartTalk has sitemap coverage: ${missingSmartTalkUrls.length === 0 ? "PASS" : "FAIL"}
 - Every public profile has sitemap coverage: ${missingProfileUrls.length === 0 ? "PASS" : "FAIL"}
+- Every high-volume public tag has sitemap coverage: ${missingTagUrls.length === 0 ? "PASS" : "FAIL"}
 - Every published post has at least one crawlable inbound link: ${postInboundLinkCoverage === data.posts.length ? "PASS" : "FAIL"}
 - Inbound source: ${SITE_URL}/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
@@ -367,7 +389,8 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
 3. Inspect a few /posts/{slug}--{id} URLs from the sitemap.
 4. Inspect ${SITE_URL}/smarttalks to seed SmartTalk discussion discovery.
 5. Inspect several ${SITE_URL}/@username profile URLs from the sitemap.
-6. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
+6. Inspect several ${SITE_URL}/tag/{slug} pages, including one-post examples from the noindex report and high-volume examples from the sitemap.
+7. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
 
 ## Notes
 
@@ -393,10 +416,12 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         smartTalksDiscovered: data.smartTalks.length,
         profileUrlsDiscovered: data.profiles.length,
         tagUrlsDiscovered: data.tags.length,
+        tagSitemapMinPostCount: TAG_SITEMAP_MIN_POST_COUNT,
         sitemapUrls: entries.length,
         missingPostUrls: missingPostUrls.length,
         missingSmartTalkUrls: missingSmartTalkUrls.length,
         missingProfileUrls: missingProfileUrls.length,
+        missingTagUrls: missingTagUrls.length,
         duplicateSitemapUrlGroups: duplicateSitemapUrlGroups.length,
         duplicateUsernameGroups: duplicateUsernameGroups.length,
         duplicateTitleGroups: duplicateTitleGroups.length,

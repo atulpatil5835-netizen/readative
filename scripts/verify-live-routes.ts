@@ -482,6 +482,7 @@ async function main() {
 
   const articleUrls = uniqueSitemapUrls.filter((url) => classifyRoute(url) === "article");
   const profileUrls = uniqueSitemapUrls.filter((url) => classifyRoute(url) === "profile");
+  const tagUrls = uniqueSitemapUrls.filter((url) => classifyRoute(url) === "tag");
   const smartTalkUrls = uniqueSitemapUrls.filter((url) => {
     const pathname = new URL(url).pathname;
     return pathname.startsWith("/smarttalk/");
@@ -489,6 +490,9 @@ async function main() {
 
   const profileDocumentChecks = await mapLimit(profileUrls, CONCURRENCY, (url, index) =>
     checkCanonicalDocument(`Profile route ${index + 1}`, url, "profile"),
+  );
+  const tagDocumentChecks = await mapLimit(tagUrls.slice(0, 10), CONCURRENCY, (url, index) =>
+    checkCanonicalDocument(`Tag route ${index + 1}`, url, "tag"),
   );
 
   const articleSampleUrls = articleUrls.slice(0, 5);
@@ -662,6 +666,7 @@ async function main() {
   const allCanonicalChecks = [
     ...legalDocumentChecks,
     ...profileDocumentChecks,
+    ...tagDocumentChecks,
     ...sampledDynamicDocumentChecks,
   ];
 
@@ -729,6 +734,7 @@ async function main() {
       routeStatusChecks: allStatusChecks.length,
       legalRoutes: legalDocumentChecks.length,
       profileRoutes: profileUrls.length,
+      tagRoutes: tagUrls.length,
       articleRoutes: articleUrls.length,
       smartTalkRoutes: smartTalkUrls.length,
       redirectChecks: redirectChecks.length,
@@ -750,6 +756,7 @@ async function main() {
     routeFamilyChecks,
     legalDocumentChecks,
     profileDocumentChecks,
+    tagDocumentChecks,
     sampledDynamicDocumentChecks,
     redirectChecks,
     notFoundChecks,

@@ -34,6 +34,7 @@ export const DISCOVERY_INDEX_PATH = "/posts";
 
 const DEFAULT_PROJECT_ID = "readative-803b0";
 const PRIVATE_STATUSES = new Set(["archived", "deleted", "draft", "hidden", "private"]);
+export const TAG_SITEMAP_MIN_POST_COUNT = 5;
 
 export interface SeoPost {
   id: string;
@@ -763,6 +764,20 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         topicLastmod,
         "weekly",
         "0.75",
+      ),
+    );
+  }
+
+  for (const tag of data.tags) {
+    if (tag.postCount < TAG_SITEMAP_MIN_POST_COUNT || !tag.lastmod) continue;
+
+    entries.push(
+      buildEntry(
+        `/tag/${encodeURIComponent(tag.id)}`,
+        "tag",
+        tag.lastmod,
+        "weekly",
+        "0.55",
       ),
     );
   }

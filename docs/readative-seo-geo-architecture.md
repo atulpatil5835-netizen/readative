@@ -104,7 +104,7 @@ Topic pages use `/topic/:slug`, include a topic brief, show related topics, and 
 
 ## 4. Tag Architecture Report
 
-Tags remain lightweight metadata, not primary SEO landing pages.
+Tags remain lightweight metadata collections. Non-empty tags are crawlable landing pages, high-volume tags are promoted in the sitemap, and empty tags stay out of the index.
 
 Canonical examples:
 
@@ -117,7 +117,7 @@ Canonical examples:
 - `privacy`
 - `seo`
 
-Tag pages use `/tag/:slug`, are intentionally `noindex`, and are omitted from the sitemap. Tags should help feed filtering and user discovery, not create crawlable page sprawl.
+Tag pages use `/tag/:slug`. Tags with at least one public post are server-rendered, self-canonical, and indexable. Tags with at least five public posts are included in the sitemap. Empty or unknown tag pages remain unavailable/noindex so crawlable tag coverage stays tied to real public content.
 
 ## 5. URL Architecture Report
 
@@ -235,7 +235,7 @@ Noindex:
 Sitemap:
 
 - Includes home, Explore, SmartTalk, all permanent category pages, and high-value topic pages.
-- Excludes tag pages because they are noindex support pages.
+- Includes tag pages only when they have enough public content for sitemap promotion.
 - Dynamic post sitemap generation is recommended once server-side post slug support exists.
 
 ## 11. Content Opportunity Report
@@ -299,7 +299,7 @@ Latest build snapshot:
 - `npm run build` passed.
 - `npm run lint` could not be run because the project has no `lint` script.
 - In-app browser route verification passed for `/category/ai`, `/topic/chatgpt`, `/tag/automation`, `/post/i2Heuzoyi40ToLR47BSG`, and `/smarttalk`.
-- `/tag/automation` verified as `noindex`; category, topic, post, and SmartTalk routes verified as `index`.
+- `/tag/automation` now represents a non-empty tag page and should verify as `index`; category, topic, post, and SmartTalk routes verify as `index`.
 - No Firebase writes were performed.
 - No Firebase, auth, storage, SmartTalk voting, Knowledge Feed ranking, Trust System, or Profile System logic was changed.
 - Route support added for `/category/*`, `/tag/*`, and `/post/*` while preserving legacy route parsing.

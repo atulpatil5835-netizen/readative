@@ -10,13 +10,16 @@ import {
 } from "./_seoData.js";
 import {
   SEO_CATEGORIES,
+  SEO_TAGS,
   SEO_TOPICS,
   getCategoryBySlug,
   getRelatedTagsForCategory,
   getRelatedTopicsForCategory,
+  getTagBySlug,
   getTopicBySlug,
   normalizeSeoSlug,
   type SeoCategoryDefinition,
+  type SeoTagDefinition,
   type SeoTopicDefinition,
 } from "../src/utils/seoTaxonomy.js";
 import {
@@ -66,6 +69,57 @@ function sortByActivity<T extends { id: string; createdAt?: number; updatedAt?: 
 
 function normalizeMatchToken(value: string | null | undefined) {
   return normalizeSeoSlug(value) || "";
+}
+
+function titleCaseSlug(value: string) {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildDynamicTagDefinition(tag: { id: string; label: string }): SeoTagDefinition {
+  const slug = normalizeSeoSlug(tag.id) || tag.id;
+  const label = tag.label.trim() ? titleCaseSlug(tag.label) : titleCaseSlug(slug);
+
+  return {
+    id: slug,
+    label,
+    path: `/tag/${encodeURIComponent(slug)}`,
+    description: `Readative posts tagged #${label}, with practical guides, discussions, tools, and related knowledge from the community.`,
+    categoryIds: [],
+    aliases: [],
+  };
+}
+
+function resolveTagDefinition(
+  slug: string,
+  tags: readonly { id: string; label: string; postCount: number }[],
+) {
+  const knownTag = getTagBySlug(slug);
+  const canonicalSlug = knownTag?.id || slug;
+  const dataTag = tags.find((tag) => tag.id === canonicalSlug);
+
+  if (knownTag) {
+    return {
+      ...knownTag,
+      postCount: dataTag?.postCount || 0,
+    };
+  }
+
+  if (!dataTag || dataTag.postCount <= 0) return null;
+
+  return {
+    ...buildDynamicTagDefinition(dataTag),
+    postCount: dataTag.postCount,
+  };
+}
+
+function getTagMatchValues(tag: SeoTagDefinition) {
+  return [tag.id, tag.label, ...tag.aliases]
+    .map(normalizeMatchToken)
+    .filter(Boolean);
 }
 
 function getPostText(post: SeoPost) {
@@ -171,6 +225,22 @@ function matchesTopicQuestion(
 ) {
   const text = getQuestionText(question);
   return getTopicTerms(topic).some((term) => includesSearchTerm(text, term));
+}
+
+function matchesTagPost(post: SeoPost, tag: SeoTagDefinition) {
+  const tagMatchValues = new Set(getTagMatchValues(tag));
+
+  return post.hashtags.some((postTag) =>
+    tagMatchValues.has(normalizeMatchToken(postTag)),
+  );
+}
+
+function matchesTagQuestion(question: SeoSmartTalk, tag: SeoTagDefinition) {
+  const text = getQuestionText(question);
+
+  return [tag.label, tag.id, ...tag.aliases].some((term) =>
+    includesSearchTerm(text, term),
+  );
 }
 
 function renderNav() {
@@ -377,15 +447,16 @@ function renderHead({
     ${SEO_DOCUMENT_STYLES}`;
 }
 
-function renderNotFound(slug: string) {
+function renderNotFound(slug: string, noun = "Topic") {
+  const lowerNoun = noun.toLowerCase();
   const head = `
-    <title>Topic Not Found | Readative</title>
-    <meta name="description" content="The requested Readative topic is not available." />
+    <title>${noun} Not Found | Readative</title>
+    <meta name="description" content="The requested Readative ${lowerNoun} is not available." />
     <meta name="robots" content="noindex, follow" />
     ${SEO_DOCUMENT_STYLES}`;
   const main = `<div class="seo-document"><div class="seo-shell">
     ${renderNav()}
-    <main class="seo-card"><p class="seo-kicker">Error 404</p><h1>Topic not found</h1><p>The requested topic <code>${escapeHtml(slug || "unknown")}</code> is not part of the public Readative topic map.</p><p><a href="/explore">Explore public topics</a></p></main>
+    <main class="seo-card"><p class="seo-kicker">Error 404</p><h1>${noun} not found</h1><p>The requested ${lowerNoun} <code>${escapeHtml(slug || "unknown")}</code> is not part of the public Readative ${lowerNoun} map.</p><p><a href="/explore">Explore public topics</a></p></main>
     ${renderFooter()}
   </div></div>`;
 
@@ -656,6 +727,111 @@ function renderTopicPage({
   return renderAppDocument({ head, main });
 }
 
+function renderTagPage({
+  tag,
+  posts,
+  questions,
+  profiles,
+}: {
+  tag: SeoTagDefinition;
+  posts: SeoPost[];
+  questions: SeoSmartTalk[];
+  profiles: SeoProfile[];
+}) {
+  const canonicalUrl = absoluteUrl(tag.path);
+  const pageTitle = `#${tag.label} Knowledge Posts | Readative`;
+  const pageDescription = tag.description;
+  const matchedPosts = sortByActivity(
+    posts.filter((post) => matchesTagPost(post, tag)),
+  );
+  const matchedQuestions = sortByActivity(
+    questions.filter((question) => matchesTagQuestion(question, tag)),
+  );
+  const matchedProfiles = getProfilesForContent({
+    profiles,
+    posts: matchedPosts,
+    questions: matchedQuestions,
+  });
+  const relatedCategories = tag.categoryIds
+    .map((categoryId) => getCategoryBySlug(categoryId))
+    .filter((category): category is SeoCategoryDefinition => Boolean(category));
+  const inferredCategories =
+    relatedCategories.length > 0
+      ? relatedCategories
+      : SEO_CATEGORIES.filter((category) =>
+          matchedPosts.some(
+            (post) =>
+              post.category === category.id ||
+              post.hashtags.some((postTag) =>
+                category.tagSlugs.includes(normalizeMatchToken(postTag)),
+              ),
+          ),
+        ).slice(0, 4);
+  const itemList = buildItemListSchema({
+    name: `#${tag.label} Readative collection`,
+    url: canonicalUrl,
+    posts: matchedPosts,
+    questions: matchedQuestions,
+    profiles: matchedProfiles,
+  });
+  const schema = buildBaseSchemas({
+    pageType: "CollectionPage",
+    title: pageTitle,
+    canonicalUrl,
+    description: pageDescription,
+    itemList,
+    breadcrumbs: [
+      { name: "Home", item: SITE_URL },
+      { name: "Explore", item: absoluteUrl("/explore") },
+      { name: `#${tag.label}`, item: canonicalUrl },
+    ],
+    about: [`#${tag.label}`, tag.id, ...tag.aliases],
+  });
+  const categoryLinks = inferredCategories.map((category) => ({
+    href: category.path,
+    label: category.label,
+  }));
+  const knownRelatedTags = SEO_TAGS.filter(
+    (candidate) =>
+      candidate.id !== tag.id &&
+      candidate.categoryIds.some((categoryId) =>
+        inferredCategories.some((category) => category.id === categoryId),
+      ),
+  )
+    .slice(0, 8)
+    .map((candidate) => ({
+      href: candidate.path,
+      label: `#${candidate.label}`,
+    }));
+  const head = renderHead({
+    pageTitle,
+    description: pageDescription,
+    canonicalUrl,
+    schema,
+  });
+  const main = `<div class="seo-document"><div class="seo-shell">
+    ${renderNav()}
+    <main>
+      <article class="seo-hero"><div class="seo-hero-inner">
+        <p class="seo-kicker">Knowledge tag</p>
+        <h1>#${escapeHtml(tag.label)}</h1>
+        <p class="seo-lede">${escapeHtml(pageDescription)}</p>
+        <div class="seo-meta"><span>${matchedPosts.length} related posts</span><span>${matchedQuestions.length} SmartTalk discussions</span><span>${matchedProfiles.length} contributors</span></div>
+      </div></article>
+      <section class="seo-card"><h2>Related Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks, "/explore")}</div></section>
+      <section class="seo-card"><div class="seo-grid">
+        <section><h2>Posts</h2><ul class="seo-list">${renderPostList(matchedPosts)}</ul></section>
+        <section><h2>SmartTalk Discussions</h2><ul class="seo-list">${renderQuestionList(matchedQuestions)}</ul></section>
+      </div></section>
+      <section class="seo-card"><h2>Related Tags</h2><div class="seo-tags">${renderLinkPills(knownRelatedTags, "/posts")}</div></section>
+      <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(matchedProfiles)}</ul></section>
+    </main>
+    ${renderFooter()}
+  </div></div>`;
+
+  return renderAppDocument({ head, main });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader(
@@ -743,6 +919,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(
         renderTopicPage({
           topic,
+          posts: data.posts,
+          questions: data.smartTalks,
+          profiles: data.profiles,
+        }),
+      );
+    }
+
+    if (type === "tag") {
+      const tag = resolveTagDefinition(slug, data.tags);
+      if (!tag || tag.postCount <= 0) {
+        if (req.method === "HEAD") return res.status(404).end();
+        return res.status(404).send(renderNotFound(rawSlug, "Tag"));
+      }
+
+      if (slug !== tag.id) {
+        res.setHeader("Location", absoluteUrl(tag.path));
+        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
+        return res.status(301).end();
+      }
+
+      if (req.method === "HEAD") return res.status(200).end();
+      return res.status(200).send(
+        renderTagPage({
+          tag,
           posts: data.posts,
           questions: data.smartTalks,
           profiles: data.profiles,

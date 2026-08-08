@@ -104,7 +104,7 @@ Expected post-deploy outcome:
 - Sitemap can be read at the canonical `www` URL.
 - Sitemap URLs no longer point to redirecting non-www pages.
 - Legacy `/tags/*` crawl errors transition to redirects.
-- New `/tag/*` pages remain available and noindex as supporting metadata pages.
+- New `/tag/*` pages remain available; current architecture makes non-empty tag pages indexable, promotes high-volume tags in the sitemap, and keeps empty/unknown tags out of the index.
 
 ## 6. Files Modified
 
@@ -125,7 +125,7 @@ Expected post-deploy outcome:
 - Static fallback canonical and URL tags were removed from `index.html` so route-level Helmet canonical metadata is authoritative.
 - In-app browser route verification passed for `/category/ai`, `/topic/chatgpt`, and `/tag/automation`.
 - Route-level canonical tags verified as singular and route-specific on the checked pages.
-- `/tag/automation` verified as `noindex`; category and topic pages verified as `index`.
+- `/tag/automation` was previously verified as `noindex`; current architecture expects non-empty tag pages, category pages, and topic pages to verify as `index`.
 - `npm run build` passed.
 - No Firebase changes.
 - No auth changes.

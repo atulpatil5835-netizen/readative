@@ -2537,7 +2537,6 @@ export function KnowledgeFeed({
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
   const shouldNoIndexKnowledgePage =
-    Boolean(selectedHashtag) ||
     !shouldShowInitialFeedSkeleton &&
     !shouldShowFeedErrorState &&
     !shouldHoldEmptyFeedState &&
