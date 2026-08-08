@@ -19,7 +19,6 @@ import {
   Layers3,
   MessageSquareMore,
   Search,
-  Sparkles,
   ThumbsUp,
   TrendingUp,
   UserRound,
@@ -1361,7 +1360,7 @@ export function Explore({
                           }}
                           className="flex w-full items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left transition-colors hover:bg-emerald-50"
                         >
-                          <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          <BookOpenText className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                           <span className="line-clamp-1 text-xs font-bold text-slate-700">
                             {entry.title}
                           </span>
@@ -1834,7 +1833,7 @@ function ResurfacingGrid({
     },
     {
       title: "Recommended Reads",
-      icon: <Sparkles className="h-4 w-4" />,
+      icon: <BookOpenText className="h-4 w-4" />,
       entries: recommendedReads,
     },
     {

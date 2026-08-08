@@ -13,6 +13,7 @@ import {
   BookOpenText,
   Check,
   Clock3,
+  Compass,
   Copy,
   Github,
   Globe,
@@ -25,7 +26,7 @@ import {
   Pencil,
   Save,
   ShieldCheck,
-  Sparkles,
+  Tag,
   Tags,
   ThumbsUp,
   TrendingUp,
@@ -2676,7 +2677,7 @@ function ProfileTrustOverview({
             key={tag}
             className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"
           >
-            <Sparkles className="h-3 w-3" />
+            <Tag className="h-3 w-3" />
             {tag}
           </span>
         ))}
@@ -2707,7 +2708,7 @@ function ProfileDiscoverySummary({
   return (
     <section className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
-        <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+        <Compass className="h-3.5 w-3.5 text-sky-600" />
         Discovery
       </div>
       <div className="grid gap-2 sm:grid-cols-2">

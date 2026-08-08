@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import {
   Award,
   Bookmark,
+  Highlighter,
   LogIn,
   MessageCircle,
   ShieldCheck,
-  Sparkles,
   UserRound,
   X,
 } from "lucide-react";
@@ -39,7 +39,7 @@ export function GoogleSignInPrompt({
     {
       label: "Highlight Reading Notes",
       detail: "Build toward richer visibility tools as they arrive.",
-      icon: Sparkles,
+      icon: Highlighter,
     },
     {
       label: "Join Discussions",
