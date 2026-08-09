@@ -2,7 +2,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  documentId,
   getCountFromServer,
   getDoc,
   getDocs,
@@ -16,7 +15,6 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/firebaseDb";
-import type { KnowledgeEntry } from "../types";
 import {
   MAX_NOTEBOOK_HIGHLIGHTS_PER_POST,
   isNotebookHighlight,
@@ -25,6 +23,12 @@ import {
 } from "./types";
 
 export const MY_NOTES_PAGE_SIZE = 12;
+
+export interface NotebookNoteItem {
+  id: string;
+  postId: string;
+  highlight: NotebookHighlight;
+}
 
 function notebookPostsCollection(userId: string) {
   return collection(db, "userNotebook", userId, "posts");
@@ -45,7 +49,9 @@ function normalizeHighlights(value: unknown, postId: string) {
 }
 
 export async function loadNotebookPostCount(userId: string) {
-  const snapshot = await getCountFromServer(notebookPostsCollection(userId));
+  const snapshot = await getCountFromServer(
+    query(notebookPostsCollection(userId), where("updatedAt", ">", 0)),
+  );
   return snapshot.data().count;
 }
 
@@ -65,7 +71,20 @@ export async function saveNotebookHighlight(
     const current = snapshot.exists()
       ? normalizeHighlights(snapshot.data(), postId)
       : [];
-    if (current.some((item) => isSameNotebookRange(item, highlight))) {
+    const existingIndex = current.findIndex((item) =>
+      isSameNotebookRange(item, highlight),
+    );
+    if (existingIndex >= 0) {
+      const existing = current[existingIndex];
+      if (!existing.text && highlight.text) {
+        const highlights = [...current];
+        highlights[existingIndex] = { ...existing, text: highlight.text };
+        transaction.set(reference, {
+          highlights,
+          updatedAt: Date.now(),
+        });
+        return { saved: true, createdPost: false, highlights };
+      }
       return { saved: false, createdPost: false, highlights: current };
     }
     if (current.length >= MAX_NOTEBOOK_HIGHLIGHTS_PER_POST) {
@@ -76,6 +95,7 @@ export async function saveNotebookHighlight(
     );
     transaction.set(reference, {
       highlights,
+      updatedAt: Date.now(),
     });
     return {
       saved: true,
@@ -89,41 +109,77 @@ export async function deleteNotebookPost(userId: string, postId: string) {
   await deleteDoc(notebookPostReference(userId, postId));
 }
 
+export async function deleteNotebookHighlight(
+  userId: string,
+  postId: string,
+  highlight: NotebookHighlight,
+) {
+  const reference = notebookPostReference(userId, postId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const current = snapshot.exists()
+      ? normalizeHighlights(snapshot.data(), postId)
+      : [];
+    const highlights = current.filter((item) => !isSameNotebookRange(item, highlight));
+
+    if (highlights.length === current.length) {
+      return { deletedPost: false, highlights: current };
+    }
+
+    if (highlights.length === 0) {
+      transaction.delete(reference);
+      return { deletedPost: true, highlights };
+    }
+
+    transaction.set(reference, {
+      highlights,
+      updatedAt: Date.now(),
+    });
+    return { deletedPost: false, highlights };
+  });
+}
+
+function createNotebookNoteId(postId: string, highlight: NotebookHighlight) {
+  return [
+    postId,
+    highlight.paragraphId,
+    highlight.startOffset,
+    highlight.endOffset,
+    highlight.createdAt,
+  ].join(":");
+}
+
+function flattenTextNotes(postId: string, highlights: NotebookHighlight[]) {
+  return highlights
+    .filter((highlight) => Boolean(highlight.text?.trim()))
+    .map<NotebookNoteItem>((highlight) => ({
+      id: createNotebookNoteId(postId, highlight),
+      postId,
+      highlight,
+    }));
+}
+
 export async function loadMyNotes(
   userId: string,
   cursor?: QueryDocumentSnapshot<DocumentData> | null,
 ) {
   const notesQuery = query(
     notebookPostsCollection(userId),
-    orderBy(documentId()),
+    orderBy("updatedAt", "desc"),
     ...(cursor ? [startAfter(cursor)] : []),
     limit(MY_NOTES_PAGE_SIZE),
   );
   const snapshot = await getDocs(notesQuery);
   const items = snapshot.docs
-    .map((item) => ({
-      postId: item.id,
-      highlights: normalizeHighlights(item.data(), item.id),
-    }))
-    .filter((item) => item.highlights.length > 0);
+    .flatMap((item) => flattenTextNotes(item.id, normalizeHighlights(item.data(), item.id)))
+    .sort(
+      (left, right) =>
+        right.highlight.createdAt - left.highlight.createdAt ||
+        left.id.localeCompare(right.id),
+    );
   return {
     items,
     cursor: snapshot.docs[snapshot.docs.length - 1] || null,
     hasMore: snapshot.docs.length === MY_NOTES_PAGE_SIZE,
   };
-}
-
-export async function loadNotePosts(postIds: string[]) {
-  if (postIds.length === 0) return new Map<string, KnowledgeEntry>();
-  const postsQuery = query(
-    collection(db, "knowledge"),
-    where(documentId(), "in", postIds.slice(0, MY_NOTES_PAGE_SIZE)),
-  );
-  const snapshot = await getDocs(postsQuery);
-  return new Map(
-    snapshot.docs.map((item) => [
-      item.id,
-      { id: item.id, ...item.data() } as KnowledgeEntry,
-    ]),
-  );
 }

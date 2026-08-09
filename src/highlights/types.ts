@@ -1,5 +1,6 @@
 export const NOTEBOOK_HIGHLIGHT_COLOR = "yellow" as const;
 export const MAX_NOTEBOOK_HIGHLIGHTS_PER_POST = 500;
+export const MAX_NOTEBOOK_HIGHLIGHT_TEXT_CHARS = 3_000;
 
 export interface NotebookHighlight {
   postId: string;
@@ -8,6 +9,7 @@ export interface NotebookHighlight {
   endOffset: number;
   color: typeof NOTEBOOK_HIGHLIGHT_COLOR;
   createdAt: number;
+  text?: string;
 }
 
 export interface NotebookPostDocument {
@@ -18,18 +20,17 @@ export function isNotebookHighlight(value: unknown): value is NotebookHighlight 
   if (!value || typeof value !== "object") return false;
   const highlight = value as Partial<NotebookHighlight>;
   const keys = Object.keys(value as Record<string, unknown>);
+  const allowedKeys = [
+    "postId",
+    "paragraphId",
+    "startOffset",
+    "endOffset",
+    "color",
+    "createdAt",
+    "text",
+  ];
   return (
-    keys.length === 6 &&
-    keys.every((key) =>
-      [
-        "postId",
-        "paragraphId",
-        "startOffset",
-        "endOffset",
-        "color",
-        "createdAt",
-      ].includes(key),
-    ) &&
+    keys.every((key) => allowedKeys.includes(key)) &&
     typeof highlight.postId === "string" &&
     highlight.postId.length > 0 &&
     highlight.postId.length <= 1_500 &&
@@ -44,8 +45,17 @@ export function isNotebookHighlight(value: unknown): value is NotebookHighlight 
     highlight.color === NOTEBOOK_HIGHLIGHT_COLOR &&
     typeof highlight.createdAt === "number" &&
     Number.isFinite(highlight.createdAt) &&
-    highlight.createdAt >= 0
+    highlight.createdAt >= 0 &&
+    (highlight.text === undefined ||
+      (typeof highlight.text === "string" &&
+        highlight.text.length > 0 &&
+        highlight.text.length <= MAX_NOTEBOOK_HIGHLIGHT_TEXT_CHARS))
   );
+}
+
+export function normalizeNotebookHighlightText(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.slice(0, MAX_NOTEBOOK_HIGHLIGHT_TEXT_CHARS);
 }
 
 export function isSameNotebookRange(

@@ -12,6 +12,7 @@ import { highlightNotebookReactTree } from "../../highlights/highlightReactTree"
 import {
   NOTEBOOK_HIGHLIGHT_COLOR,
   isSameNotebookRange,
+  normalizeNotebookHighlightText,
   type NotebookHighlight,
 } from "../../highlights/types";
 import { useNotebook } from "../../context/NotebookContext";
@@ -78,7 +79,7 @@ export function CardContent({
   } = useNotebook();
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserId || !isFocusedPost) {
       setHighlights([]);
       setIsNotebookReady(false);
       setArmedParagraphId(null);
@@ -113,6 +114,7 @@ export function CardContent({
     cacheVersion,
     currentUserId,
     entry.id,
+    isFocusedPost,
     loadNotebookPostHighlights,
     readNotebookPostHighlights,
   ]);
@@ -126,6 +128,35 @@ export function CardContent({
       if (isNotebookMode) onExitNotebookMode();
     },
     [isNotebookMode, onExitNotebookMode],
+  );
+
+  const saveNotebookHighlight = useCallback(
+    (
+      highlight: NotebookHighlight,
+      options: { exitNotebookMode?: boolean; savedMessage?: string } = {},
+    ) => {
+      setArmedParagraphId(null);
+      setIsNotebookReady(false);
+      setNotebookStatus("Saving highlight...");
+      if (options.exitNotebookMode) onExitNotebookMode();
+
+      void saveNotebookPostHighlight(entry.id, highlight)
+        .then((result) => {
+          setHighlights(result.highlights);
+          setNotebookStatus(
+            result.saved
+              ? options.savedMessage || "Highlight saved."
+              : "Highlight already saved.",
+          );
+          setIsNotebookReady(true);
+        })
+        .catch((error) => {
+          console.error("Failed to save Notebook Highlight:", error);
+          setNotebookStatus("Highlight was not saved.");
+          setIsNotebookReady(true);
+        });
+    },
+    [entry.id, onExitNotebookMode, saveNotebookPostHighlight],
   );
 
   const captureSelection = useCallback(() => {
@@ -189,30 +220,21 @@ export function CardContent({
       endOffset,
       color: NOTEBOOK_HIGHLIGHT_COLOR,
       createdAt: Date.now(),
+      text: normalizeNotebookHighlightText(
+        paragraphText.slice(startOffset, endOffset),
+      ),
     };
-    if (highlights.some((item) => isSameNotebookRange(item, highlight))) {
+    const existingHighlight = highlights.find((item) =>
+      isSameNotebookRange(item, highlight),
+    );
+    if (existingHighlight?.text) {
       selection.removeAllRanges();
       setArmedParagraphId(null);
       onExitNotebookMode();
       return;
     }
     selection.removeAllRanges();
-    setArmedParagraphId(null);
-    setIsNotebookReady(false);
-    setNotebookStatus("Saving highlight...");
-    onExitNotebookMode();
-
-    void saveNotebookPostHighlight(entry.id, highlight)
-      .then((result) => {
-        setHighlights(result.highlights);
-        setNotebookStatus(result.saved ? "Highlight saved." : "Highlight already saved.");
-        setIsNotebookReady(true);
-      })
-      .catch((error) => {
-        console.error("Failed to save Notebook Highlight:", error);
-        setNotebookStatus("Highlight was not saved.");
-        setIsNotebookReady(true);
-      });
+    saveNotebookHighlight(highlight, { exitNotebookMode: true });
   }, [
     armedParagraphId,
     currentUserId,
@@ -222,8 +244,50 @@ export function CardContent({
     isNotebookMode,
     isNotebookReady,
     onExitNotebookMode,
-    saveNotebookPostHighlight,
+    saveNotebookHighlight,
   ]);
+
+  const saveFullParagraphHighlight = useCallback(
+    (paragraphId: string, paragraphText: string, paragraphNumber: number) => {
+      if (!currentUserId || !isFocusedPost || !isNotebookMode || !isNotebookReady) {
+        return;
+      }
+
+      const noteText = normalizeNotebookHighlightText(paragraphText);
+      if (!noteText) return;
+
+      const highlight: NotebookHighlight = {
+        postId: entry.id,
+        paragraphId,
+        startOffset: 0,
+        endOffset: paragraphText.length,
+        color: NOTEBOOK_HIGHLIGHT_COLOR,
+        createdAt: Date.now(),
+        text: noteText,
+      };
+
+      const existingHighlight = highlights.find((item) =>
+        isSameNotebookRange(item, highlight),
+      );
+      if (existingHighlight?.text) {
+        setNotebookStatus(`Paragraph ${paragraphNumber} is already saved.`);
+        return;
+      }
+
+      saveNotebookHighlight(highlight, {
+        savedMessage: `Paragraph ${paragraphNumber} saved.`,
+      });
+    },
+    [
+      currentUserId,
+      entry.id,
+      highlights,
+      isFocusedPost,
+      isNotebookMode,
+      isNotebookReady,
+      saveNotebookHighlight,
+    ],
+  );
 
   const scheduleSelectionCapture = useCallback(() => {
     window.requestAnimationFrame(captureSelection);
@@ -252,11 +316,18 @@ export function CardContent({
           <div className="readative-reading-body relative mt-5 space-y-0 text-[15.5px] leading-[1.72] text-slate-700 sm:mt-6 sm:text-[16.5px] sm:leading-[1.76]">
             {contentSections.map((section, index) => {
               const paragraphId = paragraphIds[index];
-              const renderedParagraphLength = getRenderedParagraphText(section).length;
+              const renderedParagraphText = getRenderedParagraphText(section);
+              const renderedParagraphLength = renderedParagraphText.length;
               const paragraphHighlights = highlights.filter(
                 (highlight) =>
                   highlight.paragraphId === paragraphId &&
                   highlight.endOffset <= renderedParagraphLength,
+              );
+              const hasFullParagraphHighlight = paragraphHighlights.some(
+                (highlight) =>
+                  Boolean(highlight.text?.trim()) &&
+                  highlight.startOffset === 0 &&
+                  highlight.endOffset >= renderedParagraphLength,
               );
               const richText = renderRichText({
                 text: section,
@@ -272,18 +343,49 @@ export function CardContent({
                       aria-hidden="true"
                     />
                   )}
-                  <div className="relative">
+                  <div
+                    className={`relative ${
+                      isFocusedPost && isNotebookMode ? "pl-9 sm:pl-10" : ""
+                    }`}
+                  >
                     {isFocusedPost && isNotebookMode && (
-                      <button
-                        type="button"
-                        disabled={!isNotebookReady}
-                        onClick={() => setArmedParagraphId(paragraphId)}
-                        aria-label={`Select paragraph ${index + 1} for highlighting`}
-                        aria-pressed={isArmed}
-                        className="readative-notebook-margin-control absolute right-full top-0 mr-1 flex h-7 w-3 items-center justify-center disabled:opacity-40"
-                      >
-                        <span aria-hidden="true" />
-                      </button>
+                      <div className="absolute left-0 top-0 flex w-7 flex-col items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={!isNotebookReady || hasFullParagraphHighlight}
+                          onClick={() =>
+                            saveFullParagraphHighlight(
+                              paragraphId,
+                              renderedParagraphText,
+                              index + 1,
+                            )
+                          }
+                          aria-label={
+                            hasFullParagraphHighlight
+                              ? `Paragraph ${index + 1} is saved`
+                              : `Save paragraph ${index + 1} to My Notes`
+                          }
+                          title={
+                            hasFullParagraphHighlight
+                              ? `Paragraph ${index + 1} saved`
+                              : `Save paragraph ${index + 1}`
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-[11px] font-black leading-none text-amber-700 transition-colors hover:border-amber-300 hover:bg-amber-100 disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                        >
+                          {index + 1}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!isNotebookReady}
+                          onClick={() => setArmedParagraphId(paragraphId)}
+                          aria-label={`Select text in paragraph ${index + 1}`}
+                          aria-pressed={isArmed}
+                          title={`Select text in paragraph ${index + 1}`}
+                          className="readative-notebook-margin-control flex h-6 w-4 items-center justify-center disabled:opacity-40"
+                        >
+                          <span aria-hidden="true" />
+                        </button>
+                      </div>
                     )}
                     <p
                       data-notebook-paragraph-id={paragraphId}

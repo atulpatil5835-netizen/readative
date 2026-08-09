@@ -9,18 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
-import type { KnowledgeEntry } from "../types";
 import type { KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import type { NotebookHighlight } from "../highlights/types";
-
-interface NotebookNoteRow {
-  postId: string;
-  highlights: NotebookHighlight[];
-}
+import type { NotebookNoteItem } from "../highlights/repository";
 
 interface NotebookMyNotesPage {
-  items: NotebookNoteRow[];
-  posts: Map<string, KnowledgeEntry>;
+  items: NotebookNoteItem[];
   cursor: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
 }
@@ -43,6 +37,10 @@ interface NotebookContextValue {
     createdPost: boolean;
     highlights: NotebookHighlight[];
   }>;
+  deleteNotebookHighlight: (
+    postId: string,
+    highlight: NotebookHighlight,
+  ) => Promise<void>;
   deleteNotebookPostHighlights: (postId: string) => Promise<void>;
   readCachedMyNotesFirstPage: () => NotebookMyNotesPage | null;
   loadMyNotesFirstPage: () => Promise<NotebookMyNotesPage>;
@@ -280,6 +278,28 @@ export function NotebookProvider({
     ],
   );
 
+  const deleteSingleNotebookHighlight = useCallback(
+    async (postId: string, highlight: NotebookHighlight) => {
+      const userId = identity?.authorId;
+      if (!userId) throw new Error("Sign in to delete Notebook Highlights.");
+      const { deleteNotebookHighlight } = await import("../highlights/repository");
+      const result = await deleteNotebookHighlight(userId, postId, highlight);
+      if (activeUserRef.current === userId) {
+        postHighlightsCacheRef.current.set(postId, result.highlights);
+        postHighlightRequestsRef.current.delete(postId);
+        invalidateMyNotesCache();
+        if (result.deletedPost) updateCountAfterPostDeleted();
+        bumpCacheVersion();
+      }
+    },
+    [
+      bumpCacheVersion,
+      identity?.authorId,
+      invalidateMyNotesCache,
+      updateCountAfterPostDeleted,
+    ],
+  );
+
   const readCachedMyNotesFirstPage = useCallback(
     () => myNotesFirstPageCacheRef.current,
     [],
@@ -291,15 +311,12 @@ export function NotebookProvider({
       if (!userId) {
         return {
           items: [],
-          posts: new Map<string, KnowledgeEntry>(),
           cursor: null,
           hasMore: false,
         };
       }
-      const { loadMyNotes, loadNotePosts } = await import("../highlights/repository");
-      const page = await loadMyNotes(userId, cursor);
-      const posts = await loadNotePosts(page.items.map((item) => item.postId));
-      return { ...page, posts };
+      const { loadMyNotes } = await import("../highlights/repository");
+      return loadMyNotes(userId, cursor);
     },
     [identity?.authorId],
   );
@@ -309,7 +326,6 @@ export function NotebookProvider({
     if (!userId) {
       return {
         items: [],
-        posts: new Map<string, KnowledgeEntry>(),
         cursor: null,
         hasMore: false,
       };
@@ -360,6 +376,7 @@ export function NotebookProvider({
       readNotebookPostHighlights,
       loadNotebookPostHighlights,
       saveNotebookPostHighlight,
+      deleteNotebookHighlight: deleteSingleNotebookHighlight,
       deleteNotebookPostHighlights,
       readCachedMyNotesFirstPage,
       loadMyNotesFirstPage,
@@ -372,6 +389,7 @@ export function NotebookProvider({
       activateNotebook,
       cacheVersion,
       deactivateNotebook,
+      deleteSingleNotebookHighlight,
       deleteNotebookPostHighlights,
       loadMyNotesFirstPage,
       loadMyNotesPage,

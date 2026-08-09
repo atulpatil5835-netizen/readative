@@ -66,8 +66,8 @@ import {
 export { tokenizeSearch } from "../../utils/searchHelpers";
 
 export const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
-export const FEED_INITIAL_PAGE_SIZE = 10;
-export const FEED_NEXT_PAGE_SIZE = 5;
+export const FEED_INITIAL_PAGE_SIZE = 8;
+export const FEED_NEXT_PAGE_SIZE = 4;
 export const FEED_LOAD_MORE_REMAINING_THRESHOLD = 5;
 export const FEED_LOAD_TIMEOUT_MS = 7000;
 export const FEED_BACKGROUND_PAGE_DELAY_MS = 1200;
@@ -75,10 +75,13 @@ export const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 0;
 export const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 export const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
-export const FEED_CACHE_STORAGE_ENTRY_LIMIT = 32;
-export const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 900_000;
-export const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v2";
-export const FEED_CACHE_LEGACY_KEY_PREFIXES = ["readativeKnowledgeFeedCache:v1"];
+export const FEED_CACHE_STORAGE_ENTRY_LIMIT = 16;
+export const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 320_000;
+export const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v3";
+export const FEED_CACHE_LEGACY_KEY_PREFIXES = [
+  "readativeKnowledgeFeedCache:v1",
+  "readativeKnowledgeFeedCache:v2",
+];
 export const FEED_SCROLL_STORAGE_KEY_PREFIX = "readativeKnowledgeFeedScroll:v1";
 export const PROFILE_DIRECTORY_IDLE_TIMEOUT_MS = 2600;
 export const PROFILE_DIRECTORY_LIMIT = 80;
