@@ -902,21 +902,11 @@ export function KnowledgeFeed({
         );
         entriesRef.current = nextFeedEntries;
         setEntries(nextFeedEntries);
-        setFeedEntryOrder((currentOrder) => {
-          const personalizationSnapshot = getKnowledgeFeedSnapshot();
-          if (currentOrder.length === 0) {
-            return rankKnowledgeEntries(
-              nextFeedEntries,
-              personalizationSnapshot,
-            ).map((entry) => entry.id);
-          }
-
-          return reconcileKnowledgeFeedOrder(
-            nextFeedEntries,
-            currentOrder,
-            personalizationSnapshot,
-          );
-        });
+        setFeedEntryOrder(
+          rankKnowledgeEntries(nextFeedEntries, getKnowledgeFeedSnapshot(), {
+            refreshSeed: feedRefreshSeedRef.current,
+          }).map((entry) => entry.id),
+        );
 
         setIsLoading(false);
         setFeedLoadError(null);
@@ -1370,13 +1360,11 @@ export function KnowledgeFeed({
         currentAuthorId,
         focusedEntryId,
         visibleLikedEntryIds: visibleLikedEntryIdSet,
-        canLoadMore: hasMoreServerEntries,
       }),
     [
       currentAuthorId,
       entries,
       focusedEntryId,
-      hasMoreServerEntries,
       visibleLikedEntryIdSet,
     ],
   );
@@ -1423,7 +1411,6 @@ export function KnowledgeFeed({
       currentAuthorId,
       focusedEntryId,
       visibleLikedEntryIds: visibleLikedEntryIdSet,
-      canLoadMore: activeTopicFeedState.hasMore,
     })
       .filter((entry) => {
         if (!normalizedSelectedHashtag) return true;
@@ -1445,7 +1432,6 @@ export function KnowledgeFeed({
   }, [
     activeFeedTopic,
     activeTopicFeedState.entries,
-    activeTopicFeedState.hasMore,
     currentAuthorId,
     focusedEntryId,
     normalizedSelectedHashtag,
@@ -1480,6 +1466,9 @@ export function KnowledgeFeed({
   );
   const hasActiveSearch = feedSearchQuery.trim().length > 0;
   const hasActiveTopic = activeFeedTopic.id !== "all";
+  const loadedActiveEntryCount = shouldUseIndependentFeed
+    ? activeTopicFeedState.entries.length
+    : entries.length;
   const isIndependentFeedLoading =
     shouldUseIndependentFeed &&
     (activeTopicFeedState.isLoading ||
@@ -1526,6 +1515,7 @@ export function KnowledgeFeed({
     !hasActiveSearch &&
     filteredEntries.length > 0 &&
     filteredEntries.length < FEED_INITIAL_PAGE_SIZE &&
+    loadedActiveEntryCount < FEED_INITIAL_PAGE_SIZE &&
     hasMoreEntries &&
     !isPaginationBusy &&
     (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError);

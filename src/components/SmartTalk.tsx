@@ -1,6 +1,5 @@
 import {
   type ReactNode,
-  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -27,7 +26,6 @@ import {
   collection,
   addDoc,
   type DocumentData,
-  getCountFromServer,
   getDocs,
   onSnapshot,
   query,
@@ -84,8 +82,8 @@ import type { Answer, Question } from "../types";
 import { tokenizeSearch } from "../utils/searchHelpers";
 import { getRelatedQuestions } from "../utils/contentGraph";
 
-const SMART_TALK_PAGE_SIZE = 50;
-const SMART_TALK_LOADING_SKELETON_COUNT = 8;
+const SMART_TALK_PAGE_SIZE = 24;
+const SMART_TALK_LOADING_SKELETON_COUNT = 5;
 
 type VoteType = "helpful" | "misleading";
 
@@ -200,6 +198,66 @@ function normalizeSmartTalkAnswer(
   };
 }
 
+function getSmartTalkAnswerContentKey(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function getSmartTalkAnswerFingerprint(
+  answer: Pick<Answer, "author" | "authorId" | "content">,
+) {
+  const contentKey = getSmartTalkAnswerContentKey(answer.content);
+  if (!contentKey) return "";
+
+  const authorKey = (answer.authorId || answer.author || "unknown")
+    .trim()
+    .toLowerCase();
+  return `${authorKey}:${contentKey}`;
+}
+
+function dedupeSmartTalkAnswers(answers: Answer[]) {
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  return answers.filter((answer) => {
+    const answerId = answer.id.trim();
+    const fingerprint = getSmartTalkAnswerFingerprint(answer);
+    if (!fingerprint) return false;
+
+    if (answerId && seenIds.has(answerId)) {
+      return false;
+    }
+
+    if (seenFingerprints.has(fingerprint)) {
+      return false;
+    }
+
+    if (answerId) {
+      seenIds.add(answerId);
+    }
+    seenFingerprints.add(fingerprint);
+    return true;
+  });
+}
+
+function hasMatchingSmartTalkAnswer(
+  question: Question | null | undefined,
+  authorIdentity: Pick<KnowledgeIdentity, "authorId" | "displayName">,
+  answerText: string,
+) {
+  if (!question) return false;
+
+  const fingerprint = getSmartTalkAnswerFingerprint({
+    author: authorIdentity.displayName,
+    authorId: authorIdentity.authorId,
+    content: answerText,
+  });
+  if (!fingerprint) return false;
+
+  return question.answers.some(
+    (answer) => getSmartTalkAnswerFingerprint(answer) === fingerprint,
+  );
+}
+
 function normalizeSmartTalkQuestion(
   id: string,
   data: Partial<Question> & {
@@ -224,7 +282,9 @@ function normalizeSmartTalkQuestion(
     authorId: typeof data.authorId === "string" ? data.authorId : "",
     content: typeof data.content === "string" ? data.content : "",
     answers: Array.isArray(data.answers)
-      ? data.answers.map((answer) => normalizeSmartTalkAnswer(answer))
+      ? dedupeSmartTalkAnswers(
+          data.answers.map((answer) => normalizeSmartTalkAnswer(answer)),
+        )
       : [],
     createdAt:
       rawCreatedAt &&
@@ -446,7 +506,6 @@ export function SmartTalk({
 }: SmartTalkProps) {
   const [firstPageQuestions, setFirstPageQuestions] = useState<Question[]>([]);
   const [loadedPageQuestions, setLoadedPageQuestions] = useState<Question[]>([]);
-  const [totalQuestionCount, setTotalQuestionCount] = useState<number | null>(null);
   const [lastQuestionSnapshot, setLastQuestionSnapshot] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMoreQuestions, setHasMoreQuestions] = useState(false);
@@ -499,7 +558,6 @@ export function SmartTalk({
 
   const firstPageQuestionsRef = useRef<Question[]>([]);
   const loadedPageQuestionsRef = useRef<Question[]>([]);
-  const totalQuestionCountRef = useRef<number | null>(null);
   const useIndexFallbackRef = useRef(false);
   const questions = useMemo(() => {
     const merged = mergeSmartTalkQuestions(firstPageQuestions, loadedPageQuestions);
@@ -510,23 +568,6 @@ export function SmartTalk({
     [newQuestion],
   );
 
-  const loadTotalQuestionCount = useCallback(async () => {
-    try {
-      const q = selectedCategory
-        ? query(collection(db, "smarttalk"), where("category", "==", selectedCategory))
-        : collection(db, "smarttalk");
-      const countSnapshot = await getCountFromServer(q);
-      const nextCount = countSnapshot.data().count;
-      totalQuestionCountRef.current = nextCount;
-      setTotalQuestionCount(nextCount);
-    } catch (error) {
-      console.warn(
-        "SmartTalk total count unavailable; using loaded question count.",
-        error,
-      );
-    }
-  }, [selectedCategory]);
-
   useEffect(() => {
     firstPageQuestionsRef.current = firstPageQuestions;
   }, [firstPageQuestions]);
@@ -536,25 +577,15 @@ export function SmartTalk({
   }, [loadedPageQuestions]);
 
   useEffect(() => {
-    totalQuestionCountRef.current = totalQuestionCount;
-    if (totalQuestionCount !== null && questions.length >= totalQuestionCount) {
-      setHasMoreQuestions(false);
-    }
-  }, [questions.length, totalQuestionCount]);
-
-  useEffect(() => {
-    void loadTotalQuestionCount();
-
     // Reset pagination state when selectedCategory changes to reload fresh list
     setLoadedPageQuestions([]);
     loadedPageQuestionsRef.current = [];
     setLastQuestionSnapshot(null);
     setIsLoading(true);
 
-    let unsubscribe: (() => void) | null = null;
     let isCancelled = false;
 
-    const startListener = (useOrdered: boolean) => {
+    const loadFirstPage = async (useOrdered: boolean) => {
       let q;
       if (selectedCategory) {
         if (useOrdered) {
@@ -579,57 +610,46 @@ export function SmartTalk({
         );
       }
 
-      unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          if (isCancelled) return;
-          const data = snapshot.docs.map((item) =>
-            normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>),
-          );
-          if (!useOrdered && selectedCategory) {
-            data.sort((left, right) => right.createdAt - left.createdAt);
-          }
-          const firstPageCursor = snapshot.docs[snapshot.docs.length - 1] || null;
-          const loadedIds = new Set([
-            ...data.map((question) => question.id),
-            ...loadedPageQuestionsRef.current.map((question) => question.id),
-          ]);
-          const totalCount = totalQuestionCountRef.current;
+      try {
+        const snapshot = await getDocs(q);
+        if (isCancelled) return;
 
-          firstPageQuestionsRef.current = data;
-          setFirstPageQuestions(data);
-          if (loadedPageQuestionsRef.current.length === 0) {
-            setLastQuestionSnapshot(firstPageCursor);
-          }
-          setHasMoreQuestions(
-            snapshot.docs.length === SMART_TALK_PAGE_SIZE &&
-              (totalCount === null || loadedIds.size < totalCount),
-          );
-          setIsLoading(false);
-        },
-        (error) => {
-          if (isCancelled) return;
-          const message = error instanceof Error ? error.message.toLowerCase() : String(error);
-          const needsIndex = message.includes("index") || message.includes("requires an index");
-          if (needsIndex && useOrdered && selectedCategory) {
-            console.info("SmartTalk category ordered query needs an index; using fallback.");
-            useIndexFallbackRef.current = true;
-            startListener(false);
-          } else {
-            console.error("Firestore SmartTalk error:", error);
-            setIsLoading(false);
-          }
+        const data = snapshot.docs.map((item) =>
+          normalizeSmartTalkQuestion(item.id, item.data() as Partial<Question>),
+        );
+        if (!useOrdered && selectedCategory) {
+          data.sort((left, right) => right.createdAt - left.createdAt);
         }
-      );
+
+        const firstPageCursor = snapshot.docs[snapshot.docs.length - 1] || null;
+        firstPageQuestionsRef.current = data;
+        setFirstPageQuestions(data);
+        setLastQuestionSnapshot(firstPageCursor);
+        setHasMoreQuestions(snapshot.docs.length === SMART_TALK_PAGE_SIZE);
+        setIsLoading(false);
+      } catch (error) {
+        if (isCancelled) return;
+
+        const message = error instanceof Error ? error.message.toLowerCase() : String(error);
+        const needsIndex = message.includes("index") || message.includes("requires an index");
+        if (needsIndex && useOrdered && selectedCategory) {
+          console.info("SmartTalk category ordered query needs an index; using fallback.");
+          useIndexFallbackRef.current = true;
+          void loadFirstPage(false);
+          return;
+        }
+
+        console.error("Firestore SmartTalk error:", error);
+        setIsLoading(false);
+      }
     };
 
-    startListener(!useIndexFallbackRef.current);
+    void loadFirstPage(!useIndexFallbackRef.current);
 
     return () => {
       isCancelled = true;
-      if (unsubscribe) unsubscribe();
     };
-  }, [loadTotalQuestionCount, selectedCategory]);
+  }, [selectedCategory]);
 
   const loadMoreQuestions = async () => {
     if (!lastQuestionSnapshot || isLoadingMoreQuestions) return;
@@ -692,10 +712,6 @@ export function SmartTalk({
         loadedPageQuestionsRef.current,
         nextQuestions,
       );
-      const loadedQuestionIds = new Set([
-        ...firstPageQuestionsRef.current.map((question) => question.id),
-        ...nextLoadedPageQuestions.map((question) => question.id),
-      ]);
 
       loadedPageQuestionsRef.current = nextLoadedPageQuestions;
       setLoadedPageQuestions(nextLoadedPageQuestions);
@@ -703,8 +719,7 @@ export function SmartTalk({
         nextSnapshot.docs[nextSnapshot.docs.length - 1] || lastQuestionSnapshot,
       );
       setHasMoreQuestions(
-        nextSnapshot.docs.length === SMART_TALK_PAGE_SIZE &&
-          (totalQuestionCount === null || loadedQuestionIds.size < totalQuestionCount),
+        nextSnapshot.docs.length === SMART_TALK_PAGE_SIZE,
       );
     } catch (error) {
       console.error("Firestore SmartTalk pagination error:", error);
@@ -720,16 +735,18 @@ export function SmartTalk({
   useEffect(() => {
     if (!focusedQuestionId) {
       setFetchedQuestion(null);
+      setIsQuestionLoading(false);
       return;
     }
 
     const localQ = questions.find((q) => q.id === focusedQuestionId);
     if (localQ) {
       setFetchedQuestion(localQ);
-      return;
+      setIsQuestionLoading(false);
+    } else {
+      setIsQuestionLoading(true);
     }
 
-    setIsQuestionLoading(true);
     const docRef = doc(db, "smarttalk", focusedQuestionId);
     const unsubscribe = onSnapshot(
       docRef,
@@ -750,7 +767,7 @@ export function SmartTalk({
     );
 
     return () => unsubscribe();
-  }, [focusedQuestionId, questions]);
+  }, [focusedQuestionId]);
 
   const focusedQuestion = fetchedQuestion || questions.find((q) => q.id === focusedQuestionId) || null;
 
@@ -764,11 +781,12 @@ export function SmartTalk({
 
   const focusedQuestionRow = useMemo(() => {
     if (!focusedQuestion) return null;
-    const sortedAnswers = [...(focusedQuestion.answers || [])].sort(
-      (left, right) =>
-        getAnswerHelpfulScore(right) - getAnswerHelpfulScore(left) ||
-        left.createdAt - right.createdAt,
-    );
+    const sortedAnswers = dedupeSmartTalkAnswers(focusedQuestion.answers || [])
+      .sort(
+        (left, right) =>
+          getAnswerHelpfulScore(right) - getAnswerHelpfulScore(left) ||
+          left.createdAt - right.createdAt,
+      );
     const topAnswerId = sortedAnswers[0]?.id || null;
     const worstAnswerId =
       sortedAnswers.length > 1
@@ -826,7 +844,24 @@ export function SmartTalk({
         createdAt: serverTimestamp(),
       });
       trackSmartTalkAsked(docRef.id, newQuestionCategory || undefined);
-      void loadTotalQuestionCount();
+
+      const createdQuestion: Question = {
+        id: docRef.id,
+        author: authorIdentity.displayName,
+        authorId: authorIdentity.authorId,
+        content: questionText,
+        answers: [],
+        createdAt: Date.now(),
+        category: newQuestionCategory || null,
+        difficulty: normalizeSmartTalkDifficulty(newQuestionDifficulty),
+        savedBy: [],
+        saveCount: 0,
+      };
+      if (!selectedCategory || createdQuestion.category === selectedCategory) {
+        setFirstPageQuestions((currentQuestions) =>
+          mergeSmartTalkQuestions([createdQuestion], currentQuestions),
+        );
+      }
 
       setNewQuestion("");
       setNewQuestionCategory("");
@@ -865,6 +900,19 @@ export function SmartTalk({
   ) => {
     const answerText = answerInputs[questionId]?.trim();
     if (!answerText) return;
+    if (isAnswering[questionId] || moderatingAnswerId === questionId) return;
+
+    const localQuestion =
+      fetchedQuestion?.id === questionId
+        ? fetchedQuestion
+        : questions.find((question) => question.id === questionId) || null;
+    if (hasMatchingSmartTalkAnswer(localQuestion, authorIdentity, answerText)) {
+      setAnswerMessages((current) => ({
+        ...current,
+        [questionId]: "This answer is already posted.",
+      }));
+      return;
+    }
 
     setModerationMessage(null);
     setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
@@ -917,6 +965,24 @@ export function SmartTalk({
       });
 
       trackSmartTalkAnswered(questionId, answer.id);
+      const appendAnswer = (question: Question): Question =>
+        question.id === questionId
+          ? {
+              ...question,
+              answers: dedupeSmartTalkAnswers([...(question.answers || []), answer]),
+            }
+          : question;
+      setFirstPageQuestions((currentQuestions) =>
+        currentQuestions.map(appendAnswer),
+      );
+      setLoadedPageQuestions((currentQuestions) =>
+        currentQuestions.map(appendAnswer),
+      );
+      setFetchedQuestion((currentQuestion) =>
+        currentQuestion?.id === questionId
+          ? appendAnswer(currentQuestion)
+          : currentQuestion,
+      );
       setAnswerInputs((current) => ({ ...current, [questionId]: "" }));
 
       setAnswerMessages((current) => ({ ...current, [questionId]: "" }));
@@ -1739,7 +1805,8 @@ export function SmartTalk({
                     SmartTalk
                   </h2>
                   <p className="truncate text-xs font-semibold text-slate-500">
-                    {totalQuestionCount ?? questions.length} Questions
+                    {questions.length}
+                    {hasMoreQuestions ? "+" : ""} Questions
                     {currentIdentity ? ` / @${currentIdentity.displayName}` : ""}
                   </p>
                 </div>
@@ -1815,8 +1882,8 @@ export function SmartTalk({
                   <SmartTalkDiscoveryBlock
                     icon={<Trophy className="h-4 w-4" />}
                     title="Top Answers"
-                    items={topAnswers.map(({ answer, score }) => ({
-                      id: answer.id,
+                    items={topAnswers.map(({ question, answer, score }) => ({
+                      id: `${question.id}:${answer.id}`,
                       text: answer.content,
                       meta: `+${score} helpful`,
                     }))}

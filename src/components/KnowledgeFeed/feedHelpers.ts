@@ -77,6 +77,7 @@ export const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
 export const FEED_CACHE_STORAGE_ENTRY_LIMIT = 16;
 export const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 320_000;
+export const FEED_RECENTLY_SEEN_HIDE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v3";
 export const FEED_CACHE_LEGACY_KEY_PREFIXES = [
   "readativeKnowledgeFeedCache:v1",
@@ -840,26 +841,34 @@ export function getHelpfulAwareVisibleEntries({
   currentAuthorId,
   focusedEntryId,
   visibleLikedEntryIds,
-  canLoadMore,
 }: {
   entries: KnowledgeEntry[];
   currentAuthorId: string | null;
   focusedEntryId: string | null;
   visibleLikedEntryIds: Set<string>;
-  canLoadMore: boolean;
 }) {
-  if (!currentAuthorId) {
+  const snapshot = getKnowledgeFeedSnapshot();
+  if (!currentAuthorId && snapshot.seenEntryTimestamps.size === 0) {
     return entries;
   }
 
+  const now = Date.now();
   const freshEntries = entries.filter(
-    (entry) =>
-      entry.id === focusedEntryId ||
-      visibleLikedEntryIds.has(entry.id) ||
-      !isEntryLikedByAuthor(entry, currentAuthorId),
+    (entry) => {
+      if (entry.id === focusedEntryId || visibleLikedEntryIds.has(entry.id)) {
+        return true;
+      }
+
+      if (isEntryLikedByAuthor(entry, currentAuthorId)) {
+        return false;
+      }
+
+      const seenAt = snapshot.seenEntryTimestamps.get(entry.id);
+      return !seenAt || now - seenAt > FEED_RECENTLY_SEEN_HIDE_WINDOW_MS;
+    },
   );
 
-  if (freshEntries.length > 0 || canLoadMore) {
+  if (freshEntries.length > 0) {
     return freshEntries;
   }
 

@@ -538,7 +538,7 @@ export default function App() {
               onGoHome={() => handleTabChange("knowledge")}
               onOpenSmartTalk={() => handleTabChange("smarttalk")}
             />
-          ) : !isIdentityHydrated ? (
+          ) : !isIdentityHydrated && activeTab !== "knowledge" ? (
             <SectionSkeleton
               label={
                 activeTab === "smarttalk"

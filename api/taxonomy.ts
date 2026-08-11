@@ -44,13 +44,6 @@ function absoluteUrl(path: string) {
   return `${SITE_URL}${path}`;
 }
 
-function summarize(value: string, maxLength = 160) {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-
-  return `${normalized.slice(0, maxLength - 3).trim()}...`;
-}
-
 function getActivity(record: {
   createdAt?: number;
   updatedAt?: number | null;
@@ -754,7 +747,7 @@ function renderTagPage({
   });
   const relatedCategories = tag.categoryIds
     .map((categoryId) => getCategoryBySlug(categoryId))
-    .filter((category): category is SeoCategoryDefinition => Boolean(category));
+    .filter(Boolean) as SeoCategoryDefinition[];
   const inferredCategories =
     relatedCategories.length > 0
       ? relatedCategories
@@ -763,7 +756,9 @@ function renderTagPage({
             (post) =>
               post.category === category.id ||
               post.hashtags.some((postTag) =>
-                category.tagSlugs.includes(normalizeMatchToken(postTag)),
+                (category.tagSlugs as readonly string[]).includes(
+                  normalizeMatchToken(postTag),
+                ),
               ),
           ),
         ).slice(0, 4);

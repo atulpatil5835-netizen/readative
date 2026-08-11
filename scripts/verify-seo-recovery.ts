@@ -76,6 +76,14 @@ async function main() {
   const robots = readFile("public/robots.txt");
   const robotsAllowsAll = /User-agent:\s*\*/i.test(robots) && /Allow:\s*\//i.test(robots);
   const robotsBlocksCanonicalDocuments = /Disallow:\s*\/(?:posts|smarttalk)\b/i.test(robots);
+  const robotsCanonicalSitemap = `${SITE_URL}/sitemap.xml`;
+  const robotsSitemapDirectives = robots
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*Sitemap:\s*(\S+)\s*$/i)?.[1]?.trim())
+    .filter((url): url is string => Boolean(url));
+  const robotsAdvertisesOnlyCanonicalSitemap =
+    robotsSitemapDirectives.length === 1 &&
+    robotsSitemapDirectives[0] === robotsCanonicalSitemap;
   const vercel = JSON.parse(readFile("vercel.json")) as {
     redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
     rewrites?: Array<{ source: string; destination: string }>;
@@ -272,6 +280,9 @@ async function main() {
     hasRedirectsTopic ? null : "missing _redirects /topic/* taxonomy rewrite",
     hasRedirectsTag ? null : "missing _redirects /tag/* taxonomy rewrite",
     robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
+    robotsAdvertisesOnlyCanonicalSitemap
+      ? null
+      : `robots.txt must advertise only ${robotsCanonicalSitemap}`,
   ].filter((failure): failure is string => Boolean(failure));
   const report = `# Release H7 Username SEO Report
 
@@ -368,6 +379,7 @@ ${markdownList(changedFiles)}
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
 - Category/topic/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
+- robots.txt canonical sitemap directive: ${robotsAdvertisesOnlyCanonicalSitemap ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
 
@@ -432,6 +444,8 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         taxonomyRewriteStatus,
         blockingFailures,
         robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
+        robotsSitemapDirectives,
+        robotsAdvertisesOnlyCanonicalSitemap,
       },
       null,
       2,

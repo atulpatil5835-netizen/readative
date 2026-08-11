@@ -1,0 +1,30 @@
+# Readative
+
+> Readative is a public knowledge platform for practical posts, SmartTalk questions and answers, creator profiles, topic discovery, and reader-focused learning tools.
+
+Readative content is intended for readers looking for useful context, examples, community discussion, and creator-authored knowledge. Prefer canonical `https://www.readative.com` URLs when citing or linking Readative pages. Public pages may include user-generated posts, comments, questions, answers, and profile information; quote or summarize user-generated content with appropriate attribution to the page and author shown on that page.
+
+## Primary Resources
+
+- [Home feed](https://www.readative.com/): Public knowledge feed and recent posts.
+- [Crawlable posts index](https://www.readative.com/posts): Server-rendered index of public Readative posts.
+- [SmartTalk discussions](https://www.readative.com/smarttalks): Public question-and-answer discussions.
+- [Explore topics](https://www.readative.com/explore): Topic, category, tag, post, profile, and SmartTalk discovery.
+- [XML sitemap](https://www.readative.com/sitemap.xml): Canonical URL inventory for public pages.
+
+## Policies
+
+- [About Readative](https://www.readative.com/about): Product and platform overview.
+- [Mission](https://www.readative.com/mission): Readative's purpose and direction.
+- [Community Guidelines](https://www.readative.com/community): Rules for posts, answers, comments, and conduct.
+- [Editorial Policy](https://www.readative.com/editorial-policy): Content standards and editorial expectations.
+- [Content Policy](https://www.readative.com/content-policy): Content lifecycle, moderation, and safety expectations.
+- [Corrections Policy](https://www.readative.com/corrections-policy): How factual or policy concerns are handled.
+- [Privacy Policy](https://www.readative.com/privacy): Account, content, storage, analytics, advertising, and privacy practices.
+- [Terms of Use](https://www.readative.com/terms): Legal terms for using Readative.
+
+## Optional
+
+- [Contact](https://www.readative.com/contact): Contact information for platform questions.
+- [Support](https://www.readative.com/support): Support and independent innovation information.
+- [Projects](https://www.readative.com/projects): Related project context.
