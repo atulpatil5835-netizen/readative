@@ -5,6 +5,8 @@ import {
   type SeoProfile,
   type SeoSmartTalk,
   buildSeoProfilePath,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
   loadSeoData,
 } from "./_seoData.js";
 import {
@@ -198,10 +200,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(301).end();
     }
 
-    const posts = data.posts
+    const posts = getIndexableSeoPosts(data.posts)
       .filter((post) => post.authorId === profile.id)
       .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-    const smartTalks = data.smartTalks
+    const smartTalks = getIndexableSeoSmartTalks(data.smartTalks)
       .filter((question) => question.authorId === profile.id)
       .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
     const pageTitle = `${profile.name} (@${profile.username}) | Readative`;

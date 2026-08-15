@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/home.ts": {
+      "includeFiles": "dist/index.html"
+    },
     "api/post.ts": {
       "includeFiles": "dist/index.html"
     },
@@ -150,6 +153,7 @@
     { "source": "/jobs", "destination": "/explore", "permanent": true }
   ],
   "rewrites": [
+    { "source": "/", "destination": "/api/home" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/posts/:id", "destination": "/api/post?id=:id" },

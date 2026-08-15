@@ -36,6 +36,7 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../../utils/knowledgeEntryHelpers";
+import { isKnowledgeEntryAdEligible } from "../../utils/contentQuality";
 import {
   getTrustMetrics,
   type ContributorReputation,
@@ -235,6 +236,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         .filter(Boolean),
     [entry.content],
   );
+  const isAdEligibleContent = isKnowledgeEntryAdEligible(entry);
   const topComment = useMemo(
     () =>
       localComments.reduce<KnowledgeComment | null>((latest, comment) => {
@@ -875,6 +877,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       ref={articleRef}
       id={`knowledge-${entry.id}`}
       data-publisher-content="knowledge-post"
+      data-ads-content={isAdEligibleContent ? "eligible" : "review"}
       className={cn(
         "readative-card-surface readative-card-surface-hover scroll-mt-24 overflow-hidden md:scroll-mt-28",
         focused &&

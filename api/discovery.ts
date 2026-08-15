@@ -7,6 +7,8 @@ import {
   type SeoSmartTalk,
   buildSeoProfilePath,
   escapeXml,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
   loadSeoData,
 } from "./_seoData.js";
 import { SEO_CATEGORIES, SEO_TOPICS } from "../src/utils/seoTaxonomy.js";
@@ -202,19 +204,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("Discovery SEO data unavailable:", data.errors);
     res.setHeader("Cache-Control", "no-store");
   }
-  const recentPosts = [...data.posts].slice(0, 24);
+  const posts = getIndexableSeoPosts(data.posts);
+  const smartTalks = getIndexableSeoSmartTalks(data.smartTalks);
+  const recentPosts = [...posts].slice(0, 24);
   const recentPostIds = new Set(recentPosts.map((post) => post.id));
   const profileById = new Map(data.profiles.map((profile) => [profile.id, profile] as const));
-  const allPosts = [...data.posts]
+  const allPosts = [...posts]
     .filter((post) => !recentPostIds.has(post.id))
     .sort((left, right) => left.title.localeCompare(right.title));
   const pageTitle = "Readative Posts and Discovery Index";
   const pageDescription =
     "Crawlable Readative index of published posts, categories, profiles, SmartTalk questions, and important discovery pages.";
   const discoverySchemas = buildDiscoverySchemas({
-    posts: data.posts,
+    posts,
     profiles: data.profiles,
-    smartTalks: data.smartTalks,
+    smartTalks,
   });
 
   const html = `<!doctype html>
@@ -256,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <main>
   <header>
     <h1>Readative Discovery Index</h1>
-  <p>${data.posts.length} published posts, ${data.smartTalks.length} SmartTalk discussions, and ${data.profiles.length} contributor profiles are linked here for search crawlers and readers.</p>
+  <p>${posts.length} published posts, ${smartTalks.length} SmartTalk discussions, and ${data.profiles.length} contributor profiles are linked here for search crawlers and readers.</p>
   </header>
   ${renderSection("Important Pages", [
     renderLink("/", "Readative Home", "Knowledge feed"),
@@ -301,7 +305,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   )}
   ${renderSection(
     "SmartTalk Discussions",
-    data.smartTalks.map((question) => renderSmartTalkLink(question, profileById)),
+    smartTalks.map((question) => renderSmartTalkLink(question, profileById)),
   )}
   ${renderSection(
     "All Published Posts",
@@ -316,7 +320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </html>`;
 
   res.setHeader("X-Readative-SEO-Source", data.source);
-  res.setHeader("X-Readative-SEO-Post-Count", data.posts.length.toString());
+  res.setHeader("X-Readative-SEO-Post-Count", posts.length.toString());
 
   if (req.method === "HEAD") {
     return res.status(200).end();

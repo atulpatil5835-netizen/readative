@@ -81,6 +81,7 @@ import { buildPublicPath, navigateToRoute } from "../utils/routes";
 import type { Answer, Question } from "../types";
 import { tokenizeSearch } from "../utils/searchHelpers";
 import { getRelatedQuestions } from "../utils/contentGraph";
+import { isSmartTalkDiscussionAdEligible } from "../utils/contentQuality";
 
 const SMART_TALK_PAGE_SIZE = 24;
 const SMART_TALK_LOADING_SKELETON_COUNT = 5;
@@ -1535,11 +1536,13 @@ export function SmartTalk({
             const isQuestionSaved = activeAuthorId
               ? questionSaveMetrics.savedBy.includes(activeAuthorId)
               : false;
+            const isAdEligibleDiscussion = isSmartTalkDiscussionAdEligible(question);
 
             return (
               <div
                 id={`question-${question.id}`}
                 data-publisher-content="smarttalk-question"
+                data-ads-content={isAdEligibleDiscussion ? "eligible" : "review"}
                 className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_14px_38px_rgba(15,23,42,0.07)]"
               >
                 <div className="mb-5 flex items-start gap-3">

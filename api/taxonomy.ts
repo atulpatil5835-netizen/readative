@@ -6,6 +6,9 @@ import {
   type SeoSmartTalk,
   buildSeoProfilePath,
   escapeXml,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
+  getIndexableSeoTags,
   loadSeoData,
 } from "./_seoData.js";
 import {
@@ -850,12 +853,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error("Taxonomy SEO data unavailable:", data.errors);
       res.setHeader("Cache-Control", "no-store");
     }
+    const posts = getIndexableSeoPosts(data.posts);
+    const questions = getIndexableSeoSmartTalks(data.smartTalks);
+    const tags = getIndexableSeoTags(data.posts);
 
     res.setHeader("X-Readative-SEO-Source", data.source);
-    res.setHeader("X-Readative-SEO-Post-Count", data.posts.length.toString());
+    res.setHeader("X-Readative-SEO-Post-Count", posts.length.toString());
     res.setHeader(
       "X-Readative-SEO-SmartTalk-Count",
-      data.smartTalks.length.toString(),
+      questions.length.toString(),
     );
     res.setHeader(
       "X-Readative-SEO-Profile-Count",
@@ -866,8 +872,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (req.method === "HEAD") return res.status(200).end();
       return res.status(200).send(
         renderExplorePage({
-          posts: data.posts,
-          questions: data.smartTalks,
+          posts,
+          questions,
           profiles: data.profiles,
         }),
       );
@@ -890,8 +896,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(
         renderCategoryPage({
           category,
-          posts: data.posts,
-          questions: data.smartTalks,
+          posts,
+          questions,
           profiles: data.profiles,
         }),
       );
@@ -914,15 +920,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(
         renderTopicPage({
           topic,
-          posts: data.posts,
-          questions: data.smartTalks,
+          posts,
+          questions,
           profiles: data.profiles,
         }),
       );
     }
 
     if (type === "tag") {
-      const tag = resolveTagDefinition(slug, data.tags);
+      const tag = resolveTagDefinition(slug, tags);
       if (!tag || tag.postCount <= 0) {
         if (req.method === "HEAD") return res.status(404).end();
         return res.status(404).send(renderNotFound(rawSlug, "Tag"));
@@ -938,8 +944,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(
         renderTagPage({
           tag,
-          posts: data.posts,
-          questions: data.smartTalks,
+          posts,
+          questions,
           profiles: data.profiles,
         }),
       );

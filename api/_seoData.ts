@@ -20,6 +20,15 @@ import {
   getProfilePathForIdentity,
   normalizeUsernameInput,
 } from "../src/utils/usernames.js";
+import {
+  isIndexableKnowledgeContent,
+  isIndexableSmartTalkDiscussion,
+} from "../src/utils/contentQuality.js";
+
+export {
+  isIndexableKnowledgeContent,
+  isIndexableSmartTalkDiscussion,
+};
 
 export {
   describeSeoV2Foundation,
@@ -107,6 +116,18 @@ export interface SitemapEntry {
   changefreq: "daily" | "weekly" | "monthly";
   priority: string;
   type: "page" | "category" | "topic" | "tag" | "post" | "profile" | "smarttalk";
+}
+
+export function getIndexableSeoPosts(posts: SeoPost[]) {
+  return posts.filter(isIndexableKnowledgeContent);
+}
+
+export function getIndexableSeoSmartTalks(smartTalks: SeoSmartTalk[]) {
+  return smartTalks.filter(isIndexableSmartTalkDiscussion);
+}
+
+export function getIndexableSeoTags(posts: SeoPost[]) {
+  return buildTags(getIndexableSeoPosts(posts));
 }
 
 type FirestoreDocument = {
@@ -660,8 +681,12 @@ export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | nul
     source: data.source,
     post,
     authorProfile: findSeoProfileByAuthorId(data.profiles, post.authorId),
-    relatedPosts: getRelatedPosts(post, data.posts, 4),
-    relatedSmartTalks: getRelatedQuestions(post, data.smartTalks, 4),
+    relatedPosts: getRelatedPosts(post, getIndexableSeoPosts(data.posts), 4),
+    relatedSmartTalks: getRelatedQuestions(
+      post,
+      getIndexableSeoSmartTalks(data.smartTalks),
+      4,
+    ),
   };
 }
 
@@ -730,6 +755,19 @@ function buildEntry(
 
 export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   const entries: SitemapEntry[] = [];
+  const indexablePosts = getIndexableSeoPosts(data.posts);
+  const indexableSmartTalks = getIndexableSeoSmartTalks(data.smartTalks);
+  const indexableTags = buildTags(indexablePosts);
+  const indexableAuthorIds = new Set([
+    ...indexablePosts.map((post) => post.authorId).filter(Boolean),
+    ...indexableSmartTalks.map((question) => question.authorId).filter(Boolean),
+  ]);
+  const indexableData = {
+    ...data,
+    posts: indexablePosts,
+    smartTalks: indexableSmartTalks,
+    tags: indexableTags,
+  };
 
   for (const page of STATIC_PAGES) {
     entries.push(
@@ -739,7 +777,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
 
   for (const category of SEO_CATEGORIES) {
     const categoryTagSlugs = category.tagSlugs as readonly string[];
-    const categoryLastmod = maxCategoryLastmod(data, category.id, categoryTagSlugs);
+    const categoryLastmod = maxCategoryLastmod(indexableData, category.id, categoryTagSlugs);
     if (!categoryLastmod) continue;
     entries.push(
       buildEntry(
@@ -753,7 +791,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   }
 
   for (const topic of SEO_TOPICS) {
-    const topicLastmod = maxPostLastmod(data.posts, (post) =>
+    const topicLastmod = maxPostLastmod(indexablePosts, (post) =>
       post.hashtags.some((tag) => topic.tagSlugs.includes(tag) || tag === topic.id),
     );
     if (!topicLastmod) continue;
@@ -768,7 +806,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
     );
   }
 
-  for (const tag of data.tags) {
+  for (const tag of indexableTags) {
     if (tag.postCount < TAG_SITEMAP_MIN_POST_COUNT || !tag.lastmod) continue;
 
     entries.push(
@@ -782,7 +820,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
     );
   }
 
-  for (const post of data.posts) {
+  for (const post of indexablePosts) {
     entries.push(
       buildEntry(
         buildPostSeoPath(post.id, post.title),
@@ -794,7 +832,9 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
     );
   }
 
-  for (const profile of data.profiles) {
+  for (const profile of data.profiles.filter((profile) =>
+    indexableAuthorIds.has(profile.id),
+  )) {
     entries.push(
       buildEntry(
         buildSeoProfilePath(profile),
@@ -806,7 +846,7 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
     );
   }
 
-  for (const question of data.smartTalks) {
+  for (const question of indexableSmartTalks) {
     entries.push(
       buildEntry(
         buildSmartTalkSeoPath(question.id, question.title),

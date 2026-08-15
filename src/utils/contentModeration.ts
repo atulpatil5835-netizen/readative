@@ -100,7 +100,7 @@ const MODE_SETTINGS: Record<
   ModerationMode,
   { minWords: number; passScore: number; minSentences: number }
 > = {
-  "knowledge-post": { minWords: 20, passScore: 6, minSentences: 2 },
+  "knowledge-post": { minWords: 80, passScore: 7, minSentences: 3 },
   "knowledge-comment": { minWords: 3, passScore: 1, minSentences: 1 },
   "smarttalk-question": { minWords: 5, passScore: 2, minSentences: 1 },
   "smarttalk-answer": { minWords: 10, passScore: 3, minSentences: 1 },

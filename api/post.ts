@@ -4,6 +4,7 @@ import {
   type SeoPost,
   type SeoSmartTalk,
   buildSeoProfilePath,
+  isIndexableKnowledgeContent,
   loadSeoPostPage,
 } from "./_seoData.js";
 import {
@@ -115,6 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { post, authorProfile, relatedPosts, relatedSmartTalks } = page;
+    const isIndexablePost = isIndexableKnowledgeContent(post);
     const canonicalPath = postPath(post);
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
     const legacy = getQueryValue(req.query.legacy);
@@ -192,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const head = `
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(post.description)}" />
-      <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+      <meta name="robots" content="${isIndexablePost ? "index" : "noindex"}, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
       <link rel="canonical" href="${canonicalUrl}" />
       <meta property="og:type" content="article" />
       <meta property="og:title" content="${escapeHtml(pageTitle)}" />

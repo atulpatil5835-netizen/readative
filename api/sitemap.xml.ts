@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   buildSitemapEntries,
   buildSitemapXml,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
   loadSeoData,
 } from "./_seoData.js";
 
@@ -28,16 +30,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const entries = buildSitemapEntries(data);
     const xml = buildSitemapXml(entries);
+    const posts = getIndexableSeoPosts(data.posts);
+    const smartTalks = getIndexableSeoSmartTalks(data.smartTalks);
 
     res.setHeader("X-Readative-SEO-Source", data.source);
     res.setHeader(
       "X-Readative-SEO-Post-Count",
-      data.posts.length.toString(),
+      posts.length.toString(),
     );
     res.setHeader("X-Readative-SEO-URL-Count", entries.length.toString());
     res.setHeader(
       "X-Readative-SEO-SmartTalk-Count",
-      data.smartTalks.length.toString(),
+      smartTalks.length.toString(),
     );
 
     if (req.method === "HEAD") {

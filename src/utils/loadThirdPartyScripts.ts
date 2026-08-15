@@ -6,8 +6,8 @@ const ADS_IDLE_DELAY_MS = 4500;
 const ADS_INTERACTION_EVENTS = ["pointerdown", "keydown", "scroll"] as const;
 const ADS_ROUTE_CHANGE_EVENTS = ["hashchange", "popstate", "readative:routechange"] as const;
 const PUBLISHER_CONTENT_SELECTOR = [
-  '[data-publisher-content="knowledge-post"]',
-  '[data-publisher-content="smarttalk-question"]',
+  '[data-publisher-content="knowledge-post"][data-ads-content="eligible"]',
+  '[data-publisher-content="smarttalk-question"][data-ads-content="eligible"]',
 ].join(",");
 
 let thirdPartyScriptsScheduled = false;

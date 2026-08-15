@@ -61,6 +61,7 @@ import {
   parseManualHashtags,
   resolveMentions,
 } from "../../utils/knowledgeEntryHelpers";
+import { isIndexableKnowledgeContent } from "../../utils/contentQuality";
 import { getRelatedTopicsForCategory } from "../../utils/seoTaxonomy";
 
 import {
@@ -2526,12 +2527,13 @@ export function KnowledgeFeed({
         });
   const shouldShowBackToTopRefresh =
     isActive && !showComposer && showBackToTopRefresh;
-  const shouldNoIndexKnowledgePage =
-    !shouldShowInitialFeedSkeleton &&
-    !shouldShowFeedErrorState &&
-    !shouldHoldEmptyFeedState &&
-    !hasActiveSearch &&
-    filteredEntries.length === 0;
+  const shouldNoIndexKnowledgePage = focusedEntry
+    ? !isIndexableKnowledgeContent(focusedEntry)
+    : !shouldShowInitialFeedSkeleton &&
+      !shouldShowFeedErrorState &&
+      !shouldHoldEmptyFeedState &&
+      !hasActiveSearch &&
+      filteredEntries.length === 0;
 
   // ── Render ──
 

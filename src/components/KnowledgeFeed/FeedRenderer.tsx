@@ -817,11 +817,6 @@ export function FeedRenderer({
           ]}
           type={focusedEntry ? "article" : "website"}
           url={pageUrl}
-          ampUrl={
-            !focusedEntry && !selectedHashtag && activeFeedTopic.id === "all"
-              ? "/amp/"
-              : undefined
-          }
           schema={buildKnowledgeSchemas({
             entry: focusedEntry,
             activeTopic: activeFeedTopic,

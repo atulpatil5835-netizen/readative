@@ -4,6 +4,9 @@ import {
   type SeoProfile,
   type SeoSmartTalk,
   buildSeoProfilePath,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
+  isIndexableSmartTalkDiscussion,
   loadSeoData,
 } from "./_seoData.js";
 import { SEO_CATEGORIES } from "../src/utils/seoTaxonomy.js";
@@ -244,21 +247,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("SmartTalk SEO data unavailable:", data.errors);
     res.setHeader("Cache-Control", "no-store");
   }
-  const questions = [...data.smartTalks].sort(
+  const questions = getIndexableSeoSmartTalks(data.smartTalks).sort(
+    (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
+  );
+  const allQuestions = [...data.smartTalks].sort(
     (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
   );
   const profileById = new Map(data.profiles.map((profile) => [profile.id, profile] as const));
   const requestedSegment = getQueryValue(req.query.id);
   const requestedId = extractSeoDocumentId(requestedSegment);
   const focusedQuestion = requestedId
-    ? questions.find((question) => question.id === requestedId)
+    ? allQuestions.find((question) => question.id === requestedId)
     : null;
+  const focusedQuestionIsIndexable = focusedQuestion
+    ? isIndexableSmartTalkDiscussion(focusedQuestion)
+    : false;
 
   if (requestedId && !focusedQuestion) {
     res.setHeader("X-Readative-SEO-Source", data.source);
     res.setHeader(
       "X-Readative-SEO-SmartTalk-Count",
-      data.smartTalks.length.toString(),
+      questions.length.toString(),
     );
     if (req.method === "HEAD") {
       return res.status(404).end();
@@ -294,11 +303,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
     const pageDescription = focusedQuestion.description;
     const relatedQuestions = getRelatedQuestions(focusedQuestion, questions, 5);
-    const relatedPosts = getRelatedPosts(focusedQuestion, data.posts, 5);
+    const relatedPosts = getRelatedPosts(
+      focusedQuestion,
+      getIndexableSeoPosts(data.posts),
+      5,
+    );
     const head = `
       <title>${escapeHtml(pageTitle)}</title>
       <meta name="description" content="${escapeHtml(pageDescription)}" />
-      <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+      <meta name="robots" content="${focusedQuestionIsIndexable ? "index" : "noindex"}, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
       <link rel="canonical" href="${canonicalUrl}" />
       <meta property="og:type" content="article" />
       <meta property="og:title" content="${escapeHtml(pageTitle)}" />
@@ -367,7 +380,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader("X-Readative-SEO-Source", data.source);
     res.setHeader(
       "X-Readative-SEO-SmartTalk-Count",
-      data.smartTalks.length.toString(),
+      questions.length.toString(),
     );
     res.setHeader("X-Readative-SEO-SmartTalk-Id", focusedQuestion.id);
 
@@ -421,7 +434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("X-Readative-SEO-Source", data.source);
   res.setHeader(
     "X-Readative-SEO-SmartTalk-Count",
-    data.smartTalks.length.toString(),
+    questions.length.toString(),
   );
 
   if (req.method === "HEAD") {
