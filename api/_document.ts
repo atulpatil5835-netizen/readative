@@ -30,10 +30,17 @@ function readBuiltShell() {
 function removeShellMetadata(source: string) {
   return source
     .replace(/<title>[\s\S]*?<\/title>/gi, "")
-    .replace(/<meta\s+name=["'](?:description|robots|keywords|twitter:[^"']+)["'][^>]*>/gi, "")
-    .replace(/<meta\s+property=["']og:[^"']+["'][^>]*>/gi, "")
-    .replace(/<link\s+rel=["']canonical["'][^>]*>/gi, "")
-    .replace(/<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi, "");
+    .replace(
+      /<meta\b(?=[^>]*\bname=["'](?:description|robots|keywords|twitter:[^"']+)["'])[^>]*>/gi,
+      "",
+    )
+    .replace(/<meta\b(?=[^>]*\bproperty=["']og:[^"']+["'])[^>]*>/gi, "")
+    .replace(/<link\b(?=[^>]*\brel=["']canonical["'])[^>]*>/gi, "")
+    .replace(/<noscript>[\s\S]*?<\/noscript>/gi, "")
+    .replace(
+      /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>[\s\S]*?<\/script>/gi,
+      "",
+    );
 }
 
 function markHelmetManagedHead(source: string) {

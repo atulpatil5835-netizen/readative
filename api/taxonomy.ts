@@ -415,16 +415,18 @@ function renderHead({
   description,
   canonicalUrl,
   schema,
+  robots = "index",
 }: {
   pageTitle: string;
   description: string;
   canonicalUrl: string;
   schema: object | object[];
+  robots?: "index" | "noindex";
 }) {
   return `
     <title>${escapeHtml(pageTitle)}</title>
     <meta name="description" content="${escapeHtml(description)}" />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="robots" content="${robots}, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="${canonicalUrl}" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="${escapeHtml(pageTitle)}" />
@@ -487,9 +489,9 @@ function renderExplorePage({
 }) {
   const canonicalPath = "/explore";
   const canonicalUrl = absoluteUrl(canonicalPath);
-  const pageTitle = "Explore Topics, Posts, and SmartTalk | Readative";
+  const pageTitle = "Explore Readative Posts and SmartTalk | Readative";
   const pageDescription =
-    "Explore Readative topics, practical posts, SmartTalk discussions, and contributor profiles across AI, technology, business, marketing, startups, productivity, development, and cybersecurity.";
+    "Explore practical Readative posts and SmartTalk discussions first, with categories and topic shortcuts for related discovery.";
   const recentPosts = sortByActivity(posts).slice(0, PAGE_ITEM_LIMIT);
   const activeQuestions = sortByActivity(questions).slice(0, PAGE_ITEM_LIMIT);
   const itemList = buildItemListSchema({
@@ -530,16 +532,16 @@ function renderExplorePage({
     <main>
       <header class="seo-hero"><div class="seo-hero-inner">
         <p class="seo-kicker">Explore Readative</p>
-        <h1>Explore Topics, Posts, and SmartTalk</h1>
+        <h1>Explore Posts and SmartTalk</h1>
         <p class="seo-lede">${escapeHtml(pageDescription)}</p>
         <div class="seo-meta"><span>${posts.length} public posts</span><span>${questions.length} SmartTalk discussions</span><span>${profiles.length} contributor profiles</span></div>
       </div></header>
-      <section class="seo-card"><h2>Knowledge Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks)}</div></section>
-      <section class="seo-card"><h2>Topic Map</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
       <section class="seo-card"><div class="seo-grid">
         <section><h2>Recent Posts</h2><ul class="seo-list">${renderPostList(recentPosts)}</ul></section>
         <section><h2>Active SmartTalk</h2><ul class="seo-list">${renderQuestionList(activeQuestions)}</ul></section>
       </div></section>
+      <section class="seo-card"><h2>Knowledge Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks)}</div></section>
+      <section class="seo-card"><h2>Topic Shortcuts</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
       <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(profiles)}</ul></section>
     </main>
     ${renderFooter()}
@@ -624,12 +626,12 @@ function renderCategoryPage({
         <section><h2>Who</h2><p>${escapeHtml(category.who)}</p></section>
         <section><h2>Benefits</h2><ul>${category.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("")}</ul></section>
       </div></section>
-      <section class="seo-card"><h2>Related Topics</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
-      <section class="seo-card"><h2>Related Tags</h2><div class="seo-tags">${renderLinkPills(tagLinks, "/posts")}</div></section>
       <section class="seo-card"><div class="seo-grid">
         <section><h2>Posts</h2><ul class="seo-list">${renderPostList(matchedPosts)}</ul></section>
         <section><h2>SmartTalk Discussions</h2><ul class="seo-list">${renderQuestionList(matchedQuestions)}</ul></section>
       </div></section>
+      <section class="seo-card"><h2>Related Tags</h2><div class="seo-tags">${renderLinkPills(tagLinks, "/posts")}</div></section>
+      <section class="seo-card"><h2>Topic Shortcuts</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
       <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(matchedProfiles)}</ul></section>
     </main>
     ${renderFooter()}
@@ -651,8 +653,6 @@ function renderTopicPage({
 }) {
   const category = getCategoryBySlug(topic.categoryId);
   const canonicalUrl = absoluteUrl(topic.path);
-  const pageTitle = `${topic.collectionTitle} | Readative`;
-  const pageDescription = topic.description;
   const relatedTopics = category
     ? getRelatedTopicsForCategory(category.id, 10).filter(
         (candidate) => candidate.id !== topic.id,
@@ -669,6 +669,8 @@ function renderTopicPage({
     posts: matchedPosts,
     questions: matchedQuestions,
   });
+  const pageTitle = `Posts about ${topic.label} | Readative`;
+  const pageDescription = `Browse public Readative posts and SmartTalk discussions related to ${topic.label}.`;
   const itemList = buildItemListSchema({
     name: `${topic.label} Readative collection`,
     url: canonicalUrl,
@@ -699,22 +701,22 @@ function renderTopicPage({
     description: pageDescription,
     canonicalUrl,
     schema,
+    robots: "noindex",
   });
   const main = `<div class="seo-document"><div class="seo-shell">
     ${renderNav()}
     <main>
       <article class="seo-hero"><div class="seo-hero-inner">
-        <p class="seo-kicker">Knowledge topic</p>
-        <h1>${escapeHtml(topic.collectionTitle)}</h1>
+        <p class="seo-kicker">Topic shortcut</p>
+        <h1>Posts about ${escapeHtml(topic.label)}</h1>
         <p class="seo-lede">${escapeHtml(pageDescription)}</p>
         <div class="seo-meta"><span>${matchedPosts.length} related posts</span><span>${matchedQuestions.length} SmartTalk discussions</span>${category ? `<a href="${escapeHtml(category.path)}">${escapeHtml(category.label)}</a>` : ""}</div>
       </div></article>
-      ${category ? `<section class="seo-card"><div class="seo-grid"><section><h2>Category Context</h2><p>${escapeHtml(category.description)}</p></section><section><h2>Useful For</h2><p>${escapeHtml(category.who)}</p></section></div></section>` : ""}
-      <section class="seo-card"><h2>Related Topics</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
       <section class="seo-card"><div class="seo-grid">
         <section><h2>Posts</h2><ul class="seo-list">${renderPostList(matchedPosts)}</ul></section>
         <section><h2>SmartTalk Discussions</h2><ul class="seo-list">${renderQuestionList(matchedQuestions)}</ul></section>
       </div></section>
+      <section class="seo-card"><h2>Related Topic Shortcuts</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
       <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(matchedProfiles)}</ul></section>
     </main>
     ${renderFooter()}
@@ -816,11 +818,11 @@ function renderTagPage({
         <p class="seo-lede">${escapeHtml(pageDescription)}</p>
         <div class="seo-meta"><span>${matchedPosts.length} related posts</span><span>${matchedQuestions.length} SmartTalk discussions</span><span>${matchedProfiles.length} contributors</span></div>
       </div></article>
-      <section class="seo-card"><h2>Related Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks, "/explore")}</div></section>
       <section class="seo-card"><div class="seo-grid">
         <section><h2>Posts</h2><ul class="seo-list">${renderPostList(matchedPosts)}</ul></section>
         <section><h2>SmartTalk Discussions</h2><ul class="seo-list">${renderQuestionList(matchedQuestions)}</ul></section>
       </div></section>
+      <section class="seo-card"><h2>Related Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks, "/explore")}</div></section>
       <section class="seo-card"><h2>Related Tags</h2><div class="seo-tags">${renderLinkPills(knownRelatedTags, "/posts")}</div></section>
       <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(matchedProfiles)}</ul></section>
     </main>
@@ -916,6 +918,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(301).end();
       }
 
+      res.setHeader("X-Robots-Tag", "noindex, follow");
       if (req.method === "HEAD") return res.status(200).end();
       return res.status(200).send(
         renderTopicPage({

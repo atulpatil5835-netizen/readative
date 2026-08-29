@@ -85,6 +85,7 @@ import {
   FEED_BACKGROUND_PREFETCH_PAGE_LIMIT,
   PROFILE_DIRECTORY_IDLE_TIMEOUT_MS,
   PROFILE_DIRECTORY_LIMIT,
+  FEED_SUPPRESSED_AUTO_LOAD_ENTRY_LIMIT,
   MAX_TOTAL_INLINE_IMAGE_CHARS,
   readKnowledgeFeedCache,
   writeKnowledgeFeedCache,
@@ -1486,6 +1487,8 @@ export function KnowledgeFeed({
       : !focusedEntryId &&
         hasMoreServerEntries &&
         Boolean(paginationCursorRef.current);
+  const canAutoLoadSuppressedEntries =
+    loadedActiveEntryCount < FEED_SUPPRESSED_AUTO_LOAD_ENTRY_LIMIT;
   const isActiveFeedLoadingMore = shouldUseIndependentFeed
     ? activeTopicFeedState.isLoadingMore
     : isLoadingMoreEntries;
@@ -1508,6 +1511,7 @@ export function KnowledgeFeed({
     (!focusedEntryId &&
       filteredEntries.length === 0 &&
       hasMoreEntries &&
+      canAutoLoadSuppressedEntries &&
       !hasActiveSearch &&
       !isActiveFeedLoadingMore &&
       (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError));

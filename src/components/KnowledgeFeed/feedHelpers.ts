@@ -77,7 +77,9 @@ export const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
 export const FEED_CACHE_STORAGE_ENTRY_LIMIT = 16;
 export const FEED_CACHE_STORAGE_IMAGE_CHAR_BUDGET = 320_000;
-export const FEED_RECENTLY_SEEN_HIDE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const FEED_SEEN_REPLAY_FALLBACK_MS = 30 * 24 * 60 * 60 * 1000;
+export const FEED_SUPPRESSED_AUTO_LOAD_ENTRY_LIMIT =
+  FEED_INITIAL_PAGE_SIZE + FEED_NEXT_PAGE_SIZE * 2;
 export const FEED_CACHE_KEY_PREFIX = "readativeKnowledgeFeedCache:v3";
 export const FEED_CACHE_LEGACY_KEY_PREFIXES = [
   "readativeKnowledgeFeedCache:v1",
@@ -853,26 +855,46 @@ export function getHelpfulAwareVisibleEntries({
   }
 
   const now = Date.now();
-  const freshEntries = entries.filter(
-    (entry) => {
-      if (entry.id === focusedEntryId || visibleLikedEntryIds.has(entry.id)) {
-        return true;
-      }
+  const visibleEntries: KnowledgeEntry[] = [];
+  const fallbackSeenEntries: Array<{ entry: KnowledgeEntry; seenAt: number }> = [];
 
-      if (isEntryLikedByAuthor(entry, currentAuthorId)) {
-        return false;
-      }
+  entries.forEach((entry) => {
+    if (entry.id === focusedEntryId || visibleLikedEntryIds.has(entry.id)) {
+      visibleEntries.push(entry);
+      return;
+    }
 
-      const seenAt = snapshot.seenEntryTimestamps.get(entry.id);
-      return !seenAt || now - seenAt > FEED_RECENTLY_SEEN_HIDE_WINDOW_MS;
-    },
-  );
+    if (isEntryLikedByAuthor(entry, currentAuthorId)) {
+      return;
+    }
 
-  if (freshEntries.length > 0) {
-    return freshEntries;
+    if (!snapshot.seenEntryIds.has(entry.id)) {
+      visibleEntries.push(entry);
+      return;
+    }
+
+    const seenAt = snapshot.seenEntryTimestamps.get(entry.id);
+    const isLegacySeenEntry =
+      typeof seenAt !== "number" || !Number.isFinite(seenAt) || seenAt <= 0;
+    if (isLegacySeenEntry || now - seenAt >= FEED_SEEN_REPLAY_FALLBACK_MS) {
+      fallbackSeenEntries.push({
+        entry,
+        seenAt: isLegacySeenEntry ? 0 : seenAt,
+      });
+    }
+  });
+
+  if (visibleEntries.length > 0) {
+    return visibleEntries;
   }
 
-  return entries;
+  if (fallbackSeenEntries.length > 0) {
+    return fallbackSeenEntries
+      .sort((left, right) => left.seenAt - right.seenAt)
+      .map((candidate) => candidate.entry);
+  }
+
+  return [];
 }
 
 export function reconcileRealtimeKnowledgeFeedOrder({

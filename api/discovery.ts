@@ -90,13 +90,13 @@ function buildDiscoverySchemas({
     {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "Readative Discovery Index",
+      name: "Readative Posts Index",
       url: absoluteUrl(DISCOVERY_INDEX_PATH),
       description:
-        "Crawlable Readative index of published posts, categories, profiles, and SmartTalk discussions.",
+        "Crawlable Readative index focused on published posts, with SmartTalk discussions, profiles, and lightweight topic navigation.",
       mainEntity: {
         "@type": "ItemList",
-        name: "Readative crawlable content",
+        name: "Readative published posts and discussions",
         itemListElement: [
           ...posts.slice(0, 30).map((post, index) => ({
             "@type": "ListItem",
@@ -212,9 +212,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const allPosts = [...posts]
     .filter((post) => !recentPostIds.has(post.id))
     .sort((left, right) => left.title.localeCompare(right.title));
-  const pageTitle = "Readative Posts and Discovery Index";
+  const pageTitle = "Readative Posts Index | Practical Knowledge and SmartTalk";
   const pageDescription =
-    "Crawlable Readative index of published posts, categories, profiles, SmartTalk questions, and important discovery pages.";
+    "Browse published Readative posts first, with SmartTalk questions, contributor profiles, categories, and lightweight topic shortcuts for discovery.";
   const discoverySchemas = buildDiscoverySchemas({
     posts,
     profiles: data.profiles,
@@ -259,13 +259,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <body>
 <main>
   <header>
-    <h1>Readative Discovery Index</h1>
-  <p>${posts.length} published posts, ${smartTalks.length} SmartTalk discussions, and ${data.profiles.length} contributor profiles are linked here for search crawlers and readers.</p>
+    <h1>Readative Posts Index</h1>
+  <p>${posts.length} published posts, ${smartTalks.length} SmartTalk discussions, and ${data.profiles.length} contributor profiles are linked here. Posts are listed first because they are the primary public knowledge pages.</p>
   </header>
+  ${renderSection(
+    "Recent Posts",
+    recentPosts.map((post) => renderPostLink(post, profileById)),
+  )}
+  ${renderSection(
+    "More Published Posts",
+    allPosts.map((post) => renderPostLink(post, profileById)),
+  )}
+  ${renderSection(
+    "SmartTalk Discussions",
+    smartTalks.map((question) => renderSmartTalkLink(question, profileById)),
+  )}
   ${renderSection("Important Pages", [
     renderLink("/", "Readative Home", "Knowledge feed"),
-    renderLink("/explore", "Explore", "Topics, posts, discussions, and contributors"),
     renderLink("/smarttalks", "SmartTalk", "Community questions and answers"),
+    renderLink("/explore", "Explore", "Posts, discussions, categories, and contributors"),
     renderLink("/about", "About Readative", "Mission and platform information"),
     renderLink("/projects", "Projects", "Innovation platform project lifecycle"),
     renderLink("/mission", "Mission", "Info Hub vision and technology direction"),
@@ -289,27 +301,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       renderLink(
         category.path,
         category.label,
-        `${category.description} Related: ${category.topicSlugs.slice(0, 4).join(", ")}`,
+        `${category.description} Related posts are listed on the category page.`,
       ),
     ),
   )}
   ${renderSection(
-    "Topics",
+    "Topic Shortcuts",
     SEO_TOPICS.map((topic) =>
-      renderLink(topic.path, topic.label, topic.description),
+      renderLink(topic.path, topic.label),
     ),
-  )}
-  ${renderSection(
-    "Recent Posts",
-    recentPosts.map((post) => renderPostLink(post, profileById)),
-  )}
-  ${renderSection(
-    "SmartTalk Discussions",
-    smartTalks.map((question) => renderSmartTalkLink(question, profileById)),
-  )}
-  ${renderSection(
-    "All Published Posts",
-    allPosts.map((post) => renderPostLink(post, profileById)),
   )}
   ${renderSection(
     "Profiles",

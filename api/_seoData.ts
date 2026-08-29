@@ -3,7 +3,6 @@ import { getFirestore } from "firebase-admin/firestore";
 import {
   SEO_CATEGORIES,
   SEO_TAGS,
-  SEO_TOPICS,
   normalizeSeoSlug,
 } from "../src/utils/seoTaxonomy.js";
 import {
@@ -147,9 +146,9 @@ type FirestoreValue =
 
 const STATIC_PAGES = [
   { path: "/", priority: "1.0", changefreq: "daily" as const, lastmod: null },
-  { path: "/explore", priority: "0.8", changefreq: "weekly" as const, lastmod: null },
-  { path: "/smarttalks", priority: "0.8", changefreq: "weekly" as const, lastmod: null },
-  { path: DISCOVERY_INDEX_PATH, priority: "0.9", changefreq: "daily" as const, lastmod: null },
+  { path: DISCOVERY_INDEX_PATH, priority: "0.95", changefreq: "daily" as const, lastmod: null },
+  { path: "/smarttalks", priority: "0.9", changefreq: "weekly" as const, lastmod: null },
+  { path: "/explore", priority: "0.6", changefreq: "weekly" as const, lastmod: null },
   { path: "/about", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 27) },
   { path: "/contact", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/privacy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
@@ -775,51 +774,6 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
     );
   }
 
-  for (const category of SEO_CATEGORIES) {
-    const categoryTagSlugs = category.tagSlugs as readonly string[];
-    const categoryLastmod = maxCategoryLastmod(indexableData, category.id, categoryTagSlugs);
-    if (!categoryLastmod) continue;
-    entries.push(
-      buildEntry(
-        category.path,
-        "category",
-        categoryLastmod,
-        "weekly",
-        "0.9",
-      ),
-    );
-  }
-
-  for (const topic of SEO_TOPICS) {
-    const topicLastmod = maxPostLastmod(indexablePosts, (post) =>
-      post.hashtags.some((tag) => topic.tagSlugs.includes(tag) || tag === topic.id),
-    );
-    if (!topicLastmod) continue;
-    entries.push(
-      buildEntry(
-        topic.path,
-        "topic",
-        topicLastmod,
-        "weekly",
-        "0.75",
-      ),
-    );
-  }
-
-  for (const tag of indexableTags) {
-    if (tag.postCount < TAG_SITEMAP_MIN_POST_COUNT || !tag.lastmod) continue;
-
-    entries.push(
-      buildEntry(
-        `/tag/${encodeURIComponent(tag.id)}`,
-        "tag",
-        tag.lastmod,
-        "weekly",
-        "0.55",
-      ),
-    );
-  }
-
   for (const post of indexablePosts) {
     entries.push(
       buildEntry(
@@ -827,7 +781,19 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         "post",
         post.updatedAt || post.createdAt,
         getChangeFrequency(post.updatedAt, post.createdAt),
-        "0.8",
+        "0.95",
+      ),
+    );
+  }
+
+  for (const question of indexableSmartTalks) {
+    entries.push(
+      buildEntry(
+        buildSmartTalkSeoPath(question.id, question.title),
+        "smarttalk",
+        question.updatedAt || question.createdAt,
+        getChangeFrequency(question.updatedAt, question.createdAt),
+        "0.75",
       ),
     );
   }
@@ -841,19 +807,36 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
         "profile",
         profile.updatedAt,
         "weekly",
-        "0.7",
+        "0.6",
       ),
     );
   }
 
-  for (const question of indexableSmartTalks) {
+  for (const category of SEO_CATEGORIES) {
+    const categoryTagSlugs = category.tagSlugs as readonly string[];
+    const categoryLastmod = maxCategoryLastmod(indexableData, category.id, categoryTagSlugs);
+    if (!categoryLastmod) continue;
     entries.push(
       buildEntry(
-        buildSmartTalkSeoPath(question.id, question.title),
-        "smarttalk",
-        question.updatedAt || question.createdAt,
-        getChangeFrequency(question.updatedAt, question.createdAt),
-        "0.65",
+        category.path,
+        "category",
+        categoryLastmod,
+        "weekly",
+        "0.45",
+      ),
+    );
+  }
+
+  for (const tag of indexableTags) {
+    if (tag.postCount < TAG_SITEMAP_MIN_POST_COUNT || !tag.lastmod) continue;
+
+    entries.push(
+      buildEntry(
+        `/tag/${encodeURIComponent(tag.id)}`,
+        "tag",
+        tag.lastmod,
+        "weekly",
+        "0.35",
       ),
     );
   }

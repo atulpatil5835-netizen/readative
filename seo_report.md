@@ -1,6 +1,6 @@
 # Release H7 Username SEO Report
 
-Generated: 2026-07-29T06:27:44.725Z
+Generated: 2026-08-29T15:11:21.349Z
 
 ## Summary
 
@@ -14,21 +14,28 @@ Generated: 2026-07-29T06:27:44.725Z
 - SEO V2 schema version: 1
 - SEO V2 projection version: 1
 - Firestore SEO data source: rest
-- Published post URLs discovered: 349
+- Published post URLs discovered: 361
+- Indexable post URLs expected in sitemap: 256
 - SmartTalk discussions discovered: 109
+- Indexable SmartTalk URLs expected in sitemap: 102
 - Profile URLs discovered: 33
-- Tag URLs discovered: 563
-- Total sitemap URLs generated: 525
+- Indexable profile URLs expected in sitemap: 19
+- Tag URLs discovered: 576
+- Indexable high-volume tag URLs expected in sitemap: 36
+- Total sitemap URLs generated: 439
 
 ## Files Changed
 
 - api/_seoData.ts
+- api/_document.ts
 - api/discovery.ts
 - api/post.ts
 - api/profile.ts
 - api/smarttalk.ts
 - api/smarttalks.ts
 - api/taxonomy.ts
+- index.html
+- public/amp/index.html
 - src/components/Explore.tsx
 - src/components/KnowledgeCard/CardContent.tsx
 - src/components/KnowledgeCard/KnowledgeCard.tsx
@@ -55,16 +62,18 @@ Generated: 2026-07-29T06:27:44.725Z
 
 ## Sitemap Coverage
 
-- Published posts in sitemap: 349 / 349
+- Published posts in sitemap: 256 / 256
 - Missing post URLs: 0
-- SmartTalk discussions in sitemap: 109 / 109
+- SmartTalk discussions in sitemap: 102 / 102
 - Missing SmartTalk URLs: 0
-- Profiles in sitemap: 33 / 33
+- Profiles in sitemap: 19 / 19
 - Missing profile URLs: 0
-- Categories in sitemap: 8
-- Topics in sitemap: 7
-- Tags in sitemap: 0
-- Profiles in sitemap: 33
+- High-volume tags in sitemap (5+ posts): 36 / 36
+- Missing tag URLs: 0
+- Categories in sitemap: 7
+- Topics in sitemap: 0 (expected 0; topic shortcuts are noindex/follow)
+- Tags in sitemap: 36
+- Profiles in sitemap: 19
 - Important pages in sitemap: 19
 
 ## Canonical Verification
@@ -88,6 +97,7 @@ Generated: 2026-07-29T06:27:44.725Z
 - Explore taxonomy rewrite: PASS
 - Category taxonomy rewrite: PASS
 - Topic taxonomy rewrite: PASS
+- Tag taxonomy rewrite: PASS
 - Canonical profile rewrite (/@:username): PASS
 - Legacy profile rewrite (/profile/:id): PASS
 - Static _redirects profile parity: PASS
@@ -110,14 +120,20 @@ Generated: 2026-07-29T06:27:44.725Z
 
 ## Crawlability And Indexability
 
-- Every published post has sitemap coverage: PASS
-- Every public SmartTalk has sitemap coverage: PASS
-- Every public profile has sitemap coverage: PASS
-- Every published post has at least one crawlable inbound link: PASS
+- Every indexable published post has sitemap coverage: PASS
+- Every indexable public SmartTalk has sitemap coverage: PASS
+- Every profile with indexable content has sitemap coverage: PASS
+- Every high-volume public tag has sitemap coverage: PASS
+- Every indexable published post has at least one crawlable inbound link: PASS
 - Inbound source: https://www.readative.com/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
-- Category/topic/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
+- Category/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
+- Topic shortcut handling: PASS - topic pages stay crawlable through internal links but are noindex/follow and excluded from the sitemap so posts carry search priority.
+- Static homepage canonical: PASS - the Vite shell served at / includes https://www.readative.com/ as its canonical URL.
+- Static homepage robots: PASS - the Vite shell served at / is index/follow.
+- Static homepage discovery links: PASS - the no-JavaScript fallback links Posts, SmartTalk, and Explore.
 - robots.txt allows crawling: PASS
+- robots.txt canonical sitemap directive: PASS
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
 
@@ -139,7 +155,8 @@ Generated: 2026-07-29T06:27:44.725Z
 3. Inspect a few /posts/{slug}--{id} URLs from the sitemap.
 4. Inspect https://www.readative.com/smarttalks to seed SmartTalk discussion discovery.
 5. Inspect several https://www.readative.com/@username profile URLs from the sitemap.
-6. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
+6. Inspect several https://www.readative.com/tag/{slug} pages from the sitemap and one https://www.readative.com/topic/{slug} page to confirm it emits noindex/follow.
+7. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
 
 ## Notes
 

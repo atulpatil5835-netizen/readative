@@ -8,7 +8,7 @@ const KNOWLEDGE_ACTIVITY_LIMIT = 260;
 const KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v3";
 const LEGACY_KNOWLEDGE_SEEN_ENTRY_KEY_PREFIX = "readativeKnowledgeSeenEntries:v2";
 const KNOWLEDGE_ACTIVITY_KEY_PREFIX = "readativeKnowledgeFeedActivity:v2";
-const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 18;
+const KNOWLEDGE_REPEAT_COOLDOWN_HOURS = 24 * 30;
 const KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS = 72;
 const KNOWLEDGE_REFRESH_WINDOW_SIZE = 10;
 const DUPLICATE_ACTIVITY_WINDOWS_MS = {
@@ -620,44 +620,38 @@ function getRefreshDiscoveryScore(
   entry: KnowledgeEntry,
   snapshot: KnowledgeFeedSnapshot,
   ageHours: number,
-  hoursSinceSeen: number | null,
+  seen: boolean,
   refreshSeed?: number,
 ) {
   if (typeof refreshSeed !== "number" || !Number.isFinite(refreshSeed)) {
     return 0;
   }
 
+  if (seen) {
+    return 0;
+  }
+
   const noise = getStableRefreshNoise(entry.id, refreshSeed);
   const hasLikedTopicHistory = snapshot.likedHashtagAffinity.size > 0;
   const freshUnseenWeight =
-    hoursSinceSeen === null
-      ? ageHours <= 12
+    ageHours <= 12
+      ? hasLikedTopicHistory
+        ? 14
+        : 70
+      : ageHours <= 48
         ? hasLikedTopicHistory
-          ? 14
-          : 70
-        : ageHours <= 48
+          ? 11
+          : 58
+        : ageHours <= 120
           ? hasLikedTopicHistory
-            ? 11
-            : 58
-          : ageHours <= 120
-            ? hasLikedTopicHistory
-              ? 7
-              : 42
-            : hasLikedTopicHistory
-              ? 4
-              : 18
-      : hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS
-        ? hasLikedTopicHistory
-          ? 4
-          : 20
-        : hasLikedTopicHistory
-          ? 1.5
-          : 10;
+            ? 7
+            : 42
+          : hasLikedTopicHistory
+            ? 4
+            : 18;
   const likedTopicBoost = getRepeatedLikedTopicBoost(entry, snapshot);
   const relatedDiscoveryBoost =
-    likedTopicBoost > 0 && hoursSinceSeen === null
-      ? clamp(likedTopicBoost / 2.6, 3, 10)
-      : 0;
+    likedTopicBoost > 0 ? clamp(likedTopicBoost / 2.6, 3, 10) : 0;
 
   return noise * freshUnseenWeight + relatedDiscoveryBoost;
 }
@@ -750,7 +744,7 @@ function scoreKnowledgeEntry(
     entry,
     snapshot,
     ageHours,
-    hoursSinceSeen,
+    seen,
     options.refreshSeed,
   );
   const newUnseenPostBoost = getNewUnseenPostBoost(ageHours, seen, likedByCurrentUser);
@@ -847,23 +841,11 @@ function diversifyRankedEntries(scoredEntries: ScoredKnowledgeEntry[]) {
 }
 
 function isPrimaryFeedCandidate(candidate: ScoredKnowledgeEntry) {
-  if (
-    candidate.likedByCurrentUser &&
-    (candidate.hoursSinceSeen === null ||
-      candidate.hoursSinceSeen < KNOWLEDGE_LIKED_ENTRY_COOLDOWN_HOURS)
-  ) {
+  if (candidate.likedByCurrentUser || candidate.seen) {
     return false;
   }
 
-  if (!candidate.seen || candidate.hoursSinceSeen === null) {
-    return true;
-  }
-
-  if (candidate.hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS) {
-    return true;
-  }
-
-  return candidate.ageHours <= 6 && candidate.score >= 28;
+  return true;
 }
 
 function buildLatestEntriesFallback(scoredEntries: ScoredKnowledgeEntry[]) {
@@ -971,44 +953,34 @@ function putRefreshDiscoveryEntriesFirst(
 
   const now = Date.now();
   const unseenEntries: KnowledgeEntry[] = [];
-  const cooledDownEntries: KnowledgeEntry[] = [];
   const remainingEntries: KnowledgeEntry[] = [];
 
   entries.forEach((entry) => {
     const likedByCurrentUser = isLikedByCurrentUser(entry, snapshot);
     const hoursSinceSeen = getHoursSinceSeen(entry.id, snapshot, now);
+    const seen = snapshot.seenEntryIds.has(entry.id);
 
-    if (!likedByCurrentUser && hoursSinceSeen === null) {
+    if (!likedByCurrentUser && !seen && hoursSinceSeen === null) {
       unseenEntries.push(entry);
-      return;
-    }
-
-    if (
-      !likedByCurrentUser &&
-      hoursSinceSeen >= KNOWLEDGE_REPEAT_COOLDOWN_HOURS
-    ) {
-      cooledDownEntries.push(entry);
       return;
     }
 
     remainingEntries.push(entry);
   });
 
-  const discoveryEntries =
-    unseenEntries.length > 0 ? unseenEntries : cooledDownEntries;
-  if (discoveryEntries.length === 0) {
+  if (unseenEntries.length === 0) {
     return entries;
   }
 
   const refreshWindowSize = Math.min(
     KNOWLEDGE_REFRESH_WINDOW_SIZE,
-    discoveryEntries.length,
+    unseenEntries.length,
   );
   const startIndex = Math.floor(
     getStableRefreshNoise("refresh-lead", refreshSeed) * refreshWindowSize,
   );
-  const discoveryWindow = discoveryEntries.slice(0, refreshWindowSize);
-  const discoveryTail = discoveryEntries.slice(refreshWindowSize);
+  const discoveryWindow = unseenEntries.slice(0, refreshWindowSize);
+  const discoveryTail = unseenEntries.slice(refreshWindowSize);
   const rotatedDiscoveryWindow = [
     ...discoveryWindow.slice(startIndex),
     ...discoveryWindow.slice(0, startIndex),
@@ -1017,7 +989,6 @@ function putRefreshDiscoveryEntriesFirst(
   return [
     ...rotatedDiscoveryWindow,
     ...discoveryTail,
-    ...cooledDownEntries.filter((entry) => !discoveryEntries.includes(entry)),
     ...remainingEntries,
   ];
 }

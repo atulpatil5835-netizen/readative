@@ -7,29 +7,34 @@
     />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Readative | Knowledge That Deserves To Spread</title>
+    <title>Readative | Posts and SmartTalk</title>
     <meta
       data-rh="true"
       name="description"
-      content="Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles."
+      content="Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, and SmartTalk Q&A."
     />
     <meta
       data-rh="true"
       name="keywords"
-      content="Readative, knowledge sharing, practical insights, visual explainers, AI tools, study notes, SmartTalk Q&A, educational posts, creator profiles, learning community"
+      content="Readative, SmartTalk, knowledge posts, practical insights, visual explainers, study notes, Q&A, educational posts, creator profiles, learning community"
     />
     <meta name="author" content="Readative" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <link rel="canonical" href="https://www.readative.com/" />
 
     <meta data-rh="true" property="og:type" content="website" />
     <meta
       data-rh="true"
       property="og:title"
-      content="Readative | Knowledge That Deserves To Spread"
+      content="Readative | Posts and SmartTalk"
     />
     <meta
       data-rh="true"
       property="og:description"
-      content="Discover and publish practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles on Readative."
+      content="Discover and publish practical posts, visual explainers, study notes, and SmartTalk Q&A on Readative."
     />
     <meta data-rh="true" property="og:image" content="https://www.readative.com/logo.png" />
     <meta data-rh="true" property="og:site_name" content="Readative" />
@@ -39,12 +44,12 @@
     <meta
       data-rh="true"
       name="twitter:title"
-      content="Readative | Knowledge That Deserves To Spread"
+      content="Readative | Posts and SmartTalk"
     />
     <meta
       data-rh="true"
       name="twitter:description"
-      content="Discover and publish practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles on Readative."
+      content="Discover and publish practical posts, visual explainers, study notes, and SmartTalk Q&A on Readative."
     />
     <meta data-rh="true" name="twitter:image" content="https://www.readative.com/logo.png" />
 
@@ -65,8 +70,21 @@
           {
             "@type": "WebSite",
             "name": "Readative",
+            "alternateName": ["Readative SmartTalk", "Readative Posts"],
             "url": "https://www.readative.com/",
-            "description": "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles."
+            "description": "Readative is a knowledge feed for discovering and publishing practical posts, visual explainers, study notes, and SmartTalk Q&A.",
+            "hasPart": [
+              {
+                "@type": "CollectionPage",
+                "name": "SmartTalk",
+                "url": "https://www.readative.com/smarttalks"
+              },
+              {
+                "@type": "CollectionPage",
+                "name": "Readative Posts",
+                "url": "https://www.readative.com/posts"
+              }
+            ]
           },
           {
             "@type": "WebApplication",
@@ -74,7 +92,7 @@
             "url": "https://www.readative.com/",
             "applicationCategory": "EducationalApplication",
             "operatingSystem": "Web",
-            "description": "Discover and publish practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles on Readative.",
+            "description": "Discover and publish practical posts, visual explainers, study notes, and SmartTalk Q&A on Readative.",
             "offers": {
               "@type": "Offer",
               "price": "0",
@@ -98,9 +116,13 @@
         <h1>Readative</h1>
         <p>
           Readative is a knowledge feed for discovering and publishing practical
-          posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and
-          creator profiles.
+          posts, visual explainers, study notes, and SmartTalk Q&A.
         </p>
+        <nav aria-label="Readative sections">
+          <a href="/posts">Posts</a>
+          <a href="/smarttalks">SmartTalk</a>
+          <a href="/explore">Explore</a>
+        </nav>
       </main>
     </noscript>
     <div id="root"></div>

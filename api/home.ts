@@ -11,7 +11,6 @@ import {
 } from "./_seoData.js";
 import {
   SEO_CATEGORIES,
-  SEO_TOPICS,
 } from "../src/utils/seoTaxonomy.js";
 import {
   buildPostSeoPath,
@@ -26,7 +25,6 @@ import {
 
 const HOME_ITEM_LIMIT = 12;
 const SMARTTALK_LIMIT = 8;
-const TOPIC_LIMIT = 18;
 
 function absoluteUrl(path: string) {
   return `${SITE_URL}${path}`;
@@ -36,8 +34,8 @@ function renderNav() {
   return `<nav class="seo-nav" aria-label="Primary">
     <a class="seo-brand" href="/">Readative</a>
     <span class="seo-navlinks">
-      <a href="/posts">Posts</a>
       <a href="/smarttalks">SmartTalk</a>
+      <a href="/posts">Posts</a>
       <a href="/explore">Explore</a>
       <a href="/about">About</a>
     </span>
@@ -132,10 +130,27 @@ function buildHomeSchemas({
       "@type": "WebSite",
       "@id": `${SITE_URL}/#website`,
       name: "Readative",
+      alternateName: ["Readative SmartTalk", "Readative Posts"],
       url: SITE_URL,
       description:
-        "Readative is a knowledge feed for practical posts, visual explainers, study notes, SmartTalk Q&A, and creator profiles.",
+        "Readative is a knowledge feed for practical posts, visual explainers, study notes, and SmartTalk Q&A.",
       publisher: { "@id": `${SITE_URL}/#organization` },
+      hasPart: [
+        {
+          "@type": "CollectionPage",
+          "@id": `${SITE_URL}/smarttalks#page`,
+          name: "SmartTalk",
+          url: `${SITE_URL}/smarttalks`,
+          description: "Readative SmartTalk questions and community answers.",
+        },
+        {
+          "@type": "CollectionPage",
+          "@id": `${SITE_URL}/posts#page`,
+          name: "Readative Posts",
+          url: `${SITE_URL}/posts`,
+          description: "Published Readative posts and practical knowledge guides.",
+        },
+      ],
       potentialAction: {
         "@type": "SearchAction",
         target: `${SITE_URL}/posts?q={search_term_string}`,
@@ -150,12 +165,37 @@ function buildHomeSchemas({
       url: SITE_URL,
       isPartOf: { "@id": `${SITE_URL}/#website` },
       description:
-        "A crawlable entry point to Readative's published knowledge posts, SmartTalk discussions, topic collections, and contributor pages.",
+        "A crawlable entry point to Readative's published knowledge posts, SmartTalk discussions, and contributor pages.",
       mainEntity: {
         "@type": "ItemList",
         name: "Readative featured public content",
         itemListElement,
       },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "Readative primary sections",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Readative",
+          url: SITE_URL,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "SmartTalk",
+          url: `${SITE_URL}/smarttalks`,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: "Posts",
+          url: `${SITE_URL}/posts`,
+        },
+      ],
     },
   ];
 }
@@ -188,13 +228,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       href: category.path,
       label: category.label,
     }));
-    const topicLinks = SEO_TOPICS.slice(0, TOPIC_LIMIT).map((topic) => ({
-      href: topic.path,
-      label: topic.label,
-    }));
-    const pageTitle = "Readative | Practical Knowledge Posts and SmartTalk";
+    const pageTitle = "Readative | Posts and SmartTalk";
     const pageDescription =
-      "Readative helps readers discover practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.";
+      "Readative helps readers discover practical posts, visual explainers, study notes, and SmartTalk Q&A from creator profiles.";
     const schema = buildHomeSchemas({
       posts: recentPosts,
       questions: activeQuestions,
@@ -247,12 +283,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <div class="seo-tags">${renderPills(categoryLinks)}</div>
         </section>
         <section class="seo-card">
-          <h2>Topic Collections</h2>
-          <div class="seo-tags">${renderPills(topicLinks)}</div>
-        </section>
-        <section class="seo-card">
           <h2>Reader Trust</h2>
-          <p>Readative keeps public discovery focused on useful posts, creator context, clear policies, and crawlable topic pages. Empty states, private activity, alerts, and account screens are not used as advertising inventory.</p>
+          <p>Readative keeps public discovery focused on useful posts, SmartTalk answers, creator context, and clear policies. Empty states, private activity, alerts, and account screens are not used as advertising inventory.</p>
           <div class="seo-tags">
             <a href="/editorial-policy">Editorial Policy</a>
             <a href="/content-policy">Content Policy</a>

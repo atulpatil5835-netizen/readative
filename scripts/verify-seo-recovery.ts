@@ -5,6 +5,9 @@ import {
   buildSeoProfilePath,
   buildSitemapEntries,
   describeSeoV2Foundation,
+  getIndexableSeoPosts,
+  getIndexableSeoSmartTalks,
+  getIndexableSeoTags,
   loadSeoData,
   SITE_URL,
   TAG_SITEMAP_MIN_POST_COUNT,
@@ -42,24 +45,35 @@ function markdownList(items: string[]) {
 async function main() {
   const seoArchitecture = describeSeoV2Foundation();
   const data = await loadSeoData();
+  const indexablePosts = getIndexableSeoPosts(data.posts);
+  const indexableSmartTalks = getIndexableSeoSmartTalks(data.smartTalks);
+  const indexableAuthorIds = new Set([
+    ...indexablePosts.map((post) => post.authorId).filter(Boolean),
+    ...indexableSmartTalks.map((question) => question.authorId).filter(Boolean),
+  ]);
+  const indexableProfiles = data.profiles.filter((profile) =>
+    indexableAuthorIds.has(profile.id),
+  );
+  const indexableTags = getIndexableSeoTags(data.posts);
   const entries = buildSitemapEntries(data);
   const sitemapUrls = new Set(entries.map((entry) => entry.loc));
-  const postUrls = data.posts.map(
+  const postUrls = indexablePosts.map(
     (post) => `${SITE_URL}${buildPostSeoPath(post.id, post.title)}`,
   );
-  const smartTalkUrls = data.smartTalks.map(
+  const smartTalkUrls = indexableSmartTalks.map(
     (question) => `${SITE_URL}${buildSmartTalkSeoPath(question.id, question.title)}`,
   );
-  const profileUrls = data.profiles.map(
+  const profileUrls = indexableProfiles.map(
     (profile) => `${SITE_URL}${buildSeoProfilePath(profile)}`,
   );
-  const tagUrls = data.tags
+  const tagUrls = indexableTags
     .filter((tag) => tag.postCount >= TAG_SITEMAP_MIN_POST_COUNT)
     .map((tag) => `${SITE_URL}/tag/${encodeURIComponent(tag.id)}`);
   const missingPostUrls = postUrls.filter((url) => !sitemapUrls.has(url));
   const missingSmartTalkUrls = smartTalkUrls.filter((url) => !sitemapUrls.has(url));
   const missingProfileUrls = profileUrls.filter((url) => !sitemapUrls.has(url));
   const missingTagUrls = tagUrls.filter((url) => !sitemapUrls.has(url));
+  const topicSitemapUrls = entries.filter((entry) => entry.type === "topic");
   const nonHandleProfileUrls = data.profiles.filter(
     (profile) => !buildSeoProfilePath(profile).startsWith("/@"),
   );
@@ -84,6 +98,19 @@ async function main() {
   const robotsAdvertisesOnlyCanonicalSitemap =
     robotsSitemapDirectives.length === 1 &&
     robotsSitemapDirectives[0] === robotsCanonicalSitemap;
+  const indexShell = readFile("index.html");
+  const rootCanonicalPattern = new RegExp(
+    `<link\\b(?=[^>]*\\brel=["']canonical["'])(?=[^>]*\\bhref=["']${SITE_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/["'])[^>]*>`,
+    "i",
+  );
+  const rootRobotsPattern =
+    /<meta\b(?=[^>]*\bname=["']robots["'])(?=[^>]*\bcontent=["'][^"']*\bindex\b[^"']*\bfollow\b)[^>]*>/i;
+  const staticRootHasCanonical = rootCanonicalPattern.test(indexShell);
+  const staticRootHasIndexRobots = rootRobotsPattern.test(indexShell);
+  const staticRootHasDiscoveryLinks =
+    /href=["']\/posts["']/i.test(indexShell) &&
+    /href=["']\/smarttalks["']/i.test(indexShell) &&
+    /href=["']\/explore["']/i.test(indexShell);
   const vercel = JSON.parse(readFile("vercel.json")) as {
     redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
     rewrites?: Array<{ source: string; destination: string }>;
@@ -191,12 +218,15 @@ async function main() {
   );
   const changedFiles = [
     "api/_seoData.ts",
+    "api/_document.ts",
     "api/discovery.ts",
     "api/post.ts",
     "api/profile.ts",
     "api/smarttalk.ts",
     "api/smarttalks.ts",
     "api/taxonomy.ts",
+    "index.html",
+    "public/amp/index.html",
     "src/components/Explore.tsx",
     "src/components/KnowledgeCard/CardContent.tsx",
     "src/components/KnowledgeCard/KnowledgeCard.tsx",
@@ -221,7 +251,7 @@ async function main() {
     "task.md",
     "final_report.md",
   ];
-  const postInboundLinkCoverage = data.posts.length;
+  const postInboundLinkCoverage = indexablePosts.length;
   const canonicalStatus =
     nonCanonicalUrls.length === 0
       ? "PASS - all sitemap URLs use https://www.readative.com"
@@ -253,6 +283,7 @@ async function main() {
     missingSmartTalkUrls.length === 0 ? null : `${missingSmartTalkUrls.length} SmartTalk URLs missing from sitemap`,
     missingProfileUrls.length === 0 ? null : `${missingProfileUrls.length} profile URLs missing from sitemap`,
     missingTagUrls.length === 0 ? null : `${missingTagUrls.length} tag URLs missing from sitemap`,
+    topicSitemapUrls.length === 0 ? null : `${topicSitemapUrls.length} topic URLs should not be in sitemap`,
     nonCanonicalUrls.length === 0 ? null : `${nonCanonicalUrls.length} sitemap URLs use a non-canonical host`,
     duplicateSitemapUrlGroups.length === 0 ? null : `${duplicateSitemapUrlGroups.length} duplicate sitemap URL groups`,
     duplicateUsernameGroups.length === 0 ? null : `${duplicateUsernameGroups.length} duplicate username groups`,
@@ -279,6 +310,9 @@ async function main() {
     hasRedirectsCategory ? null : "missing _redirects /category/* taxonomy rewrite",
     hasRedirectsTopic ? null : "missing _redirects /topic/* taxonomy rewrite",
     hasRedirectsTag ? null : "missing _redirects /tag/* taxonomy rewrite",
+    staticRootHasCanonical ? null : "static root shell is missing canonical URL",
+    staticRootHasIndexRobots ? null : "static root shell is missing index/follow robots meta",
+    staticRootHasDiscoveryLinks ? null : "static root shell is missing crawlable discovery links",
     robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
     robotsAdvertisesOnlyCanonicalSitemap
       ? null
@@ -301,9 +335,13 @@ Generated: ${new Date().toISOString()}
 - SEO V2 projection version: ${seoArchitecture.projectionVersion}
 - Firestore SEO data source: ${data.source}
 - Published post URLs discovered: ${data.posts.length}
+- Indexable post URLs expected in sitemap: ${indexablePosts.length}
 - SmartTalk discussions discovered: ${data.smartTalks.length}
+- Indexable SmartTalk URLs expected in sitemap: ${indexableSmartTalks.length}
 - Profile URLs discovered: ${data.profiles.length}
+- Indexable profile URLs expected in sitemap: ${indexableProfiles.length}
 - Tag URLs discovered: ${data.tags.length}
+- Indexable high-volume tag URLs expected in sitemap: ${tagUrls.length}
 - Total sitemap URLs generated: ${entries.length}
 
 ## Files Changed
@@ -312,16 +350,16 @@ ${markdownList(changedFiles)}
 
 ## Sitemap Coverage
 
-- Published posts in sitemap: ${data.posts.length - missingPostUrls.length} / ${data.posts.length}
+- Published posts in sitemap: ${indexablePosts.length - missingPostUrls.length} / ${indexablePosts.length}
 - Missing post URLs: ${missingPostUrls.length}
-- SmartTalk discussions in sitemap: ${data.smartTalks.length - missingSmartTalkUrls.length} / ${data.smartTalks.length}
+- SmartTalk discussions in sitemap: ${indexableSmartTalks.length - missingSmartTalkUrls.length} / ${indexableSmartTalks.length}
 - Missing SmartTalk URLs: ${missingSmartTalkUrls.length}
-- Profiles in sitemap: ${data.profiles.length - missingProfileUrls.length} / ${data.profiles.length}
+- Profiles in sitemap: ${indexableProfiles.length - missingProfileUrls.length} / ${indexableProfiles.length}
 - Missing profile URLs: ${missingProfileUrls.length}
 - High-volume tags in sitemap (${TAG_SITEMAP_MIN_POST_COUNT}+ posts): ${tagUrls.length - missingTagUrls.length} / ${tagUrls.length}
 - Missing tag URLs: ${missingTagUrls.length}
 - Categories in sitemap: ${entries.filter((entry) => entry.type === "category").length}
-- Topics in sitemap: ${entries.filter((entry) => entry.type === "topic").length}
+- Topics in sitemap: ${topicSitemapUrls.length} (expected 0; topic shortcuts are noindex/follow)
 - Tags in sitemap: ${entries.filter((entry) => entry.type === "tag").length}
 - Profiles in sitemap: ${entries.filter((entry) => entry.type === "profile").length}
 - Important pages in sitemap: ${entries.filter((entry) => entry.type === "page").length}
@@ -370,14 +408,18 @@ ${markdownList(changedFiles)}
 
 ## Crawlability And Indexability
 
-- Every published post has sitemap coverage: ${missingPostUrls.length === 0 ? "PASS" : "FAIL"}
-- Every public SmartTalk has sitemap coverage: ${missingSmartTalkUrls.length === 0 ? "PASS" : "FAIL"}
-- Every public profile has sitemap coverage: ${missingProfileUrls.length === 0 ? "PASS" : "FAIL"}
+- Every indexable published post has sitemap coverage: ${missingPostUrls.length === 0 ? "PASS" : "FAIL"}
+- Every indexable public SmartTalk has sitemap coverage: ${missingSmartTalkUrls.length === 0 ? "PASS" : "FAIL"}
+- Every profile with indexable content has sitemap coverage: ${missingProfileUrls.length === 0 ? "PASS" : "FAIL"}
 - Every high-volume public tag has sitemap coverage: ${missingTagUrls.length === 0 ? "PASS" : "FAIL"}
-- Every published post has at least one crawlable inbound link: ${postInboundLinkCoverage === data.posts.length ? "PASS" : "FAIL"}
+- Every indexable published post has at least one crawlable inbound link: ${postInboundLinkCoverage === indexablePosts.length ? "PASS" : "FAIL"}
 - Inbound source: ${SITE_URL}/posts links every /posts/{slug}--{id} with real HTML anchors.
 - Related/recent post links: PASS - focused post pages render crawlable related and recent /posts/{slug}--{id} anchors.
-- Category/topic/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
+- Category/tag/profile links: PASS - discovery index plus server-rendered taxonomy pages expose real anchors, with profiles linked as /@username when profile data is available.
+- Topic shortcut handling: ${topicSitemapUrls.length === 0 ? "PASS" : "FAIL"} - topic pages stay crawlable through internal links but are noindex/follow and excluded from the sitemap so posts carry search priority.
+- Static homepage canonical: ${staticRootHasCanonical ? "PASS" : "FAIL"} - the Vite shell served at / includes ${SITE_URL}/ as its canonical URL.
+- Static homepage robots: ${staticRootHasIndexRobots ? "PASS" : "FAIL"} - the Vite shell served at / is index/follow.
+- Static homepage discovery links: ${staticRootHasDiscoveryLinks ? "PASS" : "FAIL"} - the no-JavaScript fallback links Posts, SmartTalk, and Explore.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
 - robots.txt canonical sitemap directive: ${robotsAdvertisesOnlyCanonicalSitemap ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
@@ -401,7 +443,7 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
 3. Inspect a few /posts/{slug}--{id} URLs from the sitemap.
 4. Inspect ${SITE_URL}/smarttalks to seed SmartTalk discussion discovery.
 5. Inspect several ${SITE_URL}/@username profile URLs from the sitemap.
-6. Inspect several ${SITE_URL}/tag/{slug} pages, including one-post examples from the noindex report and high-volume examples from the sitemap.
+6. Inspect several ${SITE_URL}/tag/{slug} pages from the sitemap and one ${SITE_URL}/topic/{slug} page to confirm it emits noindex/follow.
 7. Watch Page indexing for "Discovered - currently not indexed" to move into crawled/indexed over the next crawl cycles.
 
 ## Notes
@@ -425,15 +467,20 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         discoveryIndexUrl: `${SITE_URL}/posts`,
         smartTalkIndexUrl: `${SITE_URL}/smarttalks`,
         postUrlsDiscovered: data.posts.length,
+        indexablePostUrlsDiscovered: indexablePosts.length,
         smartTalksDiscovered: data.smartTalks.length,
+        indexableSmartTalksDiscovered: indexableSmartTalks.length,
         profileUrlsDiscovered: data.profiles.length,
+        indexableProfileUrlsDiscovered: indexableProfiles.length,
         tagUrlsDiscovered: data.tags.length,
+        indexableTagUrlsDiscovered: indexableTags.length,
         tagSitemapMinPostCount: TAG_SITEMAP_MIN_POST_COUNT,
         sitemapUrls: entries.length,
         missingPostUrls: missingPostUrls.length,
         missingSmartTalkUrls: missingSmartTalkUrls.length,
         missingProfileUrls: missingProfileUrls.length,
         missingTagUrls: missingTagUrls.length,
+        topicUrlsInSitemap: topicSitemapUrls.length,
         duplicateSitemapUrlGroups: duplicateSitemapUrlGroups.length,
         duplicateUsernameGroups: duplicateUsernameGroups.length,
         duplicateTitleGroups: duplicateTitleGroups.length,
@@ -446,6 +493,9 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
         robotsSitemapDirectives,
         robotsAdvertisesOnlyCanonicalSitemap,
+        staticRootHasCanonical,
+        staticRootHasIndexRobots,
+        staticRootHasDiscoveryLinks,
       },
       null,
       2,
