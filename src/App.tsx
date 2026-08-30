@@ -1,5 +1,5 @@
 import { HelmetProvider } from "react-helmet-async";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NotebookProvider } from "./context/NotebookContext";
 import {
   CirclePlus,
@@ -40,10 +40,12 @@ import {
   ROUTE_CHANGE_EVENT,
   type AppRouteTab,
   type AppTab,
+  type RouteChangeDetail,
 } from "./utils/routes";
 import type { LegalSlug } from "./content/legalRoutes";
 import { trackPageView, trackLogin, trackLogout, setAnalyticsUser } from "./utils/analytics";
 import { scheduleThirdPartyScripts } from "./utils/loadThirdPartyScripts";
+import { scheduleDocumentScrollToTop } from "./utils/scrollRestoration";
 
 const KnowledgeFeed = lazy(() =>
   import("./components/KnowledgeFeed").then((module) => ({
@@ -92,6 +94,7 @@ const NOTIFICATION_FALLBACK_LIMIT = 60;
 const COOKIE_CONSENT_STORAGE_KEY = "readativeCookieConsentVersion";
 const COOKIE_CONSENT_VERSION = "2026-07-05.t1";
 const NOTIFICATION_READ_POST_THRESHOLD = 3;
+const HOME_ACTION_DEDUPE_MS = 650;
 
 function hasAcceptedCookieConsent() {
   if (typeof window === "undefined") return true;
@@ -149,6 +152,9 @@ export default function App() {
   );
   const [notificationEngagementPostIds, setNotificationEngagementPostIds] =
     useState<string[]>([]);
+  const lastHomeActionAtRef = useRef(0);
+  const pendingRouteScrollRef = useRef(false);
+  const previousRouteScrollKeyRef = useRef<string | null>(null);
 
   const syncRouteState = useCallback(() => {
     const route = parseRouteFromLocation();
@@ -170,11 +176,14 @@ export default function App() {
     nextProfileUsername: string | null = null,
   ) => {
     setShowNotificationsPanel(false);
-    navigateToRoute(tab, {
+    const didNavigate = navigateToRoute(tab, {
       profileAuthorId: nextProfileAuthorId,
       profileUsername: nextProfileUsername,
       focusedEntryId: nextFocusedEntryId,
     });
+    if (!didNavigate) {
+      scheduleDocumentScrollToTop("smooth");
+    }
   }, []);
 
   const handleOpenProfile = useCallback((authorId: string, username?: string) => {
@@ -191,11 +200,20 @@ export default function App() {
 
   const handleOpenTopic = useCallback((topicId: string | null) => {
     setShowNotificationsPanel(false);
-    navigateToRoute("explore", { selectedTopic: topicId });
+    const didNavigate = navigateToRoute("explore", { selectedTopic: topicId });
+    if (!didNavigate) {
+      scheduleDocumentScrollToTop("smooth");
+    }
   }, []);
 
   const handleHomeAction = useCallback(() => {
     setShowNotificationsPanel(false);
+
+    const now = Date.now();
+    if (now - lastHomeActionAtRef.current < HOME_ACTION_DEDUPE_MS) {
+      return;
+    }
+    lastHomeActionAtRef.current = now;
 
     const route = parseRouteFromLocation();
     const alreadyOnBaseHome =
@@ -205,10 +223,14 @@ export default function App() {
       !route.selectedTopic;
 
     if (!alreadyOnBaseHome) {
-      navigateToRoute("knowledge");
+      const didNavigate = navigateToRoute("knowledge");
+      if (!didNavigate) {
+        scheduleDocumentScrollToTop("smooth");
+      }
       return;
     }
 
+    scheduleDocumentScrollToTop("smooth");
     setHomeRefreshSignal((current) => current + 1);
   }, []);
 
@@ -227,6 +249,32 @@ export default function App() {
   const handleOpenSignInPrompt = useCallback(() => {
     setShowGoogleSignInPrompt(true);
   }, []);
+
+  const routeScrollKey = useMemo(
+    () =>
+      [
+        activeTab,
+        legalSlug || "",
+        profileAuthorId || "",
+        profileUsername || "",
+        focusedEntryId || "",
+        exploreTopic || "",
+        smartTalkCategory || "",
+        focusedQuestionId || "",
+        routeErrorPath || "",
+      ].join("|"),
+    [
+      activeTab,
+      legalSlug,
+      profileAuthorId,
+      profileUsername,
+      focusedEntryId,
+      exploreTopic,
+      smartTalkCategory,
+      focusedQuestionId,
+      routeErrorPath,
+    ],
+  );
 
   const handleGoogleSignIn = useCallback(async () => {
     const nextIdentity = await signInWithGoogleAccount();
@@ -265,8 +313,19 @@ export default function App() {
   }, [handleGoogleSignOut, isSigningOut]);
 
   useEffect(() => {
-    const syncAndNormalizeRoute = () => {
+    const syncAndNormalizeRoute = (event?: Event) => {
       const route = parseRouteFromLocation();
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as RouteChangeDetail | undefined)
+          : undefined;
+      const isCanonicalReplace =
+        event?.type === ROUTE_CHANGE_EVENT && detail?.mode === "replace";
+
+      if (event && !isCanonicalReplace) {
+        pendingRouteScrollRef.current = true;
+        scheduleDocumentScrollToTop("auto");
+      }
 
       if (
         route.source === "hash" &&
@@ -301,6 +360,21 @@ export default function App() {
       window.removeEventListener(ROUTE_CHANGE_EVENT, syncAndNormalizeRoute);
     };
   }, [syncRouteState]);
+
+  useEffect(() => {
+    if (previousRouteScrollKeyRef.current === null) {
+      previousRouteScrollKeyRef.current = routeScrollKey;
+      return;
+    }
+
+    const routeChanged = previousRouteScrollKeyRef.current !== routeScrollKey;
+    previousRouteScrollKeyRef.current = routeScrollKey;
+
+    if (!routeChanged && !pendingRouteScrollRef.current) return;
+
+    pendingRouteScrollRef.current = false;
+    return scheduleDocumentScrollToTop("auto");
+  }, [routeScrollKey]);
 
   useEffect(() => {
     trackPageView(cookieConsentAccepted);

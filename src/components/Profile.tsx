@@ -978,7 +978,7 @@ export function Profile({
     if (typeof window === "undefined") return;
 
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [activeAuthorId]);
+  }, [activeAuthorId, section]);
 
   useEffect(() => {
     const handleUrlChange = () => {

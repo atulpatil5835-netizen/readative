@@ -40,6 +40,20 @@ export interface ParsedAppRoute {
 
 export const ROUTE_CHANGE_EVENT = "readative:routechange";
 
+export interface RouteChangeDetail {
+  mode: "push" | "replace";
+  targetPath: string;
+  previousPath: string;
+}
+
+function getCurrentNavigationPath() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function dispatchRouteChange(detail: RouteChangeDetail) {
+  window.dispatchEvent(new CustomEvent<RouteChangeDetail>(ROUTE_CHANGE_EVENT, { detail }));
+}
+
 function safeDecode(value: string) {
   try {
     return decodeURIComponent(value);
@@ -610,10 +624,14 @@ export function navigateToRoute(
   mode: "push" | "replace" = "push"
 ) {
   const targetPath = buildPublicPath(tab, options);
+  const previousPath = getCurrentNavigationPath();
+  if (previousPath === targetPath) return false;
+
   const method = mode === "replace" ? "replaceState" : "pushState";
 
   window.history[method](null, "", targetPath);
-  window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
+  dispatchRouteChange({ mode, targetPath, previousPath });
+  return true;
 }
 
 export function navigateToNotFound(
@@ -622,7 +640,10 @@ export function navigateToNotFound(
 ) {
   const method = mode === "replace" ? "replaceState" : "pushState";
   const targetPath = `/404?from=${encodeURIComponent(attemptedLocation)}`;
+  const previousPath = getCurrentNavigationPath();
+  if (previousPath === targetPath) return false;
 
   window.history[method](null, "", targetPath);
-  window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
+  dispatchRouteChange({ mode, targetPath, previousPath });
+  return true;
 }

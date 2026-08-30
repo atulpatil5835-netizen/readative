@@ -103,8 +103,6 @@ import {
   readSelectedFeedTopicFromLocation,
   getCurrentKnowledgeAttemptedLocation,
   resolveFocusedKnowledgeEntrySnapshot,
-  readKnowledgeFeedScrollPosition,
-  writeKnowledgeFeedScrollPosition,
   matchesKnowledgeTopic,
   matchesKnowledgeSearch,
   tokenizeSearch,
@@ -482,7 +480,6 @@ export function KnowledgeFeed({
   const isLoadingJourneySmartTalkRef = useRef(false);
   const lastAutoLoadEntryCountRef = useRef(0);
   const isMountedRef = useRef(false);
-  const restoredScrollKeyRef = useRef<string | null>(null);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
@@ -1280,16 +1277,23 @@ export function KnowledgeFeed({
   }, [focusedEntryId]);
 
   useEffect(() => {
-    if (!focusedEntryId || entries.length === 0) return;
+    if (!focusedEntryId || entries.length === 0 || typeof window === "undefined") return;
 
-    const target = document.getElementById(`knowledge-${focusedEntryId}`);
-    if (!target) return;
+    const scrollFocusedEntryToTop = () => {
+      const target = document.getElementById(`knowledge-${focusedEntryId}`);
+      if (!target) return;
 
-    target.scrollIntoView({
-      behavior: "auto",
-      block: "start",
-      inline: "nearest",
-    });
+      target.scrollIntoView({
+        behavior: "auto",
+        block: "start",
+        inline: "nearest",
+      });
+    };
+
+    scrollFocusedEntryToTop();
+    const frameId = window.requestAnimationFrame(scrollFocusedEntryToTop);
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [entries.length, focusedEntryId]);
 
   useEffect(() => {
@@ -1441,9 +1445,6 @@ export function KnowledgeFeed({
     visibleLikedEntryIdSet,
   ]);
   const visibleEntries = independentFeedEntries || orderedEntries;
-  const activeFeedPersistenceKey = shouldUseIndependentFeed
-    ? independentFeedKey
-    : "home";
   const filteredEntries = useMemo(() => {
     const searchTerms = tokenizeSearch(deferredFeedSearchQuery);
     if (searchTerms.length === 0) return visibleEntries;
@@ -1590,62 +1591,6 @@ export function KnowledgeFeed({
 
     void loadFeedProfiles();
   }, [feedProfileIds, isActive]);
-
-  // ── Scroll persistence ──
-
-  useEffect(() => {
-    if (!isActive || focusedEntryId || typeof window === "undefined") return;
-
-    let frameId: number | null = null;
-    const persistScroll = () => {
-      frameId = null;
-      writeKnowledgeFeedScrollPosition(activeFeedPersistenceKey, window.scrollY);
-    };
-    const schedulePersistScroll = () => {
-      if (frameId !== null) return;
-      frameId = window.requestAnimationFrame(persistScroll);
-    };
-
-    schedulePersistScroll();
-    window.addEventListener("scroll", schedulePersistScroll, { passive: true });
-    window.addEventListener("pagehide", persistScroll);
-
-    return () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      persistScroll();
-      window.removeEventListener("scroll", schedulePersistScroll);
-      window.removeEventListener("pagehide", persistScroll);
-    };
-  }, [activeFeedPersistenceKey, focusedEntryId, isActive]);
-
-  useEffect(() => {
-    if (!isActive) {
-      restoredScrollKeyRef.current = null;
-      return;
-    }
-    if (focusedEntryId || typeof window === "undefined") return;
-    if (restoredScrollKeyRef.current === activeFeedPersistenceKey) return;
-    if (filteredEntries.length === 0 || shouldHoldEmptyFeedState) return;
-
-    restoredScrollKeyRef.current = activeFeedPersistenceKey;
-    const savedScrollY = readKnowledgeFeedScrollPosition(activeFeedPersistenceKey);
-    if (savedScrollY <= 0) return;
-
-    const frameId = window.requestAnimationFrame(() => {
-      window.scrollTo({ top: savedScrollY, left: 0, behavior: "auto" });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [
-    activeFeedPersistenceKey,
-    filteredEntries.length,
-    focusedEntryId,
-    isActive,
-    shouldHoldEmptyFeedState,
-  ]);
 
   // ── Independent feed pagination ──
 
