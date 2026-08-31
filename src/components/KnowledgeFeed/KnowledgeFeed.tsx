@@ -12,6 +12,7 @@ import {
   collection,
   doc,
   documentId,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -103,6 +104,8 @@ import {
   readSelectedFeedTopicFromLocation,
   getCurrentKnowledgeAttemptedLocation,
   resolveFocusedKnowledgeEntrySnapshot,
+  fetchSinglePostRelatedKnowledge,
+  fetchSinglePostRelatedSmartTalk,
   matchesKnowledgeTopic,
   matchesKnowledgeSearch,
   tokenizeSearch,
@@ -407,6 +410,12 @@ export function KnowledgeFeed({
   const [journeyQuestions, setJourneyQuestions] = useState<
     KnowledgeJourneyQuestion[]
   >([]);
+  const [singlePostRelatedEntries, setSinglePostRelatedEntries] = useState<
+    KnowledgeEntry[]
+  >([]);
+  const [singlePostJourneyQuestions, setSinglePostJourneyQuestions] = useState<
+    KnowledgeJourneyQuestion[]
+  >([]);
   const [isLoading, setIsLoading] = useState(
     () => !initialFeedCache?.entries.length,
   );
@@ -694,7 +703,7 @@ export function KnowledgeFeed({
   }, [isActive]);
 
   useEffect(() => {
-    if (entries.length === 0) return;
+    if (focusedEntryId || entries.length === 0) return;
 
     writeKnowledgeFeedCache(identity?.authorId, {
       entries,
@@ -703,6 +712,7 @@ export function KnowledgeFeed({
     });
   }, [
     entries,
+    focusedEntryId,
     hasMoreServerEntries,
     identity?.authorId,
     visibleLikedEntryIds,
@@ -821,7 +831,7 @@ export function KnowledgeFeed({
       !focusedEntryId &&
       (Boolean(normalizedRouteHashtag) || selectedFeedTopic !== "all");
 
-    if (!isActive || isIndependentRoute) {
+    if (!isActive || isIndependentRoute || focusedEntryId) {
       if (isIndependentRoute) {
         setIsLoading(false);
       }
@@ -831,11 +841,22 @@ export function KnowledgeFeed({
     const cachedFeed =
       feedRetrySignal === 0 ? readKnowledgeFeedCache(identity?.authorId) : null;
     if (cachedFeed && entriesRef.current.length > 0) {
+      const nextEntries = mergeKnowledgeEntryPages(
+        entriesRef.current,
+        cachedFeed.entries,
+      );
       const cursorEntry =
         cachedFeed.entries[Math.min(cachedFeed.entries.length, FEED_INITIAL_PAGE_SIZE) - 1] ||
         cachedFeed.entries[cachedFeed.entries.length - 1] ||
         null;
 
+      entriesRef.current = nextEntries;
+      setEntries(nextEntries);
+      setFeedEntryOrder(
+        rankKnowledgeEntries(nextEntries, getKnowledgeFeedSnapshot(), {
+          refreshSeed: feedRefreshSeedRef.current,
+        }).map((entry) => entry.id),
+      );
       paginationCursorRef.current =
         cursorEntry && Number.isFinite(cursorEntry.createdAt)
           ? cursorEntry.createdAt
@@ -1193,7 +1214,11 @@ export function KnowledgeFeed({
   }, [isActive, showComposer]);
 
   useEffect(() => {
-    if (!focusedEntryId) return;
+    if (!focusedEntryId) {
+      setSinglePostRelatedEntries([]);
+      setSinglePostJourneyQuestions([]);
+      return;
+    }
 
     const replaceWithCanonicalEntryPath = (entry: KnowledgeEntry) => {
       const canonicalPath = buildPublicPath("knowledge", {
@@ -1209,38 +1234,51 @@ export function KnowledgeFeed({
       }
     };
 
-    const existingEntry = entriesRef.current.find(
-      (entry) => entry.id === focusedEntryId,
-    );
-    if (existingEntry) {
-      replaceWithCanonicalEntryPath(existingEntry);
-      return;
-    }
-
     let cancelled = false;
 
     const loadFocusedEntry = async () => {
+      const existingEntry = entriesRef.current.find(
+        (entry) => entry.id === focusedEntryId,
+      );
+
+      if (!existingEntry) {
+        setIsLoading(true);
+      }
+
       try {
-        const snapshot = await resolveFocusedKnowledgeEntrySnapshot(focusedEntryId);
-        if (cancelled) return;
+        let focusedEntry: KnowledgeEntry | null = existingEntry || null;
 
-        if (!snapshot) {
-          navigateToNotFound(getCurrentKnowledgeAttemptedLocation(focusedEntryId));
-          return;
-        }
+        if (!focusedEntry) {
+          const snapshot = await resolveFocusedKnowledgeEntrySnapshot(focusedEntryId);
+          if (cancelled) return;
 
-        const focusedEntry = normalizeKnowledgeEntry(
-          snapshot.id,
-          snapshot.data() as Partial<KnowledgeEntry> & {
-            comments?: KnowledgeComment[];
-            createdAt?: number | { toMillis?: () => number };
-          },
-        );
+          if (!snapshot) {
+            navigateToNotFound(getCurrentKnowledgeAttemptedLocation(focusedEntryId));
+            return;
+          }
 
-        if (entriesRef.current.some((entry) => entry.id === focusedEntry.id)) {
+          focusedEntry = normalizeKnowledgeEntry(
+            snapshot.id,
+            snapshot.data() as Partial<KnowledgeEntry> & {
+              comments?: KnowledgeComment[];
+              createdAt?: number | { toMillis?: () => number };
+            },
+          );
+
+          if (snapshot.id !== focusedEntryId) {
+            navigateToRoute(
+              "knowledge",
+              { focusedEntryId: snapshot.id, seoTitle: focusedEntry.title },
+              "replace",
+            );
+          } else {
+            replaceWithCanonicalEntryPath(focusedEntry);
+          }
+        } else {
           replaceWithCanonicalEntryPath(focusedEntry);
-          return;
         }
+
+        if (cancelled || !focusedEntry) return;
 
         const nextEntries = mergeKnowledgeEntryPages(entriesRef.current, [
           focusedEntry,
@@ -1251,20 +1289,41 @@ export function KnowledgeFeed({
           focusedEntry.id,
           ...currentOrder.filter((entryId) => entryId !== focusedEntry.id),
         ]);
+        setIsLoading(false);
+        setFeedLoadError(null);
 
-        if (snapshot.id !== focusedEntryId) {
-          navigateToRoute(
-            "knowledge",
-            { focusedEntryId: snapshot.id, seoTitle: focusedEntry.title },
-            "replace",
-          );
-        } else {
-          replaceWithCanonicalEntryPath(focusedEntry);
+        // Fetch author profile if not loaded
+        if (
+          focusedEntry.authorId &&
+          !loadedProfileIdsRef.current.has(focusedEntry.authorId)
+        ) {
+          loadedProfileIdsRef.current.add(focusedEntry.authorId);
+          void getDoc(doc(db, "userProfiles", focusedEntry.authorId))
+            .then((profSnap) => {
+              if (cancelled || !profSnap.exists()) return;
+              const prof = profSnap.data() as UserProfile;
+              if (prof) {
+                setProfiles((cur) => mergeUserProfileList(cur, [prof]));
+              }
+            })
+            .catch(() => {});
         }
+
+        // Fetch targeted Continue Reading posts & Related SmartTalk in parallel
+        const [relatedKnowledge, relatedQuestions] = await Promise.all([
+          fetchSinglePostRelatedKnowledge(focusedEntry),
+          fetchSinglePostRelatedSmartTalk(focusedEntry),
+        ]);
+
+        if (cancelled) return;
+
+        setSinglePostRelatedEntries(relatedKnowledge);
+        setSinglePostJourneyQuestions(relatedQuestions);
       } catch (error) {
         if (cancelled) return;
 
         console.error("Focused knowledge entry error:", error);
+        setIsLoading(false);
         navigateToNotFound(getCurrentKnowledgeAttemptedLocation(focusedEntryId));
       }
     };
@@ -1399,10 +1458,7 @@ export function KnowledgeFeed({
     const baseEntries = [...frozenEntries, ...missingEntries];
 
     if (focusedEntryId && focusedEntry) {
-      return [
-        focusedEntry,
-        ...baseEntries.filter((entry) => entry.id !== focusedEntryId),
-      ];
+      return [focusedEntry];
     }
 
     return baseEntries;
@@ -2137,8 +2193,7 @@ export function KnowledgeFeed({
     void publishKnowledge(identity);
   };
 
-  const handleGoogleSignInForPublish = async () => {
-    const nextIdentity = await signInWithGoogleAccount();
+  const handleAuthSuccessForPublish = (nextIdentity: KnowledgeIdentity) => {
     onIdentityChange(nextIdentity);
     setShowIdentityPrompt(false);
 
@@ -2149,6 +2204,11 @@ export function KnowledgeFeed({
     }
 
     setPublishAfterAccess(false);
+  };
+
+  const handleGoogleSignInForPublish = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    handleAuthSuccessForPublish(nextIdentity);
   };
 
   const handleImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -2238,10 +2298,9 @@ export function KnowledgeFeed({
     );
   };
 
-  const handleGoogleSignInForPendingAction = async () => {
+  const handleAuthSuccessForPendingAction = (nextIdentity: KnowledgeIdentity) => {
     if (!pendingAction) return;
 
-    const nextIdentity = await signInWithGoogleAccount();
     onIdentityChange(nextIdentity);
 
     window.dispatchEvent(
@@ -2254,6 +2313,11 @@ export function KnowledgeFeed({
       }),
     );
     setPendingAction(null);
+  };
+
+  const handleGoogleSignInForPendingAction = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    handleAuthSuccessForPendingAction(nextIdentity);
   };
 
   const handleMentionInsert = (profile: UserProfile) => {
@@ -2484,6 +2548,13 @@ export function KnowledgeFeed({
       !hasActiveSearch &&
       filteredEntries.length === 0;
 
+  const activeJourneyQuestions = useMemo(() => {
+    if (focusedEntryId && singlePostJourneyQuestions.length > 0) {
+      return singlePostJourneyQuestions;
+    }
+    return journeyQuestions;
+  }, [focusedEntryId, journeyQuestions, singlePostJourneyQuestions]);
+
   // ── Render ──
 
   return (
@@ -2503,9 +2574,10 @@ export function KnowledgeFeed({
         normalizedSelectedHashtag={normalizedSelectedHashtag}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
+        singlePostRelatedEntries={singlePostRelatedEntries}
         desktopContextEntryId={desktopContextEntryId}
         profiles={profiles}
-        journeyQuestions={journeyQuestions}
+        journeyQuestions={activeJourneyQuestions}
         feedSearchQuery={feedSearchQuery}
         isLoading={isLoading}
         shouldShowInitialFeedSkeleton={shouldShowInitialFeedSkeleton}
@@ -2584,9 +2656,10 @@ export function KnowledgeFeed({
       {showIdentityPrompt && (
         <GoogleSignInPrompt
           title="Sign in to publish"
-          description="Use your Google account to publish. Everyone can still read posts without signing in, and your content stays saved to your profile."
+          description="Sign in with Google, email, or password to publish. Readers can explore freely, and your articles stay saved to your profile."
           submitLabel="Continue with Google"
           onConfirm={handleGoogleSignInForPublish}
+          onSuccess={handleAuthSuccessForPublish}
           onClose={() => {
             setPublishAfterAccess(false);
             setShowIdentityPrompt(false);
@@ -2607,9 +2680,10 @@ export function KnowledgeFeed({
                     ? "Sign in to use Notebook Highlight"
                     : "Sign in to comment"
           }
-          description="Use your Google account so this activity is saved to your Readative profile on every browser and device."
+          description="Sign in to save this activity to your Readative profile across every device."
           submitLabel="Continue with Google"
           onConfirm={handleGoogleSignInForPendingAction}
+          onSuccess={handleAuthSuccessForPendingAction}
           onClose={() => setPendingAction(null)}
         />
       )}

@@ -1734,10 +1734,14 @@ export function Profile({
     sharedPaginationMode,
   ]);
 
-  const handleClaimIdentity = async () => {
-    const nextIdentity = await signInWithGoogleAccount();
+  const handleAuthSuccessForClaim = (nextIdentity: KnowledgeIdentity) => {
     onIdentityChange(nextIdentity);
     setShowIdentityPrompt(false);
+  };
+
+  const handleClaimIdentity = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    handleAuthSuccessForClaim(nextIdentity);
   };
 
   const handleSaveProfileSettings = async ({
@@ -1834,10 +1838,9 @@ export function Profile({
     }
   };
 
-  const handleGoogleSignInForPendingAction = async () => {
+  const handleAuthSuccessForPendingAction = (nextIdentity: KnowledgeIdentity) => {
     if (!pendingAction) return;
 
-    const nextIdentity = await signInWithGoogleAccount();
     onIdentityChange(nextIdentity);
 
     window.dispatchEvent(
@@ -1852,12 +1855,17 @@ export function Profile({
     setPendingAction(null);
   };
 
+  const handleGoogleSignInForPendingAction = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    handleAuthSuccessForPendingAction(nextIdentity);
+  };
+
   if (!currentIdentity && !viewedAuthorId && !viewedUsername) {
     return (
       <div className="space-y-6 pb-40 md:pb-20">
         <SEO
           title="Profile | Readative"
-          description="Sign in with Google to unlock your Readative profile, posts, and helpful feedback."
+          description="Sign in to unlock your Readative profile, posts, and helpful feedback."
           robots="noindex"
         />
 
@@ -1870,7 +1878,7 @@ export function Profile({
               Build your Readative profile
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              Sign in with Google to create posts, save knowledge, join SmartTalk,
+              Sign in with Google, email, or password to create posts, save knowledge, join SmartTalk,
               and build reputation from helpful contributions.
             </p>
           </div>
@@ -1922,7 +1930,7 @@ export function Profile({
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
             >
               <ShieldCheck className="h-4 w-4" />
-              Continue with Google
+              Sign In to Readative
             </button>
           </div>
         </div>
@@ -1932,10 +1940,10 @@ export function Profile({
             type="button"
             onClick={() => setShowIdentityPrompt(true)}
             className="pointer-events-auto mx-auto flex min-h-12 w-full max-w-3xl items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-[0_12px_32px_rgba(15,23,42,0.28)] transition-colors hover:bg-emerald-700"
-            aria-label="Sign in with Google"
+            aria-label="Sign in to Readative"
           >
             <LogIn className="h-4 w-4" />
-            Sign In with Google
+            Sign In
           </button>
         </div>
 
@@ -1944,6 +1952,7 @@ export function Profile({
             title="Sign in to view your profile"
             submitLabel="Continue with Google"
             onConfirm={handleClaimIdentity}
+            onSuccess={handleAuthSuccessForClaim}
             onClose={() => setShowIdentityPrompt(false)}
           />
         )}
@@ -2220,6 +2229,7 @@ export function Profile({
           title="Continue with Google"
           submitLabel="Continue with Google"
           onConfirm={handleClaimIdentity}
+          onSuccess={handleAuthSuccessForClaim}
           onClose={() => setShowIdentityPrompt(false)}
         />
       )}
@@ -2294,6 +2304,7 @@ export function Profile({
           description="Use your Google account so this activity is saved to your profile on every browser and device."
           submitLabel="Continue with Google"
           onConfirm={handleGoogleSignInForPendingAction}
+          onSuccess={handleAuthSuccessForPendingAction}
           onClose={() => setPendingAction(null)}
         />
       )}

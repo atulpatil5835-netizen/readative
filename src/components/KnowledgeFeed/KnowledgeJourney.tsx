@@ -372,6 +372,48 @@ export function getKnowledgeJourneyActions({
     );
   }
 
+  const remainingQuestions = questions.filter(
+    (q) => !relatedQuestion || q.id !== relatedQuestion.id,
+  );
+  const secondRelatedQuestion = getRelatedQuestion(entry, remainingQuestions);
+  if (secondRelatedQuestion && actions.length < MAX_JOURNEY_ACTIONS) {
+    const route = {
+      tab: "smarttalk" as const,
+      options: {
+        selectedTopic: secondRelatedQuestion.category || entry.category,
+        focusedEntryId: secondRelatedQuestion.id,
+        seoTitle: secondRelatedQuestion.content,
+      },
+    };
+    const answerLabel =
+      secondRelatedQuestion.answerCount === 1
+        ? "1 answer"
+        : `${secondRelatedQuestion.answerCount} answers`;
+
+    addAction({
+      id: `related-smarttalk-${secondRelatedQuestion.id}`,
+      label: "Related SmartTalk",
+      title: secondRelatedQuestion.content,
+      description: answerLabel,
+      href: buildPublicPath(route.tab, route.options),
+      icon: MessageSquareMore,
+      route,
+    });
+  }
+
+  const secondRelatedEntry = getBestRelatedEntry(entry, entries, usedEntryIds);
+  if (secondRelatedEntry && actions.length < MAX_JOURNEY_ACTIONS) {
+    addAction(
+      createPostAction(
+        "related-post-2",
+        "More Related Reading",
+        secondRelatedEntry,
+        BookOpenText,
+        "Explore similar topic",
+      ),
+    );
+  }
+
   const category = getCategoryBySlug(entry.category);
   if (category) {
     const route = {

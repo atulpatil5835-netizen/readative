@@ -18,22 +18,25 @@ import {
   NotFoundRoute,
   SectionSkeleton,
 } from "./components/AppShell";
-import { GoogleSignInPrompt } from "./components/Auth";
+import { AuthModal } from "./components/Auth";
 import {
   getKnowledgeIdentity,
   KNOWLEDGE_IDENTITY_EVENT,
   type KnowledgeIdentity,
 } from "./utils/knowledgeIdentity";
 import {
+  isEmailSignInLink,
+  completeSignInWithEmailLink,
+  clearEmailSignInUrl,
+  getSavedEmailForSignIn,
   signInWithGoogleAccount,
-  signOutGoogleAccount,
-  subscribeToGoogleIdentity,
-} from "./utils/googleAuth";
+  signOutAccount,
+  subscribeToAuthIdentity,
+} from "./utils/auth";
 import {
   firebaseConfigMissingKeys,
   firebaseConfigReady,
 } from "./firebase/firebaseConfig";
-import type { UserNotification } from "./types";
 import {
   navigateToRoute,
   parseRouteFromLocation,
@@ -276,18 +279,22 @@ export default function App() {
     ],
   );
 
-  const handleGoogleSignIn = useCallback(async () => {
-    const nextIdentity = await signInWithGoogleAccount();
+  const handleAuthSuccess = useCallback((nextIdentity: KnowledgeIdentity) => {
     setIdentity(nextIdentity);
     setAuthStatusMessage(null);
     setShowGoogleSignInPrompt(false);
     if (nextIdentity) {
-      trackLogin("Google");
+      trackLogin("Auth");
     }
   }, []);
 
-  const handleGoogleSignOut = useCallback(async () => {
-    await signOutGoogleAccount();
+  const handleGoogleSignIn = useCallback(async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    handleAuthSuccess(nextIdentity);
+  }, [handleAuthSuccess]);
+
+  const handleAccountSignOut = useCallback(async () => {
+    await signOutAccount();
     setIdentity(null);
     setShowNotificationsPanel(false);
     setUnreadNotificationCount(0);
@@ -302,15 +309,15 @@ export default function App() {
     setIsSigningOut(true);
     setAuthStatusMessage(null);
     try {
-      await handleGoogleSignOut();
+      await handleAccountSignOut();
       setShowSignOutConfirm(false);
     } catch (error) {
-      console.error("Google sign-out failed:", error);
+      console.error("Sign-out failed:", error);
       setAuthStatusMessage("Could not sign out right now. Please try again.");
     } finally {
       setIsSigningOut(false);
     }
-  }, [handleGoogleSignOut, isSigningOut]);
+  }, [handleAccountSignOut, isSigningOut]);
 
   useEffect(() => {
     const syncAndNormalizeRoute = (event?: Event) => {
@@ -545,7 +552,26 @@ export default function App() {
   }, [hydratedIdentity?.authorId]);
 
   useEffect(() => {
-    return subscribeToGoogleIdentity(
+    // Check if the current URL contains an email magic link sign in
+    if (typeof window !== "undefined" && isEmailSignInLink(window.location.href)) {
+      const savedEmail = getSavedEmailForSignIn();
+      if (savedEmail) {
+        completeSignInWithEmailLink(savedEmail, window.location.href)
+          .then((nextIdentity) => {
+            handleAuthSuccess(nextIdentity);
+            clearEmailSignInUrl();
+          })
+          .catch((error) => {
+            console.error("Auto email link sign in failed:", error);
+            setShowGoogleSignInPrompt(true);
+          });
+      } else {
+        // User opened sign-in link on different browser/device: prompt for email
+        setShowGoogleSignInPrompt(true);
+      }
+    }
+
+    return subscribeToAuthIdentity(
       (nextIdentity) => {
         setIdentity(nextIdentity);
         setIsIdentityHydrated(true);
@@ -556,7 +582,7 @@ export default function App() {
         setAuthStatusMessage(message);
       },
     );
-  }, []);
+  }, [handleAuthSuccess]);
 
   return (
     <HelmetProvider>
@@ -594,7 +620,7 @@ export default function App() {
 
           {authStatusMessage && (
             <BannerNotice
-              title="Google sign-in issue"
+              title="Authentication notice"
               body={authStatusMessage}
               tone="warning"
             />
@@ -772,7 +798,8 @@ export default function App() {
         )}
 
         {showGoogleSignInPrompt && (
-          <GoogleSignInPrompt
+          <AuthModal
+            onSuccess={handleAuthSuccess}
             onConfirm={handleGoogleSignIn}
             onClose={() => setShowGoogleSignInPrompt(false)}
           />

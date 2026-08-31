@@ -78,8 +78,9 @@ function normalizeGooglePhotoUrl(value: string | null): string | null {
   }
 }
 
-function buildGoogleUsernameBase(user: User): string {
+function buildAuthUsernameBase(user: User, fallbackDisplayName?: string): string {
   const source =
+    fallbackDisplayName ||
     user.displayName ||
     user.email?.split("@")[0] ||
     `reader_${user.uid.slice(0, 8)}`;
@@ -87,12 +88,16 @@ function buildGoogleUsernameBase(user: User): string {
   return buildUsernameCandidate(source, `reader_${user.uid.slice(0, 8)}`);
 }
 
-function buildGoogleUsernameCandidate(user: User) {
-  const base = buildGoogleUsernameBase(user);
+function buildAuthUsernameCandidate(user: User, fallbackDisplayName?: string) {
+  const base = buildAuthUsernameBase(user, fallbackDisplayName);
   const uidSuffix = user.uid.replace(/[^a-z0-9]/gi, "").toLowerCase();
   return validateUsernameInput(
     withUsernameSuffix(base, uidSuffix.slice(0, 6) || user.uid.slice(0, 6)),
   );
+}
+
+function buildGoogleUsernameCandidate(user: User) {
+  return buildAuthUsernameCandidate(user);
 }
 
 async function commitUpdates(
@@ -455,16 +460,25 @@ async function migrateSavedGuestActivity(profile: UserProfile) {
   localStorage.setItem(migrationKey, "done");
 }
 
-export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
+export async function ensureUserProfile(
+  user: User,
+  fallbackDisplayName?: string,
+  providerName?: string,
+): Promise<UserProfile> {
   const reference = doc(db, "userProfiles", user.uid);
   const existing = await getDoc(reference);
   const now = Date.now();
   const email = user.email || "";
   const photoUrl = normalizeGooglePhotoUrl(user.photoURL);
+  const detectedProvider =
+    providerName ||
+    user.providerData?.[0]?.providerId?.replace(".com", "") ||
+    "email";
 
   if (existing.exists()) {
     const existingData = existing.data() as Partial<UserProfile> & {
       googleDisplayName?: string;
+      authProvider?: string;
     };
     const currentProfile = hydrateUserProfile(
       existingData,
@@ -474,15 +488,21 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
       typeof existingData.displayName === "string" &&
       existingData.displayName.trim().length > 0;
     const payload: Record<string, unknown> = {
-      email,
-      photoUrl,
-      authProvider: "google",
-      googleDisplayName: user.displayName || "",
+      photoUrl: photoUrl || currentProfile.photoUrl,
+      authProvider: existingData.authProvider || detectedProvider,
     };
+
+    if (email) {
+      payload.email = email;
+    }
+
+    if (user.displayName) {
+      payload.googleDisplayName = user.displayName;
+    }
 
     let profile = currentProfile;
     if (!currentProfile.usernameLower) {
-      const username = buildGoogleUsernameCandidate(user);
+      const username = buildAuthUsernameCandidate(user, fallbackDisplayName);
       payload.username = username;
       payload.usernameLower = username;
       profile = {
@@ -494,7 +514,7 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
 
     if (!hasSavedDisplayName) {
       payload.displayName = validateDisplayName(
-        user.displayName || profile.username,
+        fallbackDisplayName || user.displayName || profile.username,
         profile.username,
       );
       profile = {
@@ -504,8 +524,8 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     }
 
     const shouldUpdateProfile =
-      profile.email !== email ||
-      profile.photoUrl !== photoUrl ||
+      (email && profile.email !== email) ||
+      (photoUrl && profile.photoUrl !== photoUrl) ||
       !currentProfile.usernameLower ||
       !hasSavedDisplayName;
 
@@ -513,8 +533,8 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
       payload.updatedAt = now;
       profile = {
         ...profile,
-        email,
-        photoUrl,
+        email: email || profile.email,
+        photoUrl: photoUrl || profile.photoUrl,
         updatedAt: now,
       };
     }
@@ -543,11 +563,12 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     return profile;
   }
 
-  const username = buildGoogleUsernameCandidate(user);
+  const username = buildAuthUsernameCandidate(user, fallbackDisplayName);
+  const preferredDisplayName = fallbackDisplayName || user.displayName || username;
   const profile: UserProfile = {
     id: user.uid,
     email,
-    displayName: validateDisplayName(user.displayName || username, username),
+    displayName: validateDisplayName(preferredDisplayName, username),
     username,
     usernameLower: username,
     jobTitle: "",
@@ -570,8 +591,8 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
     username,
     profilePayload: {
       ...profile,
-      authProvider: "google",
-      googleDisplayName: user.displayName || "",
+      authProvider: detectedProvider,
+      ...(user.displayName ? { googleDisplayName: user.displayName } : {}),
     },
   });
   syncLocalProfileIdentity(profile);
@@ -583,6 +604,10 @@ export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
   }
 
   return profile;
+}
+
+export async function ensureGoogleProfile(user: User): Promise<UserProfile> {
+  return ensureUserProfile(user, undefined, "google");
 }
 
 export async function ensureGuestProfile(

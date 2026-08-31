@@ -1,7 +1,11 @@
 import { useCallback, useMemo, type ReactNode, type RefObject } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   BookOpenText,
+  ChevronRight,
+  MessageSquareMore,
   RefreshCw,
 } from "lucide-react";
 import { KnowledgeEntry, UserProfile } from "../../types";
@@ -409,6 +413,7 @@ export interface FeedRendererProps {
   // Feed entries
   filteredEntries: KnowledgeEntry[];
   visibleEntries: KnowledgeEntry[];
+  singlePostRelatedEntries?: KnowledgeEntry[];
   desktopContextEntryId: string | null;
   profiles: UserProfile[];
   journeyQuestions: KnowledgeJourneyQuestion[];
@@ -470,6 +475,7 @@ export function FeedRenderer({
   normalizedSelectedHashtag,
   filteredEntries,
   visibleEntries,
+  singlePostRelatedEntries,
   desktopContextEntryId,
   profiles,
   journeyQuestions,
@@ -508,7 +514,13 @@ export function FeedRenderer({
   onBackToTopRefresh,
   identity,
 }: FeedRendererProps) {
-  const journeyEntries = visibleEntries.length > 0 ? visibleEntries : filteredEntries;
+  const journeyEntries = useMemo(() => {
+    if (focusedEntryId && singlePostRelatedEntries && singlePostRelatedEntries.length > 0) {
+      return singlePostRelatedEntries;
+    }
+    return visibleEntries.length > 0 ? visibleEntries : filteredEntries;
+  }, [filteredEntries, focusedEntryId, singlePostRelatedEntries, visibleEntries]);
+
   const renderKnowledgeJourney = useCallback(
     (entry: KnowledgeEntry) => (
       <KnowledgeJourney
@@ -583,6 +595,33 @@ export function FeedRenderer({
           title="Profile directory issue"
           body={profilesLoadError}
         />
+      )}
+
+      {focusedEntry && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-2.5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => navigateToRoute("knowledge")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>All Posts Feed</span>
+          </button>
+          {activeCategory && (
+            <button
+              type="button"
+              onClick={() =>
+                navigateToRoute("knowledge", {
+                  selectedTopic: activeCategory.id,
+                })
+              }
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-emerald-700"
+            >
+              <span>{activeCategory.label}</span>
+              <ChevronRight className="h-3 w-3 text-slate-400" />
+            </button>
+          )}
+        </div>
       )}
 
       <div className="space-y-3">
@@ -775,6 +814,34 @@ export function FeedRenderer({
             renderAfterCard={renderKnowledgeJourney}
             estimateAfterCardHeight={estimateKnowledgeJourneyHeight}
           />
+          {focusedEntry && (
+            <div className="mt-6 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-emerald-50/70 via-slate-50 to-teal-50/60 p-6 text-center shadow-sm">
+              <h4 className="text-base font-black tracking-tight text-slate-900">
+                Explore More on Readative
+              </h4>
+              <p className="mt-1.5 text-xs font-medium text-slate-600">
+                Discover hundreds of practical visual posts, cheat sheets, AI workflows, and SmartTalk discussions.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => navigateToRoute("knowledge")}
+                  className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow"
+                >
+                  <span>Browse Full Feed</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateToRoute("smarttalk")}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  <MessageSquareMore className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Explore SmartTalk Q&A</span>
+                </button>
+              </div>
+            </div>
+          )}
           {hasMoreEntries && (
             <div
               ref={loadMoreSentinelRef}
@@ -839,7 +906,7 @@ export function FeedRenderer({
         <DesktopLeftRail
           activeFeedLabel={activeFeedLabel}
           contextEntry={desktopContextEntry}
-          entries={desktopEntries}
+          entries={journeyEntries.length > 0 ? journeyEntries : desktopEntries}
           progressLabel={desktopProgressLabel}
           todayCount={todayLoadedCount}
           onOpenEntry={onOpenEntry}

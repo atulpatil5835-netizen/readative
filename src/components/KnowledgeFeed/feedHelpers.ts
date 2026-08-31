@@ -18,6 +18,7 @@ import {
   type KnowledgeEntry,
   type UserProfile,
 } from "../../types";
+import { type KnowledgeJourneyQuestion } from "./KnowledgeJourney";
 import {
   buildAbsoluteRouteUrl,
   CANONICAL_SITE_ORIGIN,
@@ -1072,6 +1073,182 @@ export async function resolveFocusedKnowledgeEntrySnapshot(focusedEntryId: strin
   }
 
   return null;
+}
+
+export async function fetchSinglePostRelatedKnowledge(
+  entry: KnowledgeEntry,
+): Promise<KnowledgeEntry[]> {
+  const related: KnowledgeEntry[] = [];
+  const categorySlug = entry.category?.trim().toLowerCase();
+
+  if (categorySlug) {
+    try {
+      const categoryQuery = query(
+        collection(db, "knowledge"),
+        where("category", "==", categorySlug),
+        limit(6),
+      );
+      const snapshot = await getDocs(categoryQuery);
+      const docs = snapshot.docs
+        .filter((docItem) => docItem.id !== entry.id)
+        .map((docItem) =>
+          normalizeKnowledgeEntry(
+            docItem.id,
+            docItem.data() as Partial<KnowledgeEntry> & {
+              comments?: KnowledgeComment[];
+              createdAt?: number | { toMillis?: () => number };
+            },
+          ),
+        );
+      related.push(...docs);
+    } catch (err) {
+      console.warn("Category related knowledge fetch failed:", err);
+    }
+  }
+
+  if (related.length < 3) {
+    try {
+      const fallbackQuery = query(
+        collection(db, "knowledge"),
+        orderBy("createdAt", "desc"),
+        limit(5),
+      );
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      const existingIds = new Set([entry.id, ...related.map((e) => e.id)]);
+      const fallbackDocs = fallbackSnapshot.docs
+        .filter((docItem) => !existingIds.has(docItem.id))
+        .map((docItem) =>
+          normalizeKnowledgeEntry(
+            docItem.id,
+            docItem.data() as Partial<KnowledgeEntry> & {
+              comments?: KnowledgeComment[];
+              createdAt?: number | { toMillis?: () => number };
+            },
+          ),
+        );
+      related.push(...fallbackDocs);
+    } catch (fallbackErr) {
+      console.warn("Fallback related knowledge fetch failed:", fallbackErr);
+    }
+  }
+
+  return related.slice(0, 4);
+}
+
+export async function fetchSinglePostRelatedSmartTalk(
+  entry: KnowledgeEntry,
+): Promise<KnowledgeJourneyQuestion[]> {
+  const questions: KnowledgeJourneyQuestion[] = [];
+  const categorySlug = entry.category?.trim().toLowerCase();
+
+  if (categorySlug) {
+    try {
+      const categoryQuery = query(
+        collection(db, "smarttalk"),
+        where("category", "==", categorySlug),
+        limit(6),
+      );
+      const snapshot = await getDocs(categoryQuery);
+      const docs = snapshot.docs.map((docItem) => {
+        const data = docItem.data();
+        const rawAnswers = Array.isArray(data.answers) ? data.answers : [];
+        const rawCreatedAt = data.createdAt as
+          | number
+          | { toMillis?: () => number }
+          | undefined;
+        const createdAt =
+          typeof rawCreatedAt === "number" && Number.isFinite(rawCreatedAt)
+            ? rawCreatedAt
+            : typeof rawCreatedAt === "object" &&
+                rawCreatedAt &&
+                typeof rawCreatedAt.toMillis === "function"
+              ? rawCreatedAt.toMillis()
+              : Date.now();
+
+        return {
+          id: docItem.id,
+          author:
+            typeof data.author === "string" && data.author
+              ? data.author
+              : "Unknown",
+          authorId: typeof data.authorId === "string" ? data.authorId : "",
+          content: typeof data.content === "string" ? data.content : "",
+          category: typeof data.category === "string" ? data.category : null,
+          createdAt,
+          answerCount: rawAnswers.length,
+          answerText: rawAnswers
+            .map((answer) =>
+              answer &&
+              typeof answer === "object" &&
+              typeof (answer as { content?: unknown }).content === "string"
+                ? (answer as { content: string }).content
+                : "",
+            )
+            .filter(Boolean),
+        };
+      });
+      questions.push(...docs);
+    } catch (err) {
+      console.warn("Category related SmartTalk fetch failed:", err);
+    }
+  }
+
+  if (questions.length < 3) {
+    try {
+      const fallbackQuery = query(
+        collection(db, "smarttalk"),
+        orderBy("createdAt", "desc"),
+        limit(4),
+      );
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      const existingIds = new Set(questions.map((q) => q.id));
+      const fallbackDocs = fallbackSnapshot.docs
+        .filter((docItem) => !existingIds.has(docItem.id))
+        .map((docItem) => {
+          const data = docItem.data();
+          const rawAnswers = Array.isArray(data.answers) ? data.answers : [];
+          const rawCreatedAt = data.createdAt as
+            | number
+            | { toMillis?: () => number }
+            | undefined;
+          const createdAt =
+            typeof rawCreatedAt === "number" && Number.isFinite(rawCreatedAt)
+              ? rawCreatedAt
+              : typeof rawCreatedAt === "object" &&
+                  rawCreatedAt &&
+                  typeof rawCreatedAt.toMillis === "function"
+                ? rawCreatedAt.toMillis()
+                : Date.now();
+
+          return {
+            id: docItem.id,
+            author:
+              typeof data.author === "string" && data.author
+                ? data.author
+                : "Unknown",
+            authorId: typeof data.authorId === "string" ? data.authorId : "",
+            content: typeof data.content === "string" ? data.content : "",
+            category: typeof data.category === "string" ? data.category : null,
+            createdAt,
+            answerCount: rawAnswers.length,
+            answerText: rawAnswers
+              .map((answer) =>
+                answer &&
+                typeof answer === "object" &&
+                typeof (answer as { content?: unknown }).content === "string"
+                  ? (answer as { content: string }).content
+                  : "",
+              )
+              .filter(Boolean),
+          };
+        });
+      questions.push(...fallbackDocs);
+    } catch (fallbackErr) {
+      console.warn("Fallback related SmartTalk fetch failed:", fallbackErr);
+    }
+  }
+
+  return questions.slice(0, 4);
 }
 
 export function normalizeKnowledgeQueryDocs(

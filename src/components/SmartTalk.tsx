@@ -1211,11 +1211,10 @@ export function SmartTalk({
     return "border border-slate-200";
   };
 
-  const handlePromptConfirm = async () => {
+  const handleAuthSuccessForPrompt = async (nextIdentity: KnowledgeIdentity) => {
     if (!namePrompt) return;
 
     const prompt = namePrompt;
-    const nextIdentity = await signInWithGoogleAccount();
     onIdentityChange(nextIdentity);
 
     if (prompt.type === "ask") {
@@ -1255,6 +1254,11 @@ export function SmartTalk({
       }));
     }
     setVotingAnswerIds((current) => ({ ...current, [votingKey]: false }));
+  };
+
+  const handlePromptConfirm = async () => {
+    const nextIdentity = await signInWithGoogleAccount();
+    await handleAuthSuccessForPrompt(nextIdentity);
   };
 
   const searchTerms = useMemo(
@@ -2165,9 +2169,10 @@ export function SmartTalk({
                   ? "Sign in to save"
                   : "Sign in to add trust feedback"
           }
-          description="Use Google to keep SmartTalk synced with your profile."
+          description="Sign in with Google, email, or password to keep your SmartTalk questions, answers, and reputation synced."
           submitLabel="Continue with Google"
           onConfirm={handlePromptConfirm}
+          onSuccess={handleAuthSuccessForPrompt}
           onClose={() => setNamePrompt(null)}
         />
       )}
