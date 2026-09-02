@@ -1452,10 +1452,10 @@ export function SmartTalk({
       })
     : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
   const smartTalkPageTitle = focusedQuestion
-    ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | SmartTalk | Readative`
+    ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | ReAdative`
     : selectedCategory
-      ? `${getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"} Questions | Readative`
-      : "SmartTalk - Q&A Community | Readative";
+      ? `${getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"} SmartTalk | ReAdative`
+      : "SmartTalk | ReAdative";
   const smartTalkPageDescription = focusedQuestion
     ? summarizeSmartTalkText(focusedQuestion.content, 160)
     : selectedCategory

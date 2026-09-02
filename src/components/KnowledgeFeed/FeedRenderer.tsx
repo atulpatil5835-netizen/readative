@@ -574,7 +574,7 @@ export function FeedRenderer({
   const feedContent = shouldShowInitialFeedSkeleton ? (
     <KnowledgeFeedSkeleton showControls={false} />
   ) : (
-    <div className="space-y-6">
+    <div className="space-y-4 min-[1280px]:space-y-6">
       {feedLoadError &&
         !shouldUseIndependentFeed &&
         filteredEntries.length > 0 && (
@@ -632,6 +632,7 @@ export function FeedRenderer({
           onChange={onSetFeedSearchQuery}
           onClear={() => onSetFeedSearchQuery("")}
           ariaLabel="Search home feed"
+          fullWidthUntilDesktop
         />
 
         {activeCategory && !focusedEntry && !selectedHashtag && (
@@ -645,7 +646,7 @@ export function FeedRenderer({
         )}
 
         <div
-          className="-mx-3 overflow-x-auto px-3 [scrollbar-width:none] sm:-mx-4 sm:px-4 [&::-webkit-scrollbar]:hidden"
+          className="overflow-x-auto px-2 [scrollbar-width:none] min-[1280px]:-mx-4 min-[1280px]:px-4 [&::-webkit-scrollbar]:hidden"
           aria-label="Post categories"
         >
           <div className="flex min-w-max items-center gap-2 pb-1">
@@ -867,7 +868,7 @@ export function FeedRenderer({
   );
 
   return (
-    <div className="pb-20">
+    <div className="pb-16 min-[1280px]:pb-20">
       {isActive && (
         <SEO
           title={pageTitle}

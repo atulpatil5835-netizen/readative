@@ -21,6 +21,12 @@ function toAbsoluteUrl(pathOrUrl: string) {
   return `${CANONICAL_SITE_ORIGIN}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
 }
 
+const SITE_TITLE = "ReAdative";
+
+function normalizeTitleBrand(value: string) {
+  return value.replace(/\bReadative\b/g, SITE_TITLE);
+}
+
 export function SEO({
   title,
   description,
@@ -32,13 +38,16 @@ export function SEO({
   schema,
   robots = "index",
 }: SEOProps) {
-  const siteTitle = "Readative";
+  const siteTitle = SITE_TITLE;
   const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
   const baseUrl = `${CANONICAL_SITE_ORIGIN}${pathname}`;
   const resolvedUrl = url ? toAbsoluteUrl(url) : baseUrl;
   const resolvedAmpUrl = ampUrl ? toAbsoluteUrl(ampUrl) : null;
   const resolvedImage = toAbsoluteUrl(image || "/logo.png");
-  const fullTitle = title.includes(siteTitle) ? title : `${title} | ${siteTitle}`;
+  const normalizedTitle = normalizeTitleBrand(title);
+  const fullTitle = /\breadative\b/i.test(normalizedTitle)
+    ? normalizedTitle
+    : `${normalizedTitle} | ${siteTitle}`;
   const keywordList = [
     "knowledge sharing",
     "learning community",

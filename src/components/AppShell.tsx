@@ -182,7 +182,7 @@ export function NotFoundRoute({
   return (
     <>
       <SEO
-        title="Page Not Found | Readative"
+        title="Page Not Found | ReAdative"
         description="The requested Readative page could not be found."
         robots="noindex"
       />

@@ -8,6 +8,7 @@ interface DiscoverySearchProps {
   onChange: (value: string) => void;
   onClear: () => void;
   ariaLabel: string;
+  fullWidthUntilDesktop?: boolean;
 }
 
 const themeClasses = {
@@ -34,8 +35,12 @@ export const DiscoverySearch = memo(function DiscoverySearch({
   onChange,
   onClear,
   ariaLabel,
+  fullWidthUntilDesktop = false,
 }: DiscoverySearchProps) {
   const styles = themeClasses[theme];
+  const widthClass = fullWidthUntilDesktop
+    ? "max-w-none min-[1280px]:max-w-xl"
+    : "max-w-xl";
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       onChange(event.target.value);
@@ -45,7 +50,7 @@ export const DiscoverySearch = memo(function DiscoverySearch({
 
   return (
     <div
-      className={`mx-auto flex min-h-11 w-full max-w-xl items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-all ${styles.shell}`}
+      className={`mx-auto flex min-h-11 w-full ${widthClass} items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-all ${styles.shell}`}
     >
       <Search className={`h-4 w-4 shrink-0 ${styles.icon}`} />
       <input

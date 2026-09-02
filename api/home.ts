@@ -228,7 +228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       href: category.path,
       label: category.label,
     }));
-    const pageTitle = "Readative | Posts and SmartTalk";
+    const pageTitle = "ReAdative | Practical Knowledge & SmartTalk";
     const pageDescription =
       "Readative helps readers discover practical posts, visual explainers, study notes, and SmartTalk Q&A from creator profiles.";
     const schema = buildHomeSchemas({
@@ -246,7 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta property="og:url" content="${SITE_URL}/" />
       <meta property="og:image" content="${SITE_URL}/logo.png" />
       <meta property="og:image:alt" content="Readative knowledge sharing" />
-      <meta property="og:site_name" content="Readative" />
+      <meta property="og:site_name" content="ReAdative" />
       <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
@@ -313,7 +313,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("Home document generation error:", error);
     res.setHeader("Cache-Control", "no-store");
     return res.status(503).send(
-      '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="robots" content="noindex, follow" /><title>Readative temporarily unavailable</title></head><body><main><h1>Readative temporarily unavailable</h1><p>Home content is temporarily unavailable.</p></main></body></html>',
+      '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="robots" content="noindex, follow" /><title>ReAdative temporarily unavailable</title></head><body><main><h1>ReAdative temporarily unavailable</h1><p>Home content is temporarily unavailable.</p></main></body></html>',
     );
   }
 }

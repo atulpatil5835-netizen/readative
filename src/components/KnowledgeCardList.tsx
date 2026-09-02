@@ -442,7 +442,7 @@ function MeasuredVirtualRow({
   return (
     <div
       ref={rowRef}
-      className="absolute left-0 right-0 pb-4"
+      className="absolute left-0 right-0 pb-3 min-[1280px]:pb-4"
       style={
         {
           contain: "layout paint",

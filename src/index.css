@@ -12,6 +12,11 @@
 
   body {
     @apply bg-[#f7f8fb] font-sans antialiased;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-width: 0;
   }
 
   button,
@@ -184,6 +189,15 @@
   @media (min-width: 768px) {
     .readative-panel-surface {
       border-radius: 28px;
+    }
+  }
+
+  @media (max-width: 1279px) {
+    .readative-card-surface {
+      border-right-width: 0;
+      border-left-width: 0;
+      border-radius: 0;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045);
     }
   }
 }

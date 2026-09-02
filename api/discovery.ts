@@ -212,7 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const allPosts = [...posts]
     .filter((post) => !recentPostIds.has(post.id))
     .sort((left, right) => left.title.localeCompare(right.title));
-  const pageTitle = "Readative Posts Index | Practical Knowledge and SmartTalk";
+  const pageTitle = "Practical Knowledge Posts | ReAdative";
   const pageDescription =
     "Browse published Readative posts first, with SmartTalk questions, contributor profiles, categories, and lightweight topic shortcuts for discovery.";
   const discoverySchemas = buildDiscoverySchemas({
@@ -235,7 +235,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta property="og:description" content="${escapeHtml(pageDescription)}" />
   <meta property="og:url" content="${SITE_URL}${DISCOVERY_INDEX_PATH}" />
   <meta property="og:image" content="${SITE_URL}/logo.png" />
-  <meta property="og:site_name" content="Readative" />
+  <meta property="og:site_name" content="ReAdative" />
   <meta property="og:locale" content="en_US" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />

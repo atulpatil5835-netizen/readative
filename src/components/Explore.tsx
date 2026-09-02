@@ -1119,8 +1119,8 @@ export function Explore({
   }, [allContributors, entries, now, questions, searchTerms, topicStats]);
 
   const pageTitle = activeTopic
-    ? `${activeTopic.label} Topic | Readative`
-    : "Explore | Readative";
+    ? `${activeTopic.label} Topic | ReAdative`
+    : "Explore | ReAdative";
   const pageDescription = activeTopic
     ? activeTopic.description
     : "Explore trending technology topics, active SmartTalk discussions, helpful posts, and top contributors on Readative.";

@@ -1864,7 +1864,7 @@ export function Profile({
     return (
       <div className="space-y-6 pb-40 md:pb-20">
         <SEO
-          title="Profile | Readative"
+          title="Profile | ReAdative"
           description="Sign in to unlock your Readative profile, posts, and helpful feedback."
           robots="noindex"
         />
@@ -1963,7 +1963,7 @@ export function Profile({
   return (
     <div className="space-y-6 pb-20">
       <SEO
-        title={profile ? `${profileDisplayName} | Readative` : "Profile | Readative"}
+        title={profile ? `${profileDisplayName} | ReAdative` : "Profile | ReAdative"}
         description="Explore user profiles, shared knowledge, and helpful posts on Readative."
         type="profile"
         url={profileUrl}

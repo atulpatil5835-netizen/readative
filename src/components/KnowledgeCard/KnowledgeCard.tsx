@@ -881,7 +881,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       className={cn(
         "readative-card-surface readative-card-surface-hover scroll-mt-24 overflow-hidden md:scroll-mt-28",
         focused &&
-          "ring-2 ring-emerald-400 ring-offset-4 ring-offset-[#f7f8fb]",
+          "ring-2 ring-emerald-400 ring-offset-0 ring-offset-[#f7f8fb] min-[1280px]:ring-offset-4",
       )}
     >
       <CardHeader
@@ -909,7 +909,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         title={entry.title}
       />
 
-      <div className="p-4 pt-4 sm:p-5">
+      <div className="p-3 pt-3 sm:p-4 min-[1280px]:p-5">
         <CardTrust
           trustToneClass={trustToneClass}
           trustMetrics={trustMetrics}

@@ -77,7 +77,7 @@ function renderSmartTalkList(questions: SeoSmartTalk[]) {
 
 function renderNotFound(id: string) {
   const head = `
-    <title>Post Not Found | Readative</title>
+    <title>Post Not Found | ReAdative</title>
     <meta name="description" content="The requested Readative post is not available." />
     <meta name="robots" content="noindex, follow" />
     ${SEO_DOCUMENT_STYLES}`;
@@ -126,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(301).end();
     }
 
-    const pageTitle = `${post.title} | Readative`;
+    const pageTitle = `${post.title} | ReAdative`;
     const authorPath = authorProfile
       ? buildSeoProfilePath(authorProfile)
       : post.authorId
@@ -173,7 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         publisher: {
           "@type": "Organization",
           "@id": `${SITE_URL}/#organization`,
-          name: "Readative",
+          name: "ReAdative",
           url: SITE_URL,
           logo: { "@type": "ImageObject", url: `${SITE_URL}/logo.png` },
         },
@@ -201,10 +201,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta property="og:description" content="${escapeHtml(post.description)}" />
       <meta property="og:url" content="${canonicalUrl}" />
       <meta property="og:image" content="${SITE_URL}/logo.png" />
-      <meta property="og:image:alt" content="Readative" />
+      <meta property="og:image:alt" content="ReAdative" />
       <meta property="og:image:width" content="512" />
       <meta property="og:image:height" content="512" />
-      <meta property="og:site_name" content="Readative" />
+      <meta property="og:site_name" content="ReAdative" />
       ${post.createdAt ? `<meta property="article:published_time" content="${new Date(post.createdAt).toISOString()}" />` : ""}
       ${post.updatedAt ? `<meta property="article:modified_time" content="${new Date(post.updatedAt).toISOString()}" />` : ""}
       ${post.category ? `<meta property="article:section" content="${escapeHtml(post.category)}" />` : ""}
@@ -212,7 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
       <meta name="twitter:description" content="${escapeHtml(post.description)}" />
       <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-      <meta name="twitter:image:alt" content="Readative" />
+      <meta name="twitter:image:alt" content="ReAdative" />
       ${renderJsonLd(schemas)}
       ${SEO_DOCUMENT_STYLES}`;
 

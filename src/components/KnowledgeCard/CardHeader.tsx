@@ -66,7 +66,7 @@ export function CardHeader({
   );
 
   return (
-    <div className="px-4 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-5">
+    <div className="px-3 pb-2.5 pt-3 sm:px-4 sm:pb-3 sm:pt-4 min-[1280px]:px-5 min-[1280px]:pb-4 min-[1280px]:pt-5">
       <div className="flex items-start gap-3.5">
         <a
           href={authorProfilePath}

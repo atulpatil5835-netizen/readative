@@ -90,14 +90,14 @@ function buildSmartTalkIndexSchemas(questions: SeoSmartTalk[]) {
     {
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: "Readative",
+      name: "ReAdative",
       url: SITE_URL,
       logo: absoluteUrl("/logo.png"),
     },
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: "Readative",
+      name: "ReAdative",
       url: SITE_URL,
     },
     {
@@ -278,7 +278,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <head>
   <meta charset="utf-8" />
   <meta name="robots" content="noindex, follow" />
-  <title>SmartTalk Not Found | Readative</title>
+  <title>SmartTalk Not Found | ReAdative</title>
 </head>
 <body>
   <main>
@@ -300,7 +300,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(301).end();
     }
 
-    const pageTitle = `${focusedQuestion.title} | SmartTalk | Readative`;
+    const pageTitle = `${focusedQuestion.title} | ReAdative`;
     const pageDescription = focusedQuestion.description;
     const relatedQuestions = getRelatedQuestions(focusedQuestion, questions, 5);
     const relatedPosts = getRelatedPosts(
@@ -318,16 +318,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta property="og:description" content="${escapeHtml(pageDescription)}" />
       <meta property="og:url" content="${canonicalUrl}" />
       <meta property="og:image" content="${SITE_URL}/logo.png" />
-      <meta property="og:image:alt" content="Readative SmartTalk" />
+      <meta property="og:image:alt" content="ReAdative SmartTalk" />
       <meta property="og:image:width" content="512" />
       <meta property="og:image:height" content="512" />
-      <meta property="og:site_name" content="Readative" />
+      <meta property="og:site_name" content="ReAdative" />
       <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
       <meta name="twitter:description" content="${escapeHtml(pageDescription)}" />
       <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-      <meta name="twitter:image:alt" content="Readative SmartTalk" />
+      <meta name="twitter:image:alt" content="ReAdative SmartTalk" />
       ${renderJsonLd(buildSmartTalkQuestionSchemas(focusedQuestion, profileById))}
       ${SEO_DOCUMENT_STYLES}`;
     const answerList = focusedQuestion.answers.length
@@ -394,22 +394,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pageDescription =
     "Readative SmartTalk questions, practical community answers, and topic-focused learning discussions.";
   const head = `
-    <title>SmartTalk Discussions | Readative</title>
+    <title>SmartTalk | ReAdative</title>
     <meta name="description" content="${pageDescription}" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="${SITE_URL}/smarttalks" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="SmartTalk Discussions | Readative" />
+    <meta property="og:title" content="SmartTalk | ReAdative" />
     <meta property="og:description" content="${pageDescription}" />
     <meta property="og:url" content="${SITE_URL}/smarttalks" />
     <meta property="og:image" content="${SITE_URL}/logo.png" />
-    <meta property="og:image:alt" content="Readative SmartTalk" />
-    <meta property="og:site_name" content="Readative" />
+    <meta property="og:image:alt" content="ReAdative SmartTalk" />
+    <meta property="og:site_name" content="ReAdative" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="SmartTalk Discussions | Readative" />
+    <meta name="twitter:title" content="SmartTalk | ReAdative" />
     <meta name="twitter:description" content="${pageDescription}" />
     <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-    <meta name="twitter:image:alt" content="Readative SmartTalk" />
+    <meta name="twitter:image:alt" content="ReAdative SmartTalk" />
     ${renderJsonLd(buildSmartTalkIndexSchemas(questions))}
     ${SEO_DOCUMENT_STYLES}`;
   const questionList = questions
