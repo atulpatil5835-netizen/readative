@@ -1,5 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAuthOtpHttpError, requestEmailOtp } from "../_authOtp.js";
+import {
+  getAuthOtpHttpError,
+  requestEmailOtp,
+  verifyEmailOtp,
+} from "./_authOtp.js";
+
+type AuthOtpAction = "request-otp" | "verify-otp";
 
 function setHeaders(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -21,6 +27,18 @@ function getRequestIp(req: VercelRequest) {
   );
 }
 
+function getAction(req: VercelRequest): AuthOtpAction | null {
+  const action = getHeaderValue(req.query.action as string | string[] | undefined);
+  if (action === "request-otp" || action === "verify-otp") return action;
+
+  const [, routeAction] = (req.url || "").split("/api/auth/");
+  const normalizedRouteAction = routeAction?.split(/[?#]/)[0];
+  return normalizedRouteAction === "request-otp" ||
+    normalizedRouteAction === "verify-otp"
+    ? normalizedRouteAction
+    : null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setHeaders(res);
 
@@ -33,12 +51,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed." });
   }
 
+  const action = getAction(req);
+
+  if (!action) {
+    return res.status(404).json({ error: "Auth endpoint not found." });
+  }
+
   try {
-    const result = await requestEmailOtp({
+    if (action === "request-otp") {
+      const result = await requestEmailOtp({
+        email: req.body?.email,
+        purpose: req.body?.purpose,
+        ip: getRequestIp(req),
+        userAgent: getHeaderValue(req.headers["user-agent"]),
+      });
+      return res.status(200).json(result);
+    }
+
+    const result = await verifyEmailOtp({
       email: req.body?.email,
+      code: req.body?.code,
       purpose: req.body?.purpose,
-      ip: getRequestIp(req),
-      userAgent: getHeaderValue(req.headers["user-agent"]),
+      password: req.body?.password,
+      displayName: req.body?.displayName,
     });
     return res.status(200).json(result);
   } catch (error) {
