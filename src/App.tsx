@@ -25,10 +25,6 @@ import {
   type KnowledgeIdentity,
 } from "./utils/knowledgeIdentity";
 import {
-  isEmailSignInLink,
-  completeSignInWithEmailLink,
-  clearEmailSignInUrl,
-  getSavedEmailForSignIn,
   signInWithGoogleAccount,
   signOutAccount,
   subscribeToAuthIdentity,
@@ -45,6 +41,7 @@ import {
   type AppTab,
   type RouteChangeDetail,
 } from "./utils/routes";
+import type { UserNotification } from "./types";
 import type { LegalSlug } from "./content/legalRoutes";
 import { trackPageView, trackLogin, trackLogout, setAnalyticsUser } from "./utils/analytics";
 import { scheduleThirdPartyScripts } from "./utils/loadThirdPartyScripts";
@@ -552,25 +549,6 @@ export default function App() {
   }, [hydratedIdentity?.authorId]);
 
   useEffect(() => {
-    // Check if the current URL contains an email magic link sign in
-    if (typeof window !== "undefined" && isEmailSignInLink(window.location.href)) {
-      const savedEmail = getSavedEmailForSignIn();
-      if (savedEmail) {
-        completeSignInWithEmailLink(savedEmail, window.location.href)
-          .then((nextIdentity) => {
-            handleAuthSuccess(nextIdentity);
-            clearEmailSignInUrl();
-          })
-          .catch((error) => {
-            console.error("Auto email link sign in failed:", error);
-            setShowGoogleSignInPrompt(true);
-          });
-      } else {
-        // User opened sign-in link on different browser/device: prompt for email
-        setShowGoogleSignInPrompt(true);
-      }
-    }
-
     return subscribeToAuthIdentity(
       (nextIdentity) => {
         setIdentity(nextIdentity);

@@ -21,21 +21,17 @@ import {
   X,
 } from "lucide-react";
 import {
-  clearEmailSignInUrl,
-  completeSignInWithEmailLink,
-  getSavedEmailForSignIn,
-  isEmailSignInLink,
-  sendPasswordReset,
-  sendSignInEmailLink,
+  requestEmailOtp,
+  resetPasswordWithEmailOtp,
   signInWithEmailPassword,
   signInWithGithubAccount,
   signInWithGoogleAccount,
-  signUpWithEmailPassword,
-  type KnowledgeIdentity,
+  signUpWithEmailPasswordOtp,
 } from "../utils/auth";
 import { firebaseAuthDomain } from "../firebase/firebaseConfig";
+import type { KnowledgeIdentity } from "../utils/knowledgeIdentity";
 
-export type AuthModalTab = "magic-link" | "password";
+export type AuthModalTab = "signin" | "signup";
 
 export interface AuthModalProps {
   title?: string;
@@ -47,6 +43,15 @@ export interface AuthModalProps {
   onSuccess?: (identity: KnowledgeIdentity) => void | Promise<void>;
   onClose: () => void;
 }
+
+type SigningProvider =
+  | "google"
+  | "github"
+  | "password"
+  | "signup-code"
+  | "reset-code"
+  | "reset-password"
+  | null;
 
 export function GoogleLogoSvg({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -83,13 +88,120 @@ export function GithubLogoSvg({ className = "h-4 w-4" }: { className?: string })
   );
 }
 
+const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
+const MIN_PASSWORD_LENGTH = 8;
+
+function normalizeCodeInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, OTP_LENGTH);
+}
+
+function getPasswordChecklist(password: string) {
+  return {
+    hasLength: password.length >= MIN_PASSWORD_LENGTH,
+    hasLetter: /[A-Za-z]/.test(password),
+    hasNumber: /[0-9]/.test(password),
+    hasSpecial: /[^A-Za-z0-9]/.test(password),
+  };
+}
+
+function passwordMeetsMinimum(password: string) {
+  const checklist = getPasswordChecklist(password);
+  return checklist.hasLength && checklist.hasLetter && checklist.hasNumber;
+}
+
+type OtpInputBoxesProps = {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  helperText?: string;
+  autoFocus?: boolean;
+  className?: string;
+};
+
+function OtpInputBoxes({
+  id,
+  label,
+  value,
+  onChange,
+  disabled = false,
+  helperText,
+  autoFocus = false,
+  className = "",
+}: OtpInputBoxesProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const digits = Array.from({ length: OTP_LENGTH }, (_, index) => value[index] || "");
+  const activeIndex = Math.min(value.length, OTP_LENGTH - 1);
+
+  return (
+    <div className={className}>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={id} className="text-xs font-black uppercase tracking-[0.12em] text-slate-600">
+          {label}
+        </label>
+        <span className="text-[10px] font-black text-slate-400">
+          {value.length}/{OTP_LENGTH}
+        </span>
+      </div>
+      <div
+        className="relative mt-2"
+        onClick={() => inputRef.current?.focus()}
+      >
+        <input
+          ref={inputRef}
+          id={id}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          value={value}
+          onChange={(event) => onChange(normalizeCodeInput(event.target.value))}
+          onPaste={(event) => {
+            event.preventDefault();
+            onChange(normalizeCodeInput(event.clipboardData.getData("text")));
+          }}
+          maxLength={OTP_LENGTH}
+          disabled={disabled}
+          autoFocus={autoFocus}
+          aria-label={label}
+          className="absolute inset-0 z-10 h-full w-full cursor-text rounded-2xl bg-transparent text-transparent caret-transparent outline-none disabled:cursor-not-allowed"
+        />
+        <div className="grid grid-cols-6 gap-2" aria-hidden="true">
+          {digits.map((digit, index) => {
+            const isActive = index === activeIndex && !disabled;
+            return (
+              <span
+                key={`${id}-${index}`}
+                className={`flex h-11 items-center justify-center rounded-2xl border text-lg font-black tabular-nums transition-all sm:h-12 ${
+                  digit
+                    ? "border-emerald-500 bg-white text-slate-950 shadow-sm"
+                    : "border-slate-200 bg-slate-50 text-slate-300"
+                } ${isActive ? "ring-2 ring-emerald-500/25" : ""} ${
+                  disabled ? "opacity-60" : ""
+                }`}
+              >
+                {digit || <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      {helperText && (
+        <p className="mt-2 text-[11px] font-semibold leading-relaxed text-slate-500">
+          {helperText}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function AuthModal({
   title = "Welcome to Readative",
   description = "Join trusted readers and writers to share knowledge, save posts, and join conversations.",
   submitLabel = "Continue with Google",
-  defaultTab = "magic-link",
+  defaultTab = "signin",
   initialEmail = "",
   onConfirm,
   onSuccess,
@@ -98,34 +210,58 @@ export function AuthModal({
   const dialogId = useId();
   const [activeTab, setActiveTab] = useState<AuthModalTab>(defaultTab);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [signingInProvider, setSigningInProvider] = useState<"google" | "github" | "magic-link" | "password" | null>(null);
+  const [signingInProvider, setSigningInProvider] = useState<SigningProvider>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showBenefits, setShowBenefits] = useState(false);
 
-  // Email Magic Link State
-  const [magicEmail, setMagicEmail] = useState(initialEmail);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const [magicCountdown, setMagicCountdown] = useState(0);
-
-  // Email/Password State
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [passwordEmail, setPasswordEmail] = useState(initialEmail);
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  const [signUpCodeSent, setSignUpCodeSent] = useState(false);
+  const [signUpCode, setSignUpCode] = useState("");
+  const [signUpMaskedEmail, setSignUpMaskedEmail] = useState("");
+  const [signUpCountdown, setSignUpCountdown] = useState(0);
+
   const [isResetMode, setIsResetMode] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
-  const [resetMessage, setResetMessage] = useState<string | null>(null);
-
-  // Check if current page is returning from email magic link
-  const [isPendingEmailConfirmation, setIsPendingEmailConfirmation] = useState(false);
-  const [confirmEmail, setConfirmEmail] = useState("");
-
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
-  const countdownIntervalRef = useRef<number | null>(null);
+  const [resetEmail, setResetEmail] = useState(initialEmail);
+  const [resetCodeSent, setResetCodeSent] = useState(false);
+  const [resetCode, setResetCode] = useState("");
+  const [resetMaskedEmail, setResetMaskedEmail] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetCountdown, setResetCountdown] = useState(0);
 
   const signInDomain = firebaseAuthDomain.replace(/^www\./, "");
   const usesProjectAuthHelper = signInDomain.endsWith(".firebaseapp.com");
+  const passwordChecklist = useMemo(() => getPasswordChecklist(password), [password]);
+  const resetPasswordChecklist = useMemo(
+    () => getPasswordChecklist(resetPassword),
+    [resetPassword],
+  );
+  const isSignupPasswordReady = passwordMeetsMinimum(password);
+  const isResetPasswordReady = passwordMeetsMinimum(resetPassword);
+  const passwordStrength = useMemo(() => {
+    if (!password) return 0;
+    return [
+      passwordChecklist.hasLength,
+      password.length >= 12,
+      passwordChecklist.hasLetter && passwordChecklist.hasNumber,
+      passwordChecklist.hasSpecial,
+    ].filter(Boolean).length;
+  }, [password, passwordChecklist]);
+  const resetPasswordStrength = useMemo(() => {
+    if (!resetPassword) return 0;
+    return [
+      resetPasswordChecklist.hasLength,
+      resetPassword.length >= 12,
+      resetPasswordChecklist.hasLetter && resetPasswordChecklist.hasNumber,
+      resetPasswordChecklist.hasSpecial,
+    ].filter(Boolean).length;
+  }, [resetPassword, resetPasswordChecklist]);
 
   const benefits = useMemo(
     () => [
@@ -158,33 +294,6 @@ export function AuthModal({
     [],
   );
 
-  // Check on mount if this URL is an email sign-in link
-  useEffect(() => {
-    if (typeof window !== "undefined" && isEmailSignInLink(window.location.href)) {
-      const savedEmail = getSavedEmailForSignIn();
-      if (savedEmail) {
-        setMagicEmail(savedEmail);
-        setIsSigningIn(true);
-        setSigningInProvider("magic-link");
-        completeSignInWithEmailLink(savedEmail, window.location.href)
-          .then((identity) => {
-            clearEmailSignInUrl();
-            void handleFinishSuccess(identity);
-          })
-          .catch((error) => {
-            setIsSigningIn(false);
-            setSigningInProvider(null);
-            setErrorMessage(
-              error instanceof Error ? error.message : "Could not complete sign in with this link.",
-            );
-          });
-      } else {
-        setIsPendingEmailConfirmation(true);
-      }
-    }
-  }, []);
-
-  // Handle ESC key press
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSigningIn) {
@@ -196,23 +305,16 @@ export function AuthModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSigningIn, onClose]);
 
-  // Resend Countdown Timer
   useEffect(() => {
-    if (magicCountdown > 0) {
-      countdownIntervalRef.current = window.setInterval(() => {
-        setMagicCountdown((prev) => {
-          if (prev <= 1) {
-            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    };
-  }, [magicCountdown]);
+    if (signUpCountdown <= 0 && resetCountdown <= 0) return;
+
+    const intervalId = window.setInterval(() => {
+      setSignUpCountdown((current) => Math.max(0, current - 1));
+      setResetCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [signUpCountdown, resetCountdown]);
 
   const handleFinishSuccess = async (identity?: KnowledgeIdentity) => {
     try {
@@ -228,11 +330,42 @@ export function AuthModal({
     }
   };
 
-  // 1. Google Sign-In
+  const clearMessages = () => {
+    setErrorMessage(null);
+    setStatusMessage(null);
+  };
+
+  const resetSignUpVerification = () => {
+    setSignUpCodeSent(false);
+    setSignUpCode("");
+    setSignUpMaskedEmail("");
+    setSignUpCountdown(0);
+  };
+
+  const resetPasswordVerification = () => {
+    setResetCodeSent(false);
+    setResetCode("");
+    setResetMaskedEmail("");
+    setResetPassword("");
+    setResetPasswordConfirm("");
+    setResetCountdown(0);
+  };
+
+  const switchTab = (tab: AuthModalTab) => {
+    setActiveTab(tab);
+    setIsResetMode(false);
+    clearMessages();
+  };
+
+  const handleEmailChange = (nextEmail: string) => {
+    setEmail(nextEmail);
+    if (signUpCodeSent) resetSignUpVerification();
+  };
+
   const handleGoogleSignIn = async () => {
     setIsSigningIn(true);
     setSigningInProvider("google");
-    setErrorMessage(null);
+    clearMessages();
 
     try {
       if (onConfirm) {
@@ -251,11 +384,10 @@ export function AuthModal({
     }
   };
 
-  // 2. GitHub Sign-In
   const handleGithubSignIn = async () => {
     setIsSigningIn(true);
     setSigningInProvider("github");
-    setErrorMessage(null);
+    clearMessages();
 
     try {
       const identity = await signInWithGithubAccount();
@@ -269,66 +401,44 @@ export function AuthModal({
     }
   };
 
-  // 3. Email Magic Link - Send Link
-  const handleSendMagicLink = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const email = magicEmail.trim();
-    if (!email || !email.includes("@")) {
+  const requestSignUpCode = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setErrorMessage("Please enter a valid email address.");
       return;
     }
-
-    setIsSigningIn(true);
-    setSigningInProvider("magic-link");
-    setErrorMessage(null);
-
-    try {
-      await sendSignInEmailLink(email);
-      setMagicLinkSent(true);
-      setMagicCountdown(RESEND_COOLDOWN_SECONDS);
-      setIsSigningIn(false);
-      setSigningInProvider(null);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Could not send sign-in link. Please try again.",
-      );
-      setIsSigningIn(false);
-      setSigningInProvider(null);
-    }
-  };
-
-  // Complete Email Magic Link (different device confirmation)
-  const handleConfirmMagicEmail = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const email = confirmEmail.trim();
-    if (!email) {
-      setErrorMessage("Please enter the email address where you received the sign-in link.");
+    if (!isSignupPasswordReady) {
+      setErrorMessage("Use at least 8 characters with a letter and a number.");
       return;
     }
 
     setIsSigningIn(true);
-    setSigningInProvider("magic-link");
-    setErrorMessage(null);
+    setSigningInProvider("signup-code");
+    clearMessages();
 
     try {
-      const identity = await completeSignInWithEmailLink(email, window.location.href);
-      clearEmailSignInUrl();
-      setIsPendingEmailConfirmation(false);
-      await handleFinishSuccess(identity);
+      const result = await requestEmailOtp(cleanEmail, "signup");
+      setSignUpCode("");
+      setSignUpCodeSent(true);
+      setSignUpMaskedEmail(result.email);
+      setSignUpCountdown(result.resendCooldownSeconds || RESEND_COOLDOWN_SECONDS);
+      setStatusMessage("Verification code sent. Enter it below to create your account.");
+      setIsSigningIn(false);
+      setSigningInProvider(null);
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Could not complete sign-in. Please try again.",
+        error instanceof Error ? error.message : "Could not send the verification code.",
       );
       setIsSigningIn(false);
       setSigningInProvider(null);
     }
   };
 
-  // 4. Email + Password Sign In / Sign Up
-  const handlePasswordAuth = async (event: React.FormEvent) => {
+  const handleSignIn = async (event: React.FormEvent) => {
     event.preventDefault();
-    const email = passwordEmail.trim();
-    if (!email || !email.includes("@")) {
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setErrorMessage("Please enter a valid email address.");
       return;
     }
@@ -336,22 +446,13 @@ export function AuthModal({
       setErrorMessage("Please enter your password.");
       return;
     }
-    if (isSignUp && password.length < 6) {
-      setErrorMessage("Password must be at least 6 characters.");
-      return;
-    }
 
     setIsSigningIn(true);
     setSigningInProvider("password");
-    setErrorMessage(null);
+    clearMessages();
 
     try {
-      let identity: KnowledgeIdentity;
-      if (isSignUp) {
-        identity = await signUpWithEmailPassword(email, password, displayName);
-      } else {
-        identity = await signInWithEmailPassword(email, password);
-      }
+      const identity = await signInWithEmailPassword(cleanEmail, password);
       await handleFinishSuccess(identity);
     } catch (error) {
       setErrorMessage(
@@ -362,52 +463,147 @@ export function AuthModal({
     }
   };
 
-  // 5. Forgot Password Reset
-  const handlePasswordReset = async (event: React.FormEvent) => {
+  const handleCreateAccount = async (event: React.FormEvent) => {
     event.preventDefault();
-    const email = passwordEmail.trim();
-    if (!email || !email.includes("@")) {
+    const cleanEmail = email.trim();
+    const cleanCode = normalizeCodeInput(signUpCode);
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setErrorMessage("Please enter a valid email address.");
+      return;
+    }
+    if (!isSignupPasswordReady) {
+      setErrorMessage("Use at least 8 characters with a letter and a number.");
+      return;
+    }
+    if (!signUpCodeSent) {
+      await requestSignUpCode();
+      return;
+    }
+    if (cleanCode.length !== OTP_LENGTH) {
+      setErrorMessage("Enter the 6-digit verification code sent to your email.");
+      return;
+    }
+
+    setIsSigningIn(true);
+    setSigningInProvider("password");
+    clearMessages();
+
+    try {
+      const identity = await signUpWithEmailPasswordOtp(
+        cleanEmail,
+        password,
+        displayName,
+        cleanCode,
+      );
+      await handleFinishSuccess(identity);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not create account with this email.",
+      );
+      setIsSigningIn(false);
+      setSigningInProvider(null);
+    }
+  };
+
+  const handleStartReset = () => {
+    setResetEmail(email.trim());
+    setIsResetMode(true);
+    setActiveTab("signin");
+    clearMessages();
+  };
+
+  const handleRequestResetCode = async (event: React.SyntheticEvent) => {
+    event.preventDefault();
+    const cleanEmail = resetEmail.trim();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setErrorMessage("Please enter the email address linked to your account.");
       return;
     }
 
     setIsSigningIn(true);
-    setErrorMessage(null);
+    setSigningInProvider("reset-code");
+    clearMessages();
 
     try {
-      await sendPasswordReset(email);
-      setResetSent(true);
-      setResetMessage(`Password reset link sent to ${email}. Check your inbox.`);
-      setIsSigningIn(false);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Could not send password reset email.",
+      const result = await requestEmailOtp(cleanEmail, "reset");
+      setResetCode("");
+      setResetCodeSent(true);
+      setResetMaskedEmail(result.email);
+      setResetCountdown(result.resendCooldownSeconds || RESEND_COOLDOWN_SECONDS);
+      setStatusMessage(
+        "If this email has a Readative account, a verification code has been sent.",
       );
       setIsSigningIn(false);
+      setSigningInProvider(null);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not send the verification code.",
+      );
+      setIsSigningIn(false);
+      setSigningInProvider(null);
     }
   };
 
-  // Password strength helper
-  const passwordStrength = useMemo(() => {
-    if (!password) return 0;
-    let score = 0;
-    if (password.length >= 6) score += 1;
-    if (password.length >= 10) score += 1;
-    if (/[A-Z]/.test(password) && /[0-9]/.test(password)) score += 1;
-    if (/[^A-Za-z0-9]/.test(password)) score += 1;
-    return score;
-  }, [password]);
+  const handleVerifyPasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const cleanEmail = resetEmail.trim();
+    const cleanCode = normalizeCodeInput(resetCode);
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setErrorMessage("Please enter the email address linked to your account.");
+      return;
+    }
+    if (cleanCode.length !== OTP_LENGTH) {
+      setErrorMessage("Enter the 6-digit reset code sent to your email.");
+      return;
+    }
+    if (!isResetPasswordReady) {
+      setErrorMessage("Use at least 8 characters with a letter and a number.");
+      return;
+    }
+    if (resetPassword !== resetPasswordConfirm) {
+      setErrorMessage("Passwords do not match.");
+      return;
+    }
+
+    setIsSigningIn(true);
+    setSigningInProvider("reset-password");
+    clearMessages();
+
+    try {
+      const identity = await resetPasswordWithEmailOtp(
+        cleanEmail,
+        cleanCode,
+        resetPassword,
+      );
+      await handleFinishSuccess(identity);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not reset this password.",
+      );
+      setIsSigningIn(false);
+      setSigningInProvider(null);
+    }
+  };
+
+  const renderPasswordStrength = (score: number) => {
+    if (score <= 1) return "Weak";
+    if (score === 2) return "Fair";
+    if (score === 3) return "Good";
+    return "Strong";
+  };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-slate-950/45 p-2 backdrop-blur-sm sm:p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-slate-950/55 p-2 backdrop-blur-sm sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${dialogId}-title`}
-        className="readative-dialog-surface relative flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl transition-all sm:max-h-[calc(100dvh-2rem)]"
+        className="readative-dialog-surface relative flex max-h-[calc(100dvh-1rem)] w-full max-w-[540px] flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl transition-all sm:max-h-[calc(100dvh-2rem)]"
       >
-        {/* Modal Header */}
-        <div className="shrink-0 border-b border-slate-100 bg-slate-950 px-6 py-5 text-white">
+        <div className="shrink-0 border-b border-emerald-400/20 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900 px-6 py-5 text-white">
           <button
             type="button"
             onClick={onClose}
@@ -418,16 +614,16 @@ export function AuthModal({
             <X className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="inline-flex rounded-2xl bg-emerald-500/15 p-2.5 text-emerald-400 ring-1 ring-emerald-500/30">
+          <div className="flex items-center gap-3 pr-9">
+            <div className="inline-flex rounded-2xl bg-emerald-400/15 p-2.5 text-emerald-300 ring-1 ring-emerald-300/30">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 id={`${dialogId}-title`} className="text-xl font-black tracking-tight sm:text-2xl">
                 {title}
               </h2>
-              <p className="mt-0.5 text-xs text-emerald-400 font-bold uppercase tracking-wider">
-                Readative Secure Authentication
+              <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                Secure Readative access
               </p>
             </div>
           </div>
@@ -436,85 +632,35 @@ export function AuthModal({
           </p>
         </div>
 
-        {/* Modal Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6">
-          {/* Error Banner */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gradient-to-b from-white to-slate-50/70 p-5 sm:p-6">
           {errorMessage && (
             <div
               role="alert"
-              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/90 p-3.5 text-xs font-semibold leading-relaxed text-amber-900 shadow-sm sm:text-sm"
+              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/95 p-3.5 text-xs font-semibold leading-relaxed text-amber-900 shadow-sm sm:text-sm"
             >
-              <span className="mt-0.5 text-amber-600">⚠️</span>
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="flex-1">{errorMessage}</div>
             </div>
           )}
 
-          {/* Reset Sent Success Notice */}
-          {resetSent && resetMessage && (
+          {statusMessage && (
             <div
               role="status"
-              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-900 shadow-sm sm:text-sm"
+              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold leading-relaxed text-emerald-900 shadow-sm sm:text-sm"
             >
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-              <div className="flex-1">{resetMessage}</div>
+              <div className="flex-1">{statusMessage}</div>
             </div>
           )}
 
-          {/* Pending Email Confirmation for Magic Link from another device */}
-          {isPendingEmailConfirmation ? (
-            <form onSubmit={handleConfirmMagicEmail} className="space-y-4">
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-center">
-                <Mail className="mx-auto h-8 w-8 text-indigo-600" />
-                <h3 className="mt-2 text-base font-bold text-slate-900">
-                  Confirm your email to complete sign in
-                </h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  You opened a sign-in link in a new browser. Please enter your email address to confirm your identity.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                  Your Email
-                </label>
-                <div className="relative mt-1">
-                  <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  <input
-                    type="email"
-                    required
-                    value={confirmEmail}
-                    onChange={(e) => setConfirmEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSigningIn}
-                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:bg-emerald-800 disabled:opacity-50"
-              >
-                {isSigningIn ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Confirming Sign In...
-                  </>
-                ) : (
-                  "Complete Sign In"
-                )}
-              </button>
-            </form>
-          ) : (
+          {!isResetMode && (
             <>
-              {/* 1-Click Social Sign In Options */}
               <div className="space-y-2.5">
-                {/* Google Sign In Button */}
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={isSigningIn}
-                  className="flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50/80 active:scale-[0.99] disabled:opacity-50"
+                  className="flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/40 active:scale-[0.99] disabled:opacity-50"
                 >
                   {signingInProvider === "google" ? (
                     <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" />
@@ -526,12 +672,11 @@ export function AuthModal({
                   </span>
                 </button>
 
-                {/* GitHub Developer Sign In Button */}
                 <button
                   type="button"
                   onClick={handleGithubSignIn}
                   disabled={isSigningIn}
-                  className="flex min-h-11 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50"
+                  className="flex min-h-11 w-full items-center justify-center gap-3 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-900 active:scale-[0.99] disabled:opacity-50"
                 >
                   {signingInProvider === "github" ? (
                     <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -544,374 +689,514 @@ export function AuthModal({
                 </button>
               </div>
 
-              {/* Visual Divider */}
               <div className="relative my-5 flex items-center justify-center">
                 <div className="w-full border-t border-slate-200" />
                 <span className="absolute bg-white px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  or continue with email
+                  or use email and password
                 </span>
               </div>
 
-              {/* Tab Switcher */}
-              <div className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
+              <div className="mb-4 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-slate-100/90 p-1 shadow-inner">
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveTab("magic-link");
-                    setErrorMessage(null);
-                  }}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all ${
-                    activeTab === "magic-link"
-                      ? "bg-white text-slate-900 shadow-sm"
+                  onClick={() => switchTab("signin")}
+                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all ${
+                    activeTab === "signin"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  <Mail className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>Passwordless Link</span>
+                  <LogIn className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Sign In</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveTab("password");
-                    setErrorMessage(null);
-                  }}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all ${
-                    activeTab === "password"
-                      ? "bg-white text-slate-900 shadow-sm"
+                  onClick={() => switchTab("signup")}
+                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all ${
+                    activeTab === "signup"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  <Lock className="h-3.5 w-3.5 text-slate-600" />
-                  <span>Password</span>
+                  <UserPlus className="h-3.5 w-3.5 text-slate-600" />
+                  <span>Create Account</span>
                 </button>
               </div>
-
-              {/* Tab 1: Magic Link (Passwordless OTP / Link) */}
-              {activeTab === "magic-link" && (
-                <div>
-                  {magicLinkSent ? (
-                    <div className="space-y-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 text-center">
-                      <div className="mx-auto inline-flex rounded-full bg-emerald-100 p-3 text-emerald-700">
-                        <Mail className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-black text-slate-900">Check your inbox!</h3>
-                        <p className="mt-1 text-xs text-slate-600">
-                          We sent a secure 1-click sign-in link to:
-                        </p>
-                        <p className="mt-0.5 font-bold text-emerald-800 break-all text-sm">{magicEmail}</p>
-                      </div>
-
-                      {/* Quick email app links */}
-                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                        <a
-                          href="https://mail.google.com"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                        >
-                          <GoogleLogoSvg className="h-3.5 w-3.5" />
-                          Open Gmail
-                        </a>
-                        <a
-                          href="https://outlook.live.com"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                        >
-                          <Mail className="h-3.5 w-3.5 text-sky-600" />
-                          Open Outlook
-                        </a>
-                      </div>
-
-                      <div className="border-t border-emerald-100 pt-3">
-                        {magicCountdown > 0 ? (
-                          <p className="text-xs text-slate-500 font-medium">
-                            Resend link in <span className="font-bold text-emerald-700">{magicCountdown}s</span>
-                          </p>
-                        ) : (
-                          <div className="flex items-center justify-center gap-3">
-                            <button
-                              type="button"
-                              onClick={handleSendMagicLink}
-                              disabled={isSigningIn}
-                              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
-                            >
-                              Resend Sign-in Link
-                            </button>
-                            <span className="text-slate-300">•</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMagicLinkSent(false);
-                                setErrorMessage(null);
-                              }}
-                              className="text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline"
-                            >
-                              Use another email
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSendMagicLink} className="space-y-3.5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">
-                          Email Address
-                        </label>
-                        <div className="relative mt-1">
-                          <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                          <input
-                            ref={emailInputRef}
-                            type="email"
-                            required
-                            value={magicEmail}
-                            onChange={(e) => setMagicEmail(e.target.value)}
-                            placeholder="name@example.com"
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                        </div>
-                        <p className="mt-1.5 text-[11px] text-slate-500">
-                          We will email you a password-free sign-in link. No password required.
-                        </p>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSigningIn || !magicEmail}
-                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
-                      >
-                        {signingInProvider === "magic-link" ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                            Sending Sign-in Link...
-                          </>
-                        ) : (
-                          <>
-                            <Mail className="h-4 w-4" />
-                            Send Sign-in Link
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-
-              {/* Tab 2: Email & Password */}
-              {activeTab === "password" && (
-                <div>
-                  {isResetMode ? (
-                    <form onSubmit={handlePasswordReset} className="space-y-3.5">
-                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3.5">
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                          <KeyRound className="h-4 w-4 text-emerald-600" />
-                          <span>Reset your password</span>
-                        </div>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Enter your account email to receive a password reset link.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">
-                          Account Email
-                        </label>
-                        <div className="relative mt-1">
-                          <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                          <input
-                            type="email"
-                            required
-                            value={passwordEmail}
-                            onChange={(e) => setPasswordEmail(e.target.value)}
-                            placeholder="name@example.com"
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsResetMode(false);
-                            setResetSent(false);
-                            setResetMessage(null);
-                            setErrorMessage(null);
-                          }}
-                          className="w-1/3 rounded-2xl border border-slate-200 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                        >
-                          Back
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={isSigningIn || !passwordEmail}
-                          className="flex-1 rounded-2xl bg-emerald-700 py-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
-                        >
-                          {isSigningIn ? "Sending Reset Link..." : "Send Reset Link"}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <form onSubmit={handlePasswordAuth} className="space-y-3">
-                      {isSignUp && (
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700">
-                            Your Name <span className="font-normal text-slate-400">(optional)</span>
-                          </label>
-                          <div className="relative mt-1">
-                            <User className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                            <input
-                              type="text"
-                              value={displayName}
-                              onChange={(e) => setDisplayName(e.target.value)}
-                              placeholder="Alex Doe"
-                              maxLength={50}
-                              className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700">
-                          Email Address
-                        </label>
-                        <div className="relative mt-1">
-                          <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                          <input
-                            type="email"
-                            required
-                            value={passwordEmail}
-                            onChange={(e) => setPasswordEmail(e.target.value)}
-                            placeholder="name@example.com"
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-2.5 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <label className="block text-xs font-bold text-slate-700">
-                            Password
-                          </label>
-                          {!isSignUp && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsResetMode(true);
-                                setErrorMessage(null);
-                              }}
-                              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
-                            >
-                              Forgot password?
-                            </button>
-                          )}
-                        </div>
-                        <div className="relative mt-1">
-                          <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder={isSignUp ? "At least 6 characters" : "Enter your password"}
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-2.5 pl-10 pr-10 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-3 rounded p-0.5 text-slate-400 hover:text-slate-600"
-                            aria-label={showPassword ? "Hide password" : "Show password"}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Password strength meter on registration */}
-                        {isSignUp && password && (
-                          <div className="mt-2 flex items-center gap-1.5">
-                            <div className="flex flex-1 gap-1">
-                              {[1, 2, 3, 4].map((level) => (
-                                <div
-                                  key={level}
-                                  className={`h-1 flex-1 rounded-full transition-all ${
-                                    passwordStrength >= level
-                                      ? passwordStrength <= 2
-                                        ? "bg-amber-500"
-                                        : "bg-emerald-500"
-                                      : "bg-slate-200"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400">
-                              {passwordStrength <= 1
-                                ? "Too short"
-                                : passwordStrength === 2
-                                ? "Fair"
-                                : passwordStrength === 3
-                                ? "Good"
-                                : "Strong"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSigningIn || !passwordEmail || !password}
-                        className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        {signingInProvider === "password" ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                            {isSignUp ? "Creating Account..." : "Signing in..."}
-                          </>
-                        ) : (
-                          <>
-                            {isSignUp ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-                            {isSignUp ? "Create Readative Account" : "Sign In with Password"}
-                          </>
-                        )}
-                      </button>
-
-                      {/* Toggle Sign in vs Create Account */}
-                      <div className="pt-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsSignUp(!isSignUp);
-                            setErrorMessage(null);
-                          }}
-                          className="text-xs font-semibold text-slate-600 hover:text-emerald-700"
-                        >
-                          {isSignUp ? (
-                            <>
-                              Already have an account?{" "}
-                              <span className="font-bold text-emerald-700 underline">Sign In</span>
-                            </>
-                          ) : (
-                            <>
-                              Don't have an account?{" "}
-                              <span className="font-bold text-emerald-700 underline">Create one</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-              )}
             </>
           )}
 
-          {/* Collapsible Benefits Drawer */}
+          {isResetMode ? (
+            resetCodeSent ? (
+              <form onSubmit={handleVerifyPasswordReset} className="space-y-4">
+                <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                      <KeyRound className="h-4 w-4" />
+                    </span>
+                    <span>Verify reset code</span>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                    Enter the 6-digit code sent to{" "}
+                    <span className="font-bold text-emerald-800">
+                      {resetMaskedEmail || resetEmail}
+                    </span>{" "}
+                    and set a new password.
+                  </p>
+                </div>
+
+                <OtpInputBoxes
+                  id={`${dialogId}-reset-code`}
+                  label="Verification Code"
+                  value={resetCode}
+                  onChange={setResetCode}
+                  disabled={isSigningIn}
+                  autoFocus
+                  helperText="This code is required before a password change."
+                />
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">
+                    New Password
+                  </label>
+                  <div className="relative mt-1">
+                    <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type={showResetPassword ? "text" : "password"}
+                      required
+                      value={resetPassword}
+                      onChange={(event) => setResetPassword(event.target.value)}
+                      placeholder="8+ characters with a number"
+                      className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPassword(!showResetPassword)}
+                      className="absolute right-3 top-3 rounded p-0.5 text-slate-400 hover:text-slate-600"
+                      aria-label={showResetPassword ? "Hide password" : "Show password"}
+                    >
+                      {showResetPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {resetPassword && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex flex-1 gap-1">
+                          {[1, 2, 3, 4].map((level) => (
+                            <div
+                              key={level}
+                              className={`h-1 flex-1 rounded-full transition-all ${
+                                resetPasswordStrength >= level
+                                  ? resetPasswordStrength <= 2
+                                    ? "bg-amber-500"
+                                    : "bg-emerald-500"
+                                  : "bg-slate-200"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {renderPasswordStrength(resetPasswordStrength)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-500">
+                        Use at least 8 characters with a letter and a number.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">
+                    Confirm New Password
+                  </label>
+                  <div className="relative mt-1">
+                    <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type={showResetPassword ? "text" : "password"}
+                      required
+                      value={resetPasswordConfirm}
+                      onChange={(event) => setResetPasswordConfirm(event.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={
+                    isSigningIn ||
+                    resetCode.length !== OTP_LENGTH ||
+                    !isResetPasswordReady ||
+                    !resetPasswordConfirm ||
+                    resetPassword !== resetPasswordConfirm
+                  }
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-lg shadow-emerald-900/10 transition hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  {signingInProvider === "reset-password" ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Resetting Password...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-4 w-4" />
+                      Verify & Reset Password
+                    </>
+                  )}
+                </button>
+
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 pt-1 text-xs font-bold">
+                  {resetCountdown > 0 ? (
+                    <span className="text-slate-500">
+                      Resend code in <span className="text-emerald-700">{resetCountdown}s</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(event) => void handleRequestResetCode(event)}
+                      disabled={isSigningIn}
+                      className="text-emerald-700 hover:text-emerald-800 hover:underline"
+                    >
+                      Resend code
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetPasswordVerification();
+                      clearMessages();
+                    }}
+                    className="text-slate-500 hover:text-slate-800 hover:underline"
+                  >
+                    Use another email
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleRequestResetCode} className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                      <KeyRound className="h-4 w-4" />
+                    </span>
+                    <span>Reset with email verification</span>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                    We will send a 6-digit code before allowing a password change.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">
+                    Account Email
+                  </label>
+                  <div className="relative mt-1">
+                    <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(event) => setResetEmail(event.target.value)}
+                      placeholder="name@example.com"
+                      className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMode(false);
+                      resetPasswordVerification();
+                      clearMessages();
+                    }}
+                    className="w-1/3 rounded-2xl border border-slate-200 bg-white py-3 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSigningIn || !resetEmail}
+                    className="flex-1 rounded-2xl bg-emerald-700 py-3 text-xs font-black text-white shadow-lg shadow-emerald-900/10 hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {signingInProvider === "reset-code" ? "Sending Code..." : "Send Reset Code"}
+                  </button>
+                </div>
+              </form>
+            )
+          ) : activeTab === "signin" ? (
+            <form
+              onSubmit={handleSignIn}
+              className="space-y-3.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700">
+                  Email Address
+                </label>
+                <div className="relative mt-1">
+                  <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleStartReset}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <div className="relative mt-1">
+                  <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 rounded p-0.5 text-slate-400 hover:text-slate-600"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSigningIn || !email || !password}
+                className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 transition hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {signingInProvider === "password" ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="h-4 w-4" />
+                    Sign In with Password
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            <form
+              onSubmit={handleCreateAccount}
+              className="space-y-3.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700">
+                  Your Name <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <div className="relative mt-1">
+                  <User className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="Alex Doe"
+                    maxLength={50}
+                    disabled={signUpCodeSent}
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:opacity-70"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700">
+                  Email Address
+                </label>
+                <div className="relative mt-1">
+                  <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(event) => handleEmailChange(event.target.value)}
+                    placeholder="name@example.com"
+                    disabled={signUpCodeSent}
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:opacity-70"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700">
+                  Password
+                </label>
+                <div className="relative mt-1">
+                  <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="8+ characters with a number"
+                    disabled={signUpCodeSent}
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:opacity-70"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 rounded p-0.5 text-slate-400 hover:text-slate-600"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                {password && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-1 gap-1">
+                        {[1, 2, 3, 4].map((level) => (
+                          <div
+                            key={level}
+                            className={`h-1 flex-1 rounded-full transition-all ${
+                              passwordStrength >= level
+                                ? passwordStrength <= 2
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                                : "bg-slate-200"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {renderPasswordStrength(passwordStrength)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Use at least 8 characters with a letter and a number.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {signUpCodeSent && (
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-4 shadow-sm">
+                  <div className="flex items-start gap-2 text-xs text-slate-600">
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </span>
+                    <p className="leading-relaxed">
+                      Code sent to{" "}
+                      <span className="font-bold text-emerald-800">
+                        {signUpMaskedEmail || email}
+                      </span>
+                      .
+                    </p>
+                  </div>
+                  <OtpInputBoxes
+                    id={`${dialogId}-signup-code`}
+                    label="Verification Code"
+                    value={signUpCode}
+                    onChange={setSignUpCode}
+                    disabled={isSigningIn}
+                    autoFocus
+                    className="mt-4"
+                    helperText="This code confirms the email before the account is created."
+                  />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                    {signUpCountdown > 0 ? (
+                      <span className="text-slate-500">
+                        Resend code in <span className="text-emerald-700">{signUpCountdown}s</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void requestSignUpCode()}
+                        disabled={isSigningIn}
+                        className="text-emerald-700 hover:text-emerald-800 hover:underline"
+                      >
+                        Resend code
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetSignUpVerification();
+                        clearMessages();
+                      }}
+                      className="text-slate-500 hover:text-slate-800 hover:underline"
+                    >
+                      Edit details
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={
+                  isSigningIn ||
+                  !email ||
+                  !password ||
+                  !isSignupPasswordReady ||
+                  (signUpCodeSent && signUpCode.length !== OTP_LENGTH)
+                }
+                className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow-lg shadow-emerald-900/10 transition hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {signingInProvider === "password" || signingInProvider === "signup-code" ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    {signUpCodeSent ? "Creating Account..." : "Sending Code..."}
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4" />
+                    {signUpCodeSent ? "Verify & Create Account" : "Send Code to Create Account"}
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => switchTab("signin")}
+                  className="text-xs font-semibold text-slate-600 hover:text-emerald-700"
+                >
+                  Already have an account?{" "}
+                  <span className="font-bold text-emerald-700 underline">Sign In</span>
+                </button>
+              </div>
+            </form>
+          )}
+
           <div className="mt-5 border-t border-slate-100 pt-3">
             <button
               type="button"
@@ -953,12 +1238,11 @@ export function AuthModal({
           </div>
         </div>
 
-        {/* Modal Footer / Legal & Security Notice */}
         <div className="shrink-0 border-t border-slate-100 bg-slate-50/90 px-6 py-3.5 text-center text-[11px] leading-relaxed text-slate-400">
           <span>
             {usesProjectAuthHelper
-              ? "Protected by Firebase Auth."
-              : `Secure authentication via ${signInDomain}.`}
+              ? "Protected by Firebase Auth and email verification."
+              : `Secure authentication via ${signInDomain} with email verification.`}
           </span>{" "}
           <span>
             By continuing, you agree to Readative's{" "}
@@ -977,5 +1261,4 @@ export function AuthModal({
   );
 }
 
-// Backwards-compatible alias for existing components
 export const GoogleSignInPrompt = AuthModal;

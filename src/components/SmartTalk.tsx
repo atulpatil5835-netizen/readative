@@ -2169,7 +2169,7 @@ export function SmartTalk({
                   ? "Sign in to save"
                   : "Sign in to add trust feedback"
           }
-          description="Sign in with Google, email, or password to keep your SmartTalk questions, answers, and reputation synced."
+          description="Sign in with Google or email password to keep your SmartTalk questions, answers, and reputation synced."
           submitLabel="Continue with Google"
           onConfirm={handlePromptConfirm}
           onSuccess={handleAuthSuccessForPrompt}

@@ -2656,7 +2656,7 @@ export function KnowledgeFeed({
       {showIdentityPrompt && (
         <GoogleSignInPrompt
           title="Sign in to publish"
-          description="Sign in with Google, email, or password to publish. Readers can explore freely, and your articles stay saved to your profile."
+          description="Sign in with Google or email password to publish. New accounts use email verification before publishing."
           submitLabel="Continue with Google"
           onConfirm={handleGoogleSignInForPublish}
           onSuccess={handleAuthSuccessForPublish}

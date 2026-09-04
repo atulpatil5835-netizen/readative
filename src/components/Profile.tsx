@@ -1878,7 +1878,7 @@ export function Profile({
               Build your Readative profile
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              Sign in with Google, email, or password to create posts, save knowledge, join SmartTalk,
+              Sign in with Google or email password to create posts, save knowledge, join SmartTalk,
               and build reputation from helpful contributions.
             </p>
           </div>

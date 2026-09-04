@@ -3,10 +3,17 @@ import dotenv from "dotenv";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  getAuthOtpHttpError,
+  requestEmailOtp,
+  verifyEmailOtp,
+} from "./api/_authOtp.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+dotenv.config({ path: path.resolve(__dirname, ".env.local") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 dotenv.config();
@@ -25,6 +32,21 @@ app.use("/api", (req, res, next) => {
 });
 
 const PORT = 5000;
+
+function getRequestIp(req: express.Request) {
+  const forwardedFor = req.header("x-forwarded-for") || "";
+  return (
+    forwardedFor.split(",")[0]?.trim() ||
+    req.header("x-real-ip") ||
+    req.socket.remoteAddress ||
+    ""
+  );
+}
+
+function sendAuthOtpError(res: express.Response, error: unknown) {
+  const httpError = getAuthOtpHttpError(error);
+  return res.status(httpError.statusCode).json(httpError.body);
+}
 
 interface Comment {
   id: string;
@@ -62,6 +84,35 @@ interface ProfileData {
 
 let posts: Post[] = [];
 const profiles = new Map<string, ProfileData>();
+
+app.post("/api/auth/request-otp", async (req, res) => {
+  try {
+    const result = await requestEmailOtp({
+      email: req.body?.email,
+      purpose: req.body?.purpose,
+      ip: getRequestIp(req),
+      userAgent: req.header("user-agent") || "",
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendAuthOtpError(res, error);
+  }
+});
+
+app.post("/api/auth/verify-otp", async (req, res) => {
+  try {
+    const result = await verifyEmailOtp({
+      email: req.body?.email,
+      code: req.body?.code,
+      purpose: req.body?.purpose,
+      password: req.body?.password,
+      displayName: req.body?.displayName,
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendAuthOtpError(res, error);
+  }
+});
 
 app.get("/api/posts", (req, res) => {
   const { category } = req.query;

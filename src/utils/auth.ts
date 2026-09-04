@@ -1,16 +1,11 @@
 import {
   GoogleAuthProvider,
   GithubAuthProvider,
-  createUserWithEmailAndPassword,
-  isSignInWithEmailLink as firebaseIsSignInWithEmailLink,
   onAuthStateChanged,
-  sendPasswordResetEmail,
-  sendSignInLinkToEmail,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
-  signInWithEmailLink,
   signInWithPopup,
   signOut,
-  updateProfile,
   type User,
 } from "firebase/auth";
 import { auth, authPersistenceReady } from "../firebase/firebaseAuth";
@@ -25,15 +20,24 @@ import {
   type KnowledgeIdentity,
 } from "./knowledgeIdentity";
 
-const EMAIL_FOR_SIGN_IN_KEY = "readativeEmailForSignIn";
-const EMAIL_SIGN_IN_QUERY_PARAMS = [
-  "apiKey",
-  "continueUrl",
-  "lang",
-  "mode",
-  "oobCode",
-  "tenantId",
-];
+interface AuthApiErrorPayload {
+  error?: string;
+  retryAfterSeconds?: number;
+}
+
+export type EmailOtpPurpose = "signup" | "reset";
+
+export interface EmailOtpRequestResult {
+  email: string;
+  expiresInSeconds: number;
+  resendCooldownSeconds: number;
+}
+
+interface EmailOtpVerifyResult {
+  customToken: string;
+  email: string;
+  isNewUser: boolean;
+}
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("email");
@@ -140,7 +144,7 @@ export function getAuthErrorMessage(error: unknown, fallbackMessage = "Authentic
       return "Access temporarily disabled due to multiple failed attempts. Please try again in a few minutes or reset your password.";
     case "auth/invalid-action-code":
     case "auth/expired-action-code":
-      return "This sign-in or reset link has expired or has already been used. Please request a new one.";
+      return "This security action has expired or has already been used. Please request a new one.";
     case "auth/account-exists-with-different-credential":
       return "An account already exists with this email using a different sign-in method. Try signing in with Google.";
     default:
@@ -149,6 +153,46 @@ export function getAuthErrorMessage(error: unknown, fallbackMessage = "Authentic
       }
       return fallbackMessage;
   }
+}
+
+async function postAuthJson<T>(
+  path: string,
+  payload: Record<string, unknown>,
+  fallbackMessage: string,
+): Promise<T> {
+  let response: Response;
+
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error("Auth API request failed:", error);
+    throw new Error("Could not reach secure email verification. Please try again.");
+  }
+
+  const data = (await response.json().catch(() => null)) as
+    | AuthApiErrorPayload
+    | T
+    | null;
+
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data && data.error
+        ? data.error
+        : fallbackMessage;
+    throw new Error(message);
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error(fallbackMessage);
+  }
+
+  return data as T;
 }
 
 export async function resolveUserIdentity(
@@ -199,7 +243,10 @@ export async function signInWithGithubAccount(): Promise<KnowledgeIdentity> {
   }
 }
 
-export async function sendSignInEmailLink(email: string): Promise<void> {
+export async function requestEmailOtp(
+  email: string,
+  purpose: EmailOtpPurpose,
+): Promise<EmailOtpRequestResult> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes("@")) {
     throw new Error("Please provide a valid email address.");
@@ -211,76 +258,80 @@ export async function sendSignInEmailLink(email: string): Promise<void> {
     );
   }
 
-  const actionCodeSettings = {
-    url: typeof window !== "undefined" ? window.location.href.split("?")[0] : "https://readative.com",
-    handleCodeInApp: true,
-  };
+  return postAuthJson<EmailOtpRequestResult>(
+    "/api/auth/request-otp",
+    { email: cleanEmail, purpose },
+    "Could not send the verification code. Please try again.",
+  );
+}
 
-  try {
-    await authPersistenceReady;
-    await sendSignInLinkToEmail(auth, cleanEmail, actionCodeSettings);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(EMAIL_FOR_SIGN_IN_KEY, cleanEmail);
-    }
-  } catch (error) {
-    console.error("Failed to send sign-in link:", error);
-    throw new Error(getAuthErrorMessage(error, "Could not send sign-in link. Please verify your email and try again."));
+async function signInWithVerifiedCustomToken(
+  customToken: string,
+  fallbackDisplayName: string | undefined,
+  providerName: string,
+): Promise<KnowledgeIdentity> {
+  if (!customToken) {
+    throw new Error("Secure verification did not return a sign-in token.");
   }
+
+  if (!firebaseConfigReady) {
+    throw new Error(
+      `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
+    );
+  }
+
+  await authPersistenceReady;
+  const result = await signInWithCustomToken(auth, customToken);
+  return resolveUserIdentity(result.user, fallbackDisplayName, providerName);
 }
 
-export function isEmailSignInLink(href?: string): boolean {
-  if (!auth) return false;
-  const targetUrl = href || (typeof window !== "undefined" ? window.location.href : "");
-  if (!targetUrl) return false;
-  return firebaseIsSignInWithEmailLink(auth, targetUrl);
-}
-
-export function getSavedEmailForSignIn(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(EMAIL_FOR_SIGN_IN_KEY) || null;
-}
-
-export function clearSavedEmailForSignIn(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(EMAIL_FOR_SIGN_IN_KEY);
-}
-
-export function clearEmailSignInUrl(href?: string): void {
-  if (typeof window === "undefined") return;
-
-  const currentUrl = new URL(href || window.location.href, window.location.origin);
-  EMAIL_SIGN_IN_QUERY_PARAMS.forEach((param) => {
-    currentUrl.searchParams.delete(param);
-  });
-
-  const nextSearch = currentUrl.searchParams.toString();
-  const nextPath = `${currentUrl.pathname}${nextSearch ? `?${nextSearch}` : ""}${currentUrl.hash}`;
-  window.history.replaceState({}, document.title, nextPath || "/");
-}
-
-export async function completeSignInWithEmailLink(
+export async function signUpWithEmailPasswordOtp(
   email: string,
-  href?: string,
+  password: string,
+  displayName: string | undefined,
+  verificationCode: string,
 ): Promise<KnowledgeIdentity> {
   const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) {
-    throw new Error("Please provide your email address to complete sign in.");
-  }
+  const cleanName = displayName?.trim();
+  const cleanCode = verificationCode.replace(/\D/g, "");
+  const result = await postAuthJson<EmailOtpVerifyResult>(
+    "/api/auth/verify-otp",
+    {
+      email: cleanEmail,
+      code: cleanCode,
+      purpose: "signup",
+      password,
+      displayName: cleanName,
+    },
+    "Could not verify this code. Please try again.",
+  );
 
-  const targetUrl = href || (typeof window !== "undefined" ? window.location.href : "");
-  if (!isEmailSignInLink(targetUrl)) {
-    throw new Error("The provided sign-in link is invalid or expired.");
-  }
+  return signInWithVerifiedCustomToken(
+    result.customToken,
+    cleanName,
+    "email-password",
+  );
+}
 
-  try {
-    await authPersistenceReady;
-    const result = await signInWithEmailLink(auth, cleanEmail, targetUrl);
-    clearSavedEmailForSignIn();
-    return resolveUserIdentity(result.user, undefined, "email-link");
-  } catch (error) {
-    console.error("Complete email link sign-in failed:", error);
-    throw new Error(getAuthErrorMessage(error, "Could not complete sign in with this link."));
-  }
+export async function resetPasswordWithEmailOtp(
+  email: string,
+  verificationCode: string,
+  newPassword: string,
+): Promise<KnowledgeIdentity> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = verificationCode.replace(/\D/g, "");
+  const result = await postAuthJson<EmailOtpVerifyResult>(
+    "/api/auth/verify-otp",
+    {
+      email: cleanEmail,
+      code: cleanCode,
+      purpose: "reset",
+      password: newPassword,
+    },
+    "Could not verify this reset code. Please try again.",
+  );
+
+  return signInWithVerifiedCustomToken(result.customToken, undefined, "password");
 }
 
 export async function signInWithEmailPassword(
@@ -304,6 +355,12 @@ export async function signInWithEmailPassword(
 
     await authPersistenceReady;
     const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    if (result.user.email && !result.user.emailVerified) {
+      await signOut(auth).catch(() => undefined);
+      throw new Error(
+        "This email is not verified yet. Use forgot password to verify your email and set a new password.",
+      );
+    }
     return resolveUserIdentity(result.user, undefined, "password");
   } catch (error) {
     console.error("Email password sign-in failed:", error);
@@ -315,58 +372,13 @@ export async function signUpWithEmailPassword(
   email: string,
   password: string,
   displayName?: string,
+  verificationCode?: string,
 ): Promise<KnowledgeIdentity> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes("@")) {
-    throw new Error("Please provide a valid email address.");
-  }
-  if (!password || password.length < 6) {
-    throw new Error("Password must be at least 6 characters long.");
+  if (!verificationCode) {
+    throw new Error("Enter the 6-digit verification code sent to your email.");
   }
 
-  try {
-    if (!firebaseConfigReady) {
-      throw new Error(
-        `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
-      );
-    }
-
-    await authPersistenceReady;
-    const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    const cleanName = displayName?.trim();
-    if (cleanName) {
-      try {
-        await updateProfile(result.user, { displayName: cleanName });
-      } catch {
-        // Continue even if auth profile update fails; ensureUserProfile will save displayName
-      }
-    }
-    return resolveUserIdentity(result.user, cleanName, "password");
-  } catch (error) {
-    console.error("Email password registration failed:", error);
-    throw new Error(getAuthErrorMessage(error, "Could not create account with this email."));
-  }
-}
-
-export async function sendPasswordReset(email: string): Promise<void> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes("@")) {
-    throw new Error("Please enter a valid email address.");
-  }
-
-  try {
-    if (!firebaseConfigReady) {
-      throw new Error(
-        `Firebase is missing required environment variables: ${firebaseConfigMissingKeys.join(", ")}.`,
-      );
-    }
-
-    await authPersistenceReady;
-    await sendPasswordResetEmail(auth, cleanEmail);
-  } catch (error) {
-    console.error("Password reset email failed:", error);
-    throw new Error(getAuthErrorMessage(error, "Could not send password reset email."));
-  }
+  return signUpWithEmailPasswordOtp(email, password, displayName, verificationCode);
 }
 
 export function subscribeToAuthIdentity(
