@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   Bookmark,
+  CirclePlus,
   FileText,
   Info,
   LogIn,
@@ -27,6 +28,7 @@ interface HeaderProps {
   unreadNotificationCount: number;
   onOpenNotifications: () => void;
   onOpenSignIn: () => void;
+  onOpenCreate: () => void;
   onSignOut: () => void;
 }
 
@@ -40,6 +42,7 @@ export const Header = memo(function Header({
   unreadNotificationCount,
   onOpenNotifications,
   onOpenSignIn,
+  onOpenCreate,
   onSignOut,
 }: HeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -90,7 +93,7 @@ export const Header = memo(function Header({
   }, []);
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 border-b border-black/5 bg-white/90 backdrop-blur-md">
+    <header className="fixed left-0 right-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_14px_36px_rgba(15,23,42,0.06)] backdrop-blur-xl">
       <div className="mx-auto flex h-[68px] max-w-5xl items-center justify-between gap-4 px-4 md:px-6 min-[1280px]:max-w-[1328px]">
         <div className="flex items-center gap-3">
           <a
@@ -99,10 +102,10 @@ export const Header = memo(function Header({
               event.preventDefault();
               onHomeAction();
             }}
-            className="relative flex h-9 w-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.02] md:h-10 md:w-10"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white shadow-sm transition-transform hover:scale-[1.02] md:h-11 md:w-11"
             aria-label="Open homepage"
           >
-            <Logo className="h-full w-full" loading="eager" />
+            <Logo className="h-8 w-8 md:h-9 md:w-9" loading="eager" />
           </a>
           <div className="flex flex-col justify-center">
             <a
@@ -111,18 +114,18 @@ export const Header = memo(function Header({
                 event.preventDefault();
                 onHomeAction();
               }}
-              className="leading-none text-left text-[18px] font-black tracking-tight text-emerald-800 md:text-[20px]"
+              className="leading-none text-left text-[18px] font-black tracking-tight text-slate-950 transition-colors hover:text-emerald-700 md:text-[20px]"
             >
               Readative
             </a>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.24em] text-emerald-500">
+            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-600">
               Knowledge Feed
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <nav className="hidden items-center gap-6 md:flex">
+          <nav className="hidden items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50/90 p-1 md:flex">
             {HEADER_TABS.map((tab) => {
               const label =
                 tab === "smarttalk"
@@ -146,10 +149,10 @@ export const Header = memo(function Header({
 
                     setActiveTab(tab);
                   }}
-                  className={`relative text-sm font-medium transition-colors ${
+                  className={`relative rounded-xl px-3.5 py-2 text-sm font-bold transition-all ${
                     activeTab === tab
-                      ? "text-emerald-600"
-                      : "text-gray-500 hover:text-emerald-600"
+                      ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:bg-white/70 hover:text-slate-800"
                   }`}
                   aria-current={activeTab === tab ? "page" : undefined}
                 >
@@ -161,8 +164,19 @@ export const Header = memo(function Header({
 
           <button
             type="button"
+            onClick={onOpenCreate}
+            className="hidden min-h-10 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 text-sm font-black text-white shadow-[0_12px_28px_rgba(4,120,87,0.22)] transition-all hover:-translate-y-0.5 hover:bg-emerald-800 active:translate-y-0 md:inline-flex"
+            aria-label="Create knowledge post"
+            title="Create"
+          >
+            <CirclePlus className="h-4 w-4" />
+            <span>Create</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenNotifications}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 md:h-10 md:w-10"
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 md:h-10 md:w-10"
             aria-label="Open notifications"
             title="Realtime notifications"
           >
@@ -179,7 +193,7 @@ export const Header = memo(function Header({
               ref={actionsButtonRef}
               type="button"
               onClick={() => setActionsOpen((current) => !current)}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 md:h-10 md:w-10"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 md:h-10 md:w-10"
               aria-label={actionsOpen ? "Close account menu" : "Open account menu"}
               aria-expanded={actionsOpen}
               aria-haspopup="menu"

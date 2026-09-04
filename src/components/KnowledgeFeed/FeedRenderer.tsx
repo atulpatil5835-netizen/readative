@@ -61,7 +61,7 @@ export function CategoryKnowledgeBrief({
   onOpenTopic: (topicId: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+    <section className="readative-panel-surface px-4 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">
@@ -74,7 +74,7 @@ export function CategoryKnowledgeBrief({
             {category.description}
           </p>
         </div>
-        <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
+        <span className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
           Permanent pillar
         </span>
       </div>
@@ -128,7 +128,7 @@ export function CategoryKnowledgeBrief({
                     e.preventDefault();
                     onOpenTopic(topicDefinition.id);
                   }}
-                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
                 >
                   {topicDefinition.label}
                 </a>
@@ -741,7 +741,7 @@ export function FeedRenderer({
       )}
 
       {shouldShowFeedErrorState ? (
-        <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+        <div className="readative-panel-surface border-dashed border-slate-300 px-6 py-20 text-center">
           <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-4 text-xl font-black text-slate-900">
             Something went wrong. Try again.
@@ -758,7 +758,7 @@ export function FeedRenderer({
         shouldHoldEmptyFeedState ? (
           <KnowledgeFeedSkeleton count={3} showControls={false} />
         ) : (
-          <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+          <div className="readative-panel-surface border-dashed border-slate-300 px-6 py-20 text-center">
             <BookOpenText className="mx-auto h-10 w-10 text-slate-300" />
             <h3 className="mt-4 text-xl font-black text-slate-900">
               {hasActiveSearch
@@ -778,7 +778,7 @@ export function FeedRenderer({
                   ? "Try another category or search by a more specific hashtag."
                   : selectedHashtag
                     ? "Try another hashtag or clear this filter to explore the full feed."
-                    : "Tap the `+` button at the top to upload the first knowledge post."}
+                    : "Use Create at the top to upload the first knowledge post."}
             </p>
             {hasMoreEntries && (
               isActiveFeedLoadingMore ? (

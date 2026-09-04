@@ -2506,14 +2506,14 @@ export function KnowledgeFeed({
   // ── SEO derived values ──
 
   const pageTitle = focusedEntry
-    ? `${focusedEntry.title} | ReAdative`
+    ? `${focusedEntry.title} | Readative`
     : selectedHashtag
-      ? `#${selectedHashtag} Posts | ReAdative`
+      ? `#${selectedHashtag} Posts | Readative`
       : activeCategory
-        ? `${activeCategory.label} Knowledge Posts | ReAdative`
+        ? `${activeCategory.label} Knowledge Posts | Readative`
         : activeFeedTopic.id !== "all"
-          ? `${activeFeedTopic.label} Posts | ReAdative`
-        : "ReAdative | Practical Knowledge & SmartTalk";
+          ? `${activeFeedTopic.label} Posts | Readative`
+        : "Readative | Practical Knowledge & SmartTalk";
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag

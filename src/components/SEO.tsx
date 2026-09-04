@@ -21,7 +21,7 @@ function toAbsoluteUrl(pathOrUrl: string) {
   return `${CANONICAL_SITE_ORIGIN}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
 }
 
-const SITE_TITLE = "ReAdative";
+const SITE_TITLE = "Readative";
 
 function normalizeTitleBrand(value: string) {
   return value.replace(/\bReadative\b/g, SITE_TITLE);

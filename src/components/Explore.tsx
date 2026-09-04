@@ -1119,8 +1119,8 @@ export function Explore({
   }, [allContributors, entries, now, questions, searchTerms, topicStats]);
 
   const pageTitle = activeTopic
-    ? `${activeTopic.label} Topic | ReAdative`
-    : "Explore | ReAdative";
+    ? `${activeTopic.label} Topic | Readative`
+    : "Explore | Readative";
   const pageDescription = activeTopic
     ? activeTopic.description
     : "Explore trending technology topics, active SmartTalk discussions, helpful posts, and top contributors on Readative.";
@@ -1157,7 +1157,7 @@ export function Explore({
         })}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+      <div className="readative-panel-surface px-4 py-4">
         {activeTopic && (
           <a
             href="/explore"
@@ -1172,11 +1172,11 @@ export function Explore({
           </a>
         )}
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white shadow-sm">
             {activeTopic ? <Hash className="h-5 w-5" /> : <Compass className="h-5 w-5" />}
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-600">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">
               {activeTopic ? "Topic Page" : "Explore"}
             </p>
             <h1 className="text-xl font-black tracking-tight text-slate-950">
@@ -1445,7 +1445,7 @@ function DailyPulse({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
       <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-        <TrendingUp className="h-4 w-4 text-sky-600" />
+        <TrendingUp className="h-4 w-4 text-emerald-600" />
         Today's Pulse
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -1478,10 +1478,10 @@ function TopicKnowledgeBrief({
   onOpenCategory: (categoryId: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+    <section className="readative-panel-surface px-4 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-600">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600">
             Topic
           </p>
           <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
@@ -1853,7 +1853,7 @@ function ResurfacingGrid({
           className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
         >
           <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-            <span className="text-sky-600">{section.icon}</span>
+            <span className="text-emerald-600">{section.icon}</span>
             {section.title}
           </div>
           <div className="space-y-2">
@@ -1897,7 +1897,7 @@ function ExploreSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2 px-1">
-        <span className="text-sky-600">{icon}</span>
+        <span className="text-emerald-600">{icon}</span>
         <h2 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">
           {title}
         </h2>

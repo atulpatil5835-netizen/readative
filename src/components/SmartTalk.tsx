@@ -1452,10 +1452,10 @@ export function SmartTalk({
       })
     : buildPublicPath("smarttalk", { selectedTopic: selectedCategory });
   const smartTalkPageTitle = focusedQuestion
-    ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | ReAdative`
+    ? `${summarizeSmartTalkText(focusedQuestion.content, 90)} | Readative`
     : selectedCategory
-      ? `${getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"} SmartTalk | ReAdative`
-      : "SmartTalk | ReAdative";
+      ? `${getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk"} SmartTalk | Readative`
+      : "SmartTalk | Readative";
   const smartTalkPageDescription = focusedQuestion
     ? summarizeSmartTalkText(focusedQuestion.content, 160)
     : selectedCategory
@@ -1801,7 +1801,7 @@ export function SmartTalk({
         </div>
       ) : (
         <>
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+          <div className="readative-panel-surface px-4 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
@@ -1821,7 +1821,7 @@ export function SmartTalk({
               <button
                 type="button"
                 onClick={handleAsk}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition-colors hover:bg-indigo-700"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-sm transition-colors hover:bg-emerald-800"
               >
                 <HelpCircle className="h-4 w-4" />
                 Ask question
@@ -2213,7 +2213,7 @@ function SmartTalkDiscoveryBlock({
 
 function SmartTalkKnowledgeBrief() {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+    <section className="readative-panel-surface px-4 py-4">
       <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">
         Discussion Knowledge
       </p>

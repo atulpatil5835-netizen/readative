@@ -14,7 +14,7 @@ export function LegalPageRoute({ slug }: { slug: LegalSlug }) {
 
   return (
     <article className="space-y-4" data-legal-route={slug}>
-      <header className="readative-panel-surface overflow-hidden px-5 py-7 sm:px-8 sm:py-10">
+      <header className="readative-panel-surface overflow-hidden bg-gradient-to-br from-white via-white to-emerald-50/70 px-5 py-7 sm:px-8 sm:py-10">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
           {page.eyebrow}
         </p>
@@ -41,7 +41,7 @@ export function LegalPageRoute({ slug }: { slug: LegalSlug }) {
           <h2 className="text-xl font-black tracking-tight text-slate-950">Project lifecycle</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {page.projects.map((project) => (
-              <article key={project.name} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <article key={project.name} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-600">
                   {project.status}
                 </p>
@@ -145,7 +145,7 @@ function LegalLinkCard({ link }: { link: LegalLink }) {
       href={link.href}
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
-      className="rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
     >
       <h3 className="font-black text-slate-950">{link.label}</h3>
       {link.description ? <p className="mt-1 text-sm leading-6 text-slate-600">{link.description}</p> : null}
@@ -167,7 +167,7 @@ function OfficialLinks({ officialLinks }: { officialLinks: LegalOfficialLinks })
               href={link.href}
               target={external ? "_blank" : undefined}
               rel={external ? "noopener noreferrer" : undefined}
-              className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
+              className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
             >
               {link.kind === "linkedin" ? <LinkedInIcon /> : null}
               <span className="min-w-0">
@@ -180,7 +180,7 @@ function OfficialLinks({ officialLinks }: { officialLinks: LegalOfficialLinks })
           );
         })}
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-4">
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-600">
             {officialLinks.support.title}
           </p>

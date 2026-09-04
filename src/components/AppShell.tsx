@@ -109,7 +109,7 @@ const FOOTER_LINK_GROUPS = [
 export function AppFooter() {
   return (
     <footer className="mx-auto max-w-5xl px-4 pb-28 pt-8 text-slate-600 md:px-6 md:pb-10 min-[1280px]:max-w-[1328px]">
-      <div className="border-t border-slate-200/80 py-10 md:py-12">
+      <div className="rounded-[28px] border border-slate-200/80 bg-white/80 px-5 py-8 shadow-[0_16px_46px_rgba(15,23,42,0.045)] backdrop-blur md:px-6 md:py-10">
         <div className="grid gap-10 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-10 min-[1440px]:grid-cols-[18rem_minmax(0,1fr)] min-[1440px]:gap-14">
           <div className="max-w-sm xl:max-w-[15rem] min-[1440px]:max-w-sm">
             <a
@@ -117,7 +117,7 @@ export function AppFooter() {
               className="group inline-flex items-center gap-3 rounded-2xl transition-colors duration-200 hover:text-emerald-700"
               aria-label="Readative home"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-emerald-200 group-hover:shadow-md">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-100 bg-white shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-emerald-200 group-hover:shadow-md">
                 <Logo className="h-9 w-9" loading="lazy" />
               </span>
               <span className="text-lg font-black tracking-tight text-slate-950 transition-colors duration-200 group-hover:text-emerald-700">
@@ -182,12 +182,12 @@ export function NotFoundRoute({
   return (
     <>
       <SEO
-        title="Page Not Found | ReAdative"
+        title="Page Not Found | Readative"
         description="The requested Readative page could not be found."
         robots="noindex"
       />
       <div className="readative-panel-surface border-dashed border-slate-300 px-6 py-14 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
           <TriangleAlert className="h-8 w-8" />
         </div>
         <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">
@@ -209,7 +209,7 @@ export function NotFoundRoute({
               event.preventDefault();
               onGoHome();
             }}
-            className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+            className="rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-emerald-800"
           >
             Go to home feed
           </a>
@@ -219,7 +219,7 @@ export function NotFoundRoute({
               event.preventDefault();
               onOpenSmartTalk();
             }}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:text-emerald-700"
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
           >
             Open SmartTalk
           </a>
@@ -232,7 +232,7 @@ export function NotFoundRoute({
 export function FirebaseSetupRoute({ missingKeys }: { missingKeys: string[] }) {
   return (
     <div className="readative-panel-surface border-amber-200 px-6 py-14 text-center">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
         <TriangleAlert className="h-8 w-8" />
       </div>
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-amber-600">

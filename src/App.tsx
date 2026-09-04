@@ -569,7 +569,7 @@ export default function App() {
         isKnowledgeActive={activeTab === "knowledge"}
         focusedPostId={activeTab === "knowledge" ? focusedEntryId : null}
       >
-        <div className="min-h-screen bg-[#f7f8fb] font-sans text-slate-950">
+        <div className="readative-app-background min-h-screen font-sans text-slate-950">
         <Header
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -578,6 +578,7 @@ export default function App() {
           unreadNotificationCount={unreadNotificationCount}
           onOpenNotifications={handleOpenNotifications}
           onOpenSignIn={handleOpenSignInPrompt}
+          onOpenCreate={handleOpenComposer}
           onSignOut={handleHeaderSignOut}
         />
 
@@ -796,7 +797,7 @@ export default function App() {
         )}
 
         <nav
-          className="fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 border-t border-slate-200 bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_36px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
+          className="fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 border-t border-slate-200/90 bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_36px_rgba(15,23,42,0.09)] backdrop-blur-xl md:hidden"
           aria-label="Primary mobile navigation"
         >
           <button
@@ -819,7 +820,7 @@ export default function App() {
             aria-current={activeTab === "smarttalk" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "smarttalk"
-                ? "bg-indigo-50 text-indigo-700"
+                ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
             aria-label="SmartTalk"
@@ -830,7 +831,7 @@ export default function App() {
           <button
             type="button"
             onClick={handleOpenComposer}
-            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg bg-slate-950 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.2)] transition-colors hover:bg-emerald-700"
+            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg bg-emerald-700 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)] transition-colors hover:bg-emerald-800"
             aria-label="Create"
           >
             <CirclePlus className="h-5 w-5" />
@@ -842,7 +843,7 @@ export default function App() {
             aria-current={activeTab === "explore" ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
               activeTab === "explore"
-                ? "bg-sky-50 text-sky-700"
+                ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
             aria-label="Explore"

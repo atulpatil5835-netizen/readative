@@ -1864,14 +1864,14 @@ export function Profile({
     return (
       <div className="space-y-6 pb-40 md:pb-20">
         <SEO
-          title="Profile | ReAdative"
+          title="Profile | Readative"
           description="Sign in to unlock your Readative profile, posts, and helpful feedback."
           robots="noindex"
         />
 
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="bg-slate-950 px-6 py-7 text-white">
-            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-emerald-300">
+        <div className="readative-panel-surface overflow-hidden">
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900 px-6 py-7 text-white">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-emerald-300 ring-1 ring-white/10">
               <ReadativeRMark className="h-7 w-7 text-2xl tracking-tight" />
             </div>
             <h2 className="text-3xl font-black tracking-normal">
@@ -1910,7 +1910,7 @@ export function Profile({
               return (
                 <div
                   key={benefit.label}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
                   <BenefitIcon className="h-5 w-5 text-emerald-700" />
                   <p className="mt-3 text-sm font-black text-slate-950">
@@ -1963,7 +1963,7 @@ export function Profile({
   return (
     <div className="space-y-6 pb-20">
       <SEO
-        title={profile ? `${profileDisplayName} | ReAdative` : "Profile | ReAdative"}
+        title={profile ? `${profileDisplayName} | Readative` : "Profile | Readative"}
         description="Explore user profiles, shared knowledge, and helpful posts on Readative."
         type="profile"
         url={profileUrl}
@@ -1988,7 +1988,7 @@ export function Profile({
       {isLoadingProfile ? (
         <ProfileSkeleton />
       ) : !profile ? (
-        <div className="rounded-[30px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
+        <div className="readative-panel-surface border-dashed border-slate-300 px-6 py-16 text-center">
           <User className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-4 text-xl font-black text-slate-900">
             Profile not found
@@ -1999,7 +1999,7 @@ export function Profile({
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <div className="readative-panel-surface overflow-hidden">
             <div className="relative h-36 bg-[linear-gradient(135deg,#0f172a_0%,#0f766e_48%,#2563eb_100%)] sm:h-44">
               {profile.bannerImage && (
                 <img

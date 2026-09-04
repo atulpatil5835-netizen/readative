@@ -7,11 +7,11 @@
 @layer base {
   :root {
     color-scheme: light;
-    background: #f7f8fb;
+    background: #f5f7fb;
   }
 
   body {
-    @apply bg-[#f7f8fb] font-sans antialiased;
+    @apply bg-[#f5f7fb] font-sans antialiased;
     overflow-x: hidden;
   }
 
@@ -35,11 +35,17 @@
 }
 
 @layer components {
+  .readative-app-background {
+    background:
+      linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(245, 247, 251, 0.98) 42%, rgba(236, 253, 245, 0.62) 100%),
+      #f5f7fb;
+  }
+
   .readative-card-surface {
-    border: 1px solid rgba(226, 232, 240, 0.92);
-    border-radius: 20px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 18px;
     background: #ffffff;
-    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.055);
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.052);
   }
 
   .readative-card-surface-hover {
@@ -50,8 +56,8 @@
   }
 
   .readative-card-surface-hover:hover {
-    border-color: rgba(203, 213, 225, 0.95);
-    box-shadow: 0 22px 54px rgba(15, 23, 42, 0.075);
+    border-color: rgba(16, 185, 129, 0.22);
+    box-shadow: 0 20px 54px rgba(15, 23, 42, 0.078);
   }
 
   .readative-reading-body {
@@ -100,14 +106,14 @@
   }
 
   .readative-panel-surface {
-    border: 1px solid rgb(226, 232, 240);
+    border: 1px solid rgba(226, 232, 240, 0.9);
     border-radius: 1rem;
     background: #ffffff;
-    box-shadow: 0 20px 70px rgba(15, 23, 42, 0.16);
+    box-shadow: 0 18px 56px rgba(15, 23, 42, 0.1);
   }
 
   .readative-dialog-surface {
-    border: 1px solid rgb(226, 232, 240);
+    border: 1px solid rgba(226, 232, 240, 0.92);
     border-radius: 26px;
     background: #ffffff;
     box-shadow: 0 24px 80px rgba(15, 23, 42, 0.2);
@@ -115,10 +121,10 @@
 
   .readative-menu-surface {
     overflow: hidden;
-    border: 1px solid rgb(226, 232, 240);
+    border: 1px solid rgba(226, 232, 240, 0.92);
     border-radius: 1rem;
     background: #ffffff;
-    box-shadow: 0 18px 52px rgba(15, 23, 42, 0.14);
+    box-shadow: 0 18px 52px rgba(15, 23, 42, 0.12);
   }
 
   .readative-touch-target {

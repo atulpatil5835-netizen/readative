@@ -21,7 +21,7 @@ const themeClasses = {
   },
   indigo: {
     shell:
-      "border-slate-200 bg-white focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-200",
+      "border-slate-200 bg-white focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-200",
     icon: "text-slate-400",
     input: "placeholder:text-slate-400",
     clear: "text-slate-400 hover:bg-slate-100 hover:text-slate-600",
