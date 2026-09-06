@@ -55,7 +55,7 @@ export interface LegalPage {
   projects?: InnovationProject[];
 }
 
-export const EFFECTIVE_DATE = "July 4, 2026";
+export const EFFECTIVE_DATE = "September 6, 2026";
 export const CONTACT_EMAIL = "reader@readative.com";
 export const GITHUB_URL = "https://github.com/atulpatil5835-netizen/readative";
 export const PERSONAL_LINKEDIN_URL = "https://www.linkedin.com/in/atul-hinge-304aab155";
@@ -300,6 +300,17 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
         title: "Cookies, local storage, analytics, and advertising",
         paragraphs: [
           "Readative uses browser storage for sign-in persistence, guest identity, preferences, feed state, performance, and other requested features. Google Analytics is used to understand site usage. Google advertising technology may use cookies or similar identifiers to deliver and measure ads, subject to Google's controls and applicable consent requirements.",
+        ],
+      },
+      {
+        title: "Google products and advertising disclosures",
+        paragraphs: [
+          "When Google products are used on Readative, Google and its partners may collect or receive information from this site through cookies, web beacons, IP addresses, device identifiers, browser information, and similar technologies for measurement, security, analytics, fraud prevention, and advertising where enabled.",
+          "Readative does not intentionally send email addresses, phone numbers, government identifiers, or other directly identifying account details in Google ad requests. Google ad serving remains disabled by default until the site is approved and explicit eligible-page controls are enabled.",
+        ],
+        links: [
+          { label: "How Google uses data", href: "https://policies.google.com/technologies/partner-sites", description: "Google's explanation of data use on partner sites and apps." },
+          { label: "Advertising Policy", href: "/advertising-policy", description: "Readative's rules for ad placement, inventory quality, and review-safe pages." },
         ],
       },
       {
@@ -661,6 +672,66 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       },
     ],
   },
+  "advertising-policy": {
+    slug: "advertising-policy",
+    title: "Advertising Policy",
+    eyebrow: "Ads and inventory quality",
+    description: "Readative's advertising policy explains ad eligibility, publisher content, prohibited placements, user privacy, and review-safe monetization controls.",
+    dateModified: "2026-09-06",
+    schemaType: "WebPage",
+    sections: [
+      {
+        title: "Current advertising status",
+        paragraphs: [
+          "Readative may include an AdSense account verification signal and an ads.txt seller record so ownership can be checked. Google ad serving is disabled by default while the site is not approved for ads.",
+          "Ads may be enabled only after the site is approved and only on public pages where original publisher content is the main reason a reader opened the page.",
+        ],
+      },
+      {
+        title: "Publisher content standard",
+        paragraphs: [
+          "Readative treats publisher content as original posts, explanations, SmartTalk discussions with meaningful question-and-answer context, and clearly labeled creator profile material.",
+          "Navigation screens, account screens, alerts, setup messages, search-empty results, deleted-content notices, error pages, private areas, and pages with thin or low-value content are not advertising inventory.",
+        ],
+      },
+      {
+        title: "Ad placement rules",
+        items: [
+          "Ads must not cover, interrupt, or push away the main post, answer, form, button, menu, or route control.",
+          "Ads must not be styled as navigation, recommendations, download buttons, profile actions, or system alerts.",
+          "Ads must not be placed on dead-end pages such as thank-you, exit, deleted-content, sign-in-only, error, or empty-state screens.",
+          "Ads must not appear beside content that violates the Content Policy, Community Guidelines, Copyright Policy, or DMCA Policy.",
+        ],
+      },
+      {
+        title: "Eligibility controls",
+        items: [
+          "Public posts need substantial original text before they are eligible for indexing or ad consideration.",
+          "SmartTalk pages need meaningful discussion context before they are eligible for indexing or ad consideration.",
+          "Ad loading is controlled by a production environment flag and a page-level publisher-content check.",
+          "If a page falls below the quality threshold, it may remain accessible to readers but should not be used for ads.",
+        ],
+      },
+      {
+        title: "Privacy and consent",
+        paragraphs: [
+          "Advertising technologies may use cookies, web beacons, IP addresses, device identifiers, and similar technologies when ad serving is enabled. Readative explains this in the Privacy Policy and Cookie Policy and keeps consent controls visible where required.",
+          "Readers can use browser controls, platform privacy settings, and Google ad settings to manage advertising and measurement choices.",
+        ],
+        links: [
+          { label: "Privacy Policy", href: "/privacy", description: "Data collection, usage, sharing, retention, and privacy-request details." },
+          { label: "Cookie Policy", href: "/cookies", description: "Browser storage, analytics, advertising, and user controls." },
+          { label: "Content Policy", href: "/content-policy", description: "Content rules that also protect advertising eligibility." },
+        ],
+      },
+      {
+        title: "Review and reporting",
+        paragraphs: [
+          `Report ad placement, policy, privacy, copyright, or content-quality concerns to ${CONTACT_EMAIL}. Include the page URL, what appeared, the device or browser, and why the placement or content may be unsafe.`,
+        ],
+      },
+    ],
+  },
   cookies: {
     slug: "cookies",
     title: "Cookie Policy",
@@ -699,7 +770,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       {
         title: "Future Advertising",
         paragraphs: [
-          "Readative may support advertising in the future. If advertising cookies or similar identifiers are used, Readative will explain the purpose, respect applicable consent requirements, and provide clear controls.",
+          "Readative may support advertising in the future. If advertising cookies or similar identifiers are used, Readative will explain the purpose, respect applicable consent requirements, provide clear controls, and keep ads away from empty, account-only, alert, navigation, under-construction, or low-value pages.",
         ],
       },
       {

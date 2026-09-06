@@ -2,6 +2,8 @@ const READATIVE_GA_MEASUREMENT_ID = "G-09CXBVC580";
 const GOOGLE_ANALYTICS_SRC = `https://www.googletagmanager.com/gtag/js?id=${READATIVE_GA_MEASUREMENT_ID}`;
 const GOOGLE_ADS_SRC =
   "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8482951627272767";
+const ADSENSE_AUTO_ADS_ENABLED =
+  import.meta.env.VITE_ADSENSE_AUTO_ADS_ENABLED === "true";
 const ADS_IDLE_DELAY_MS = 4500;
 const ADS_INTERACTION_EVENTS = ["pointerdown", "keydown", "scroll"] as const;
 const ADS_ROUTE_CHANGE_EVENTS = ["hashchange", "popstate", "readative:routechange"] as const;
@@ -115,26 +117,18 @@ function isAdsEligibleRoute() {
   const hashRoute = window.location.hash.replace(/^#/, "").split("?")[0];
 
   if (
-    pathname === "/" ||
-    pathname === "/index.html" ||
-    pathname === "/knowledge" ||
     pathname.startsWith("/knowledge/") ||
     pathname.startsWith("/posts/") ||
-    pathname === "/post" ||
     pathname.startsWith("/post/") ||
-    pathname === "/smarttalk" ||
     pathname.startsWith("/smarttalk/") ||
-    pathname === "/smarttalks" ||
     pathname.startsWith("/smarttalks/")
   ) {
     return true;
   }
 
   if (
-    hashRoute === "knowledge" ||
     hashRoute.startsWith("knowledge/") ||
     hashRoute.startsWith("post/") ||
-    hashRoute === "smarttalk" ||
     hashRoute.startsWith("smarttalk/")
   ) {
     return true;
@@ -152,7 +146,12 @@ function hasPublisherContent() {
 }
 
 function scheduleAdsScript() {
-  if (typeof window === "undefined" || adsLoadWatcherScheduled || adsScriptLoaded) {
+  if (
+    typeof window === "undefined" ||
+    !ADSENSE_AUTO_ADS_ENABLED ||
+    adsLoadWatcherScheduled ||
+    adsScriptLoaded
+  ) {
     return;
   }
 
@@ -206,7 +205,7 @@ function loadThirdPartyScripts() {
   // Load Google Analytics script immediately for active realtime data collection
   appendScript(GOOGLE_ANALYTICS_SRC, { async: true });
 
-  // Keep ad loading on idle
+  // Keep Google ad serving opt-in until the site is approved and content pages are ready.
   runWhenBrowserIsIdle(() => {
     scheduleAdsScript();
   });

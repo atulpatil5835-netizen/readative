@@ -20,6 +20,7 @@ Readative content is intended for readers looking for useful context, examples, 
 - [Editorial Policy](https://www.readative.com/editorial-policy): Content standards and editorial expectations.
 - [Content Policy](https://www.readative.com/content-policy): Content lifecycle, moderation, and safety expectations.
 - [Corrections Policy](https://www.readative.com/corrections-policy): How factual or policy concerns are handled.
+- [Advertising Policy](https://www.readative.com/advertising-policy): Ad eligibility, inventory quality, privacy, and placement rules.
 - [Privacy Policy](https://www.readative.com/privacy): Account, content, storage, analytics, advertising, and privacy practices.
 - [Terms of Use](https://www.readative.com/terms): Legal terms for using Readative.
 

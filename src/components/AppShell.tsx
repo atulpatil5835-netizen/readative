@@ -95,6 +95,7 @@ const FOOTER_LINK_GROUPS = [
       { label: "Privacy Policy", href: "/privacy" },
       { label: "Terms of Use", href: "/terms" },
       { label: "Cookie Policy", href: "/cookies" },
+      { label: "Advertising Policy", href: "/advertising-policy" },
       { label: "Copyright Policy", href: "/copyright" },
       { label: "DMCA Policy", href: "/dmca" },
       { label: "Disclaimer", href: "/disclaimer" },

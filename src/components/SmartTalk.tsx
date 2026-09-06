@@ -81,7 +81,10 @@ import { buildPublicPath, navigateToRoute } from "../utils/routes";
 import type { Answer, Question } from "../types";
 import { tokenizeSearch } from "../utils/searchHelpers";
 import { getRelatedQuestions } from "../utils/contentGraph";
-import { isSmartTalkDiscussionAdEligible } from "../utils/contentQuality";
+import {
+  isIndexableSmartTalkDiscussion,
+  isSmartTalkDiscussionAdEligible,
+} from "../utils/contentQuality";
 
 const SMART_TALK_PAGE_SIZE = 24;
 const SMART_TALK_LOADING_SKELETON_COUNT = 5;
@@ -1490,7 +1493,8 @@ export function SmartTalk({
         type={focusedQuestion ? "article" : "website"}
         robots={
           (!isLoading && questions.length === 0) ||
-          (focusedQuestionId && !isQuestionLoading && !focusedQuestion)
+          (focusedQuestionId && !isQuestionLoading && !focusedQuestion) ||
+          (focusedQuestion && !isIndexableSmartTalkDiscussion(focusedQuestion))
             ? "noindex"
             : "index"
         }

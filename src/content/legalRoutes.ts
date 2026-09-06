@@ -8,6 +8,7 @@ export const LEGAL_PAGE_SLUGS = [
   "privacy",
   "terms",
   "disclaimer",
+  "advertising-policy",
   "cookies",
   "editorial-policy",
   "content-policy",
@@ -23,4 +24,3 @@ const LEGAL_PAGE_SLUG_SET = new Set<string>(LEGAL_PAGE_SLUGS);
 export function isLegalPageSlug(value: string): value is LegalSlug {
   return LEGAL_PAGE_SLUG_SET.has(value);
 }
-

@@ -1405,6 +1405,12 @@ export function Profile({
   const latestSmartTalk = [...smartTalkSummary.activityItems].sort(
     (left, right) => right.createdAt - left.createdAt,
   )[0] || null;
+  const shouldNoIndexProfilePage =
+    !isLoadingProfile &&
+    (!profile ||
+      (!isLoadingSharedEntries &&
+        sharedEntries.length === 0 &&
+        smartTalkSummary.activityItems.length === 0));
   const profileSchema = profile
       ? [
           {
@@ -1968,7 +1974,7 @@ export function Profile({
         type="profile"
         url={profileUrl}
         schema={profileSchema}
-        robots={!isLoadingProfile && !profile ? "noindex" : "index"}
+        robots={shouldNoIndexProfilePage ? "noindex" : "index"}
       />
 
       {profileLoadError && (

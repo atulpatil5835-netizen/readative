@@ -44,7 +44,7 @@ function findProfile({
 
 function renderNotFound(identifier: string) {
   const head = `
-    <title>Profile Not Found | ReAdative</title>
+    <title>Profile Not Found | Readative</title>
     <meta name="description" content="The requested Readative profile is not available." />
     <meta name="robots" content="noindex, follow" />
     ${SEO_DOCUMENT_STYLES}`;
@@ -206,7 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const smartTalks = getIndexableSeoSmartTalks(data.smartTalks)
       .filter((question) => question.authorId === profile.id)
       .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-    const pageTitle = `${profile.name} (@${profile.username}) | ReAdative`;
+    const pageTitle = `${profile.name} (@${profile.username}) | Readative`;
     const pageDescription =
       profile.description ||
       `${profile.name} publishes practical knowledge and SmartTalk discussions on Readative.`;
@@ -228,7 +228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta property="og:url" content="${canonicalUrl}" />
       <meta property="og:image" content="${SITE_URL}/logo.png" />
       <meta property="og:image:alt" content="Readative profile" />
-      <meta property="og:site_name" content="ReAdative" />
+      <meta property="og:site_name" content="Readative" />
       <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />

@@ -151,7 +151,7 @@ const STATIC_PAGES = [
   { path: "/explore", priority: "0.6", changefreq: "weekly" as const, lastmod: null },
   { path: "/about", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 27) },
   { path: "/contact", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
-  { path: "/privacy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/privacy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 8, 6) },
   { path: "/terms", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/disclaimer", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/community", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
@@ -161,7 +161,8 @@ const STATIC_PAGES = [
   { path: "/editorial-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/content-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/corrections-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
-  { path: "/cookies", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
+  { path: "/advertising-policy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 8, 6) },
+  { path: "/cookies", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 8, 6) },
   { path: "/copyright", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/dmca", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
 ];

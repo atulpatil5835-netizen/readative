@@ -374,7 +374,7 @@ function buildBaseSchemas({
       "@context": "https://schema.org",
       "@type": "Organization",
       "@id": `${SITE_URL}/#organization`,
-      name: "ReAdative",
+      name: "Readative",
       url: SITE_URL,
       logo: absoluteUrl("/logo.png"),
     },
@@ -382,7 +382,7 @@ function buildBaseSchemas({
       "@context": "https://schema.org",
       "@type": "WebSite",
       "@id": `${SITE_URL}/#website`,
-      name: "ReAdative",
+      name: "Readative",
       url: SITE_URL,
       publisher: { "@id": `${SITE_URL}/#organization` },
     },
@@ -434,7 +434,7 @@ function renderHead({
     <meta property="og:url" content="${canonicalUrl}" />
     <meta property="og:image" content="${SITE_URL}/logo.png" />
     <meta property="og:image:alt" content="Readative knowledge discovery" />
-    <meta property="og:site_name" content="ReAdative" />
+    <meta property="og:site_name" content="Readative" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
@@ -448,7 +448,7 @@ function renderHead({
 function renderNotFound(slug: string, noun = "Topic") {
   const lowerNoun = noun.toLowerCase();
   const head = `
-    <title>${noun} Not Found | ReAdative</title>
+    <title>${noun} Not Found | Readative</title>
     <meta name="description" content="The requested Readative ${lowerNoun} is not available." />
     <meta name="robots" content="noindex, follow" />
     ${SEO_DOCUMENT_STYLES}`;
@@ -489,7 +489,7 @@ function renderExplorePage({
 }) {
   const canonicalPath = "/explore";
   const canonicalUrl = absoluteUrl(canonicalPath);
-  const pageTitle = "Explore | ReAdative";
+  const pageTitle = "Explore | Readative";
   const pageDescription =
     "Explore practical Readative posts and SmartTalk discussions first, with categories and topic shortcuts for related discovery.";
   const recentPosts = sortByActivity(posts).slice(0, PAGE_ITEM_LIMIT);
@@ -562,7 +562,7 @@ function renderCategoryPage({
   profiles: SeoProfile[];
 }) {
   const canonicalUrl = absoluteUrl(category.path);
-  const pageTitle = `${category.label} SmartTalk and Knowledge | ReAdative`;
+  const pageTitle = `${category.label} SmartTalk and Knowledge | Readative`;
   const pageDescription = category.description;
   const relatedTopics = getRelatedTopicsForCategory(category.id, 10);
   const relatedTags = getRelatedTagsForCategory(category.id, 8);
@@ -669,7 +669,7 @@ function renderTopicPage({
     posts: matchedPosts,
     questions: matchedQuestions,
   });
-  const pageTitle = `Posts about ${topic.label} | ReAdative`;
+  const pageTitle = `Posts about ${topic.label} | Readative`;
   const pageDescription = `Browse public Readative posts and SmartTalk discussions related to ${topic.label}.`;
   const itemList = buildItemListSchema({
     name: `${topic.label} Readative collection`,
@@ -737,7 +737,7 @@ function renderTagPage({
   profiles: SeoProfile[];
 }) {
   const canonicalUrl = absoluteUrl(tag.path);
-  const pageTitle = `#${tag.label} Knowledge Posts | ReAdative`;
+  const pageTitle = `#${tag.label} Knowledge Posts | Readative`;
   const pageDescription = tag.description;
   const matchedPosts = sortByActivity(
     posts.filter((post) => matchesTagPost(post, tag)),
@@ -960,7 +960,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("Taxonomy document generation error:", error);
     res.setHeader("Cache-Control", "no-store");
     return res.status(503).send(
-      `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="robots" content="noindex, follow" /><title>ReAdative temporarily unavailable</title></head><body><main><h1>ReAdative temporarily unavailable</h1><p>${escapeXml("Topic data is temporarily unavailable.")}</p></main></body></html>`,
+      `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="robots" content="noindex, follow" /><title>Readative temporarily unavailable</title></head><body><main><h1>Readative temporarily unavailable</h1><p>${escapeXml("Topic data is temporarily unavailable.")}</p></main></body></html>`,
     );
   }
 }

@@ -176,6 +176,7 @@
     { "source": "/editorial-policy", "destination": "/api/legal?slug=editorial-policy" },
     { "source": "/content-policy", "destination": "/api/legal?slug=content-policy" },
     { "source": "/corrections-policy", "destination": "/api/legal?slug=corrections-policy" },
+    { "source": "/advertising-policy", "destination": "/api/legal?slug=advertising-policy" },
     { "source": "/cookies", "destination": "/api/legal?slug=cookies" },
     { "source": "/copyright", "destination": "/api/legal?slug=copyright" },
     { "source": "/dmca", "destination": "/api/legal?slug=dmca" },

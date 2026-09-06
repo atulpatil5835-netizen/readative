@@ -1,6 +1,6 @@
 # Release H7 Username SEO Report
 
-Generated: 2026-08-29T15:11:21.349Z
+Generated: 2026-09-06T05:48:17.959Z
 
 ## Summary
 
@@ -13,16 +13,16 @@ Generated: 2026-08-29T15:11:21.349Z
 - SEO architecture mode: v1
 - SEO V2 schema version: 1
 - SEO V2 projection version: 1
-- Firestore SEO data source: rest
-- Published post URLs discovered: 361
-- Indexable post URLs expected in sitemap: 256
+- Firestore SEO data source: admin
+- Published post URLs discovered: 365
+- Indexable post URLs expected in sitemap: 86
 - SmartTalk discussions discovered: 109
-- Indexable SmartTalk URLs expected in sitemap: 102
-- Profile URLs discovered: 33
-- Indexable profile URLs expected in sitemap: 19
-- Tag URLs discovered: 576
-- Indexable high-volume tag URLs expected in sitemap: 36
-- Total sitemap URLs generated: 439
+- Indexable SmartTalk URLs expected in sitemap: 34
+- Profile URLs discovered: 35
+- Indexable profile URLs expected in sitemap: 14
+- Tag URLs discovered: 586
+- Indexable high-volume tag URLs expected in sitemap: 10
+- Total sitemap URLs generated: 170
 
 ## Files Changed
 
@@ -62,19 +62,19 @@ Generated: 2026-08-29T15:11:21.349Z
 
 ## Sitemap Coverage
 
-- Published posts in sitemap: 256 / 256
+- Published posts in sitemap: 86 / 86
 - Missing post URLs: 0
-- SmartTalk discussions in sitemap: 102 / 102
+- SmartTalk discussions in sitemap: 34 / 34
 - Missing SmartTalk URLs: 0
-- Profiles in sitemap: 19 / 19
+- Profiles in sitemap: 14 / 14
 - Missing profile URLs: 0
-- High-volume tags in sitemap (5+ posts): 36 / 36
+- High-volume tags in sitemap (5+ posts): 10 / 10
 - Missing tag URLs: 0
-- Categories in sitemap: 7
+- Categories in sitemap: 6
 - Topics in sitemap: 0 (expected 0; topic shortcuts are noindex/follow)
-- Tags in sitemap: 36
-- Profiles in sitemap: 19
-- Important pages in sitemap: 19
+- Tags in sitemap: 10
+- Profiles in sitemap: 14
+- Important pages in sitemap: 20
 
 ## Canonical Verification
 

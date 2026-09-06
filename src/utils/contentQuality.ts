@@ -1,7 +1,9 @@
 import type { KnowledgeEntry, Question } from "../types";
 
-export const MIN_INDEXABLE_KNOWLEDGE_CONTENT_WORDS = 120;
-export const MIN_SMARTTALK_DISCUSSION_WORDS = 80;
+export const MIN_INDEXABLE_KNOWLEDGE_CONTENT_WORDS = 220;
+export const MIN_AD_ELIGIBLE_KNOWLEDGE_CONTENT_WORDS = 450;
+export const MIN_SMARTTALK_DISCUSSION_WORDS = 120;
+export const MIN_AD_ELIGIBLE_SMARTTALK_DISCUSSION_WORDS = 250;
 
 type KnowledgeLike = Pick<KnowledgeEntry, "content">;
 type SmartTalkLike = {
@@ -21,20 +23,22 @@ export function isIndexableKnowledgeContent(entry: KnowledgeLike) {
 }
 
 export function isKnowledgeEntryAdEligible(entry: KnowledgeLike) {
-  return isIndexableKnowledgeContent(entry);
+  return countContentWords(entry.content) >= MIN_AD_ELIGIBLE_KNOWLEDGE_CONTENT_WORDS;
 }
 
-export function isIndexableSmartTalkDiscussion(question: SmartTalkLike) {
+function countSmartTalkDiscussionWords(question: SmartTalkLike) {
   const questionText = question.content || question.description || question.title || "";
   const answerTexts = (question.answers || [])
     .map((answer) => answer.content || answer.text || "")
     .join(" ");
-  const totalWords = countContentWords(`${questionText} ${answerTexts}`);
-  const answerCount = question.answerCount ?? question.answers?.length ?? 0;
 
-  return answerCount > 0 || totalWords >= MIN_SMARTTALK_DISCUSSION_WORDS;
+  return countContentWords(`${questionText} ${answerTexts}`);
+}
+
+export function isIndexableSmartTalkDiscussion(question: SmartTalkLike) {
+  return countSmartTalkDiscussionWords(question) >= MIN_SMARTTALK_DISCUSSION_WORDS;
 }
 
 export function isSmartTalkDiscussionAdEligible(question: SmartTalkLike) {
-  return isIndexableSmartTalkDiscussion(question);
+  return countSmartTalkDiscussionWords(question) >= MIN_AD_ELIGIBLE_SMARTTALK_DISCUSSION_WORDS;
 }

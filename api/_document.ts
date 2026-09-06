@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT_MARKUP = '<div id="root"></div>';
+export const ADSENSE_ACCOUNT_ID = "ca-pub-8482951627272767";
+const ADSENSE_ACCOUNT_META = `<meta name="google-adsense-account" content="${ADSENSE_ACCOUNT_ID}" />`;
 
 let cachedShell: string | null | undefined;
 
@@ -41,6 +43,13 @@ function removeShellMetadata(source: string) {
       /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>[\s\S]*?<\/script>/gi,
       "",
     );
+}
+
+function removeAdSenseVerificationMeta(source: string) {
+  return source.replace(
+    /<meta\b(?=[^>]*\bname=["']google-adsense-account["'])[^>]*>\s*/gi,
+    "",
+  );
 }
 
 function markHelmetManagedHead(source: string) {
@@ -94,12 +103,12 @@ interface AppDocumentInput {
 export function renderAppDocument({ head, main, lang = "en" }: AppDocumentInput) {
   const shell = readBuiltShell();
   const prerenderedRoot = `<div id="root">${main}</div>`;
-  const managedHead = markHelmetManagedHead(head);
+  const managedHead = markHelmetManagedHead(removeAdSenseVerificationMeta(head));
 
   if (shell) {
-    return removeShellMetadata(shell)
+    return removeAdSenseVerificationMeta(removeShellMetadata(shell))
       .replace(/<html\s+lang=["'][^"']*["']/i, `<html lang="${escapeHtml(lang)}"`)
-      .replace("</head>", `${managedHead}\n</head>`)
+      .replace("</head>", `${ADSENSE_ACCOUNT_META}\n${managedHead}\n</head>`)
       .replace(ROOT_MARKUP, prerenderedRoot);
   }
 
@@ -108,6 +117,7 @@ export function renderAppDocument({ head, main, lang = "en" }: AppDocumentInput)
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  ${ADSENSE_ACCOUNT_META}
   ${managedHead}
 </head>
 <body>${prerenderedRoot}</body>
@@ -120,7 +130,8 @@ export function renderStandaloneDocument({ head, main, lang = "en" }: AppDocumen
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${head}
+  ${ADSENSE_ACCOUNT_META}
+  ${removeAdSenseVerificationMeta(head)}
 </head>
 <body>${main}</body>
 </html>`;

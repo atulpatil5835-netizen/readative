@@ -112,7 +112,7 @@ function renderProject(project: InnovationProject) {
 function renderPage(page: LegalPage) {
   const canonicalPath = `/${page.slug}`;
   const canonicalUrl = `${SITE_URL}${canonicalPath}`;
-  const pageTitle = `${page.title} | ReAdative`;
+  const pageTitle = `${page.title} | Readative`;
   const dateModified = page.dateModified || "2026-07-04";
   const schemas = [
     {
@@ -190,7 +190,7 @@ function renderPage(page: LegalPage) {
     <meta property="og:url" content="${canonicalUrl}" />
     <meta property="og:image" content="${SITE_URL}/logo.png" />
     <meta property="og:image:alt" content="Readative" />
-    <meta property="og:site_name" content="ReAdative" />
+    <meta property="og:site_name" content="Readative" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(page.description)}" />
