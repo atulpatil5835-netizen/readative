@@ -882,8 +882,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       data-publisher-content="knowledge-post"
       data-ads-content={isAdEligibleContent ? "eligible" : "review"}
       className={cn(
-        "readative-card-surface readative-card-surface-hover scroll-mt-24 overflow-hidden md:scroll-mt-28",
-        focused &&
+        presentation === "news-article"
+          ? "overflow-hidden bg-white"
+          : "readative-card-surface readative-card-surface-hover scroll-mt-24 overflow-hidden md:scroll-mt-28",
+        focused && presentation !== "news-article" &&
           "ring-2 ring-emerald-400 ring-offset-0 ring-offset-[#f7f8fb] min-[1280px]:ring-offset-4",
       )}
     >
@@ -929,7 +931,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         </div>
       )}
 
-      <div className="p-3 pt-3 sm:p-4 min-[1280px]:p-5">
+      <div className={presentation === "news-article" ? "px-5 py-5 sm:px-8 sm:py-7 md:px-12 lg:px-16" : "p-3 pt-3 sm:p-4 min-[1280px]:p-5"}>
         {presentation === "default" && <CardTrust
           trustToneClass={trustToneClass}
           trustMetrics={trustMetrics}

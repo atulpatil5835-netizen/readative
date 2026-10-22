@@ -198,23 +198,17 @@ export function TechNews({ currentIdentity, onIdentityRequired, onOpenProfile, s
   return (
     <>
       <SEO title={focusedNewsEntry ? `${focusedNewsEntry.title} | Readative Tech News` : selectedTag ? `#${selectedTag} Tech News | Readative` : "Technology News, AI & Innovation | Readative"} description={focusedNewsEntry ? focusedNewsEntry.content.slice(0, 160) : selectedTag ? `Read Readative technology news tagged #${selectedTag}.` : "Read concise technology news, AI developments, product updates, and practical context from Readative's editorial desk."} keywords={["technology news", "tech news", "AI news", "technology updates", "Readative Tech News", ...(selectedTag ? [selectedTag] : [])]} url={focusedNewsEntry ? `/tech-news/article/${encodeURIComponent(focusedNewsEntry.id)}` : selectedTag ? `/tech-news/tag/${encodeURIComponent(selectedTag)}` : "/tech-news"} />
-      <main className={focusedEntryId ? "mx-auto w-full max-w-[1600px] px-3 pb-24 pt-20 sm:px-5 md:px-8 md:pb-16 md:pt-24" : "mx-auto max-w-5xl px-4 pb-16 pt-24 md:px-6 md:pt-28"}>
+      <main className={focusedEntryId ? "mx-auto w-full max-w-none px-0 pb-24 pt-0 md:pb-16" : "mx-auto max-w-5xl px-4 pb-16 pt-0 md:px-6"}>
         {focusedEntryId ? (
           focusedNewsEntry ? (
-            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:gap-10">
+            <div className="mx-auto w-full max-w-5xl">
               <article className="min-w-0">
-                <button type="button" onClick={() => navigateToRoute("explore")} className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-emerald-800 hover:text-emerald-950">← Back to Tech News</button>
+                <button type="button" onClick={() => navigateToRoute("explore")} className="mx-4 mb-3 mt-2 inline-flex items-center gap-2 text-sm font-bold text-emerald-800 hover:text-emerald-950 md:mx-6">← Back to Tech News</button>
                 <KnowledgeCard entry={focusedNewsEntry} presentation="news-article" focused currentIdentity={currentIdentity} onIdentityRequired={onIdentityRequired} onOpenProfile={onOpenProfile} onOpenEntry={() => undefined} />
-                <div className="mt-5 xl:hidden">
+                <div className="mt-5 px-4 md:px-6">
                   <KnowledgeJourney entry={focusedNewsEntry} entries={relatedEntries} questions={relatedQuestions} className="rounded-2xl" />
                 </div>
               </article>
-              <aside aria-label="Related posts and SmartTalk" className="hidden xl:block">
-                <div className="sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-700">Related posts & SmartTalk</h2>
-                  <KnowledgeJourney entry={focusedNewsEntry} entries={relatedEntries} questions={relatedQuestions} className="mt-0 border-0 bg-transparent p-0 shadow-none" variant="rail" />
-                </div>
-              </aside>
             </div>
           ) : isLoading ? (
             <div className="mx-auto h-96 max-w-3xl animate-pulse rounded-3xl bg-slate-100" />
