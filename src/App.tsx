@@ -3,7 +3,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { NotebookProvider } from "./context/NotebookContext";
 import {
   CirclePlus,
-  Compass,
+  Newspaper,
   Home,
   LogOut,
   MessageSquareMore,
@@ -15,6 +15,7 @@ import {
   AppFooter,
   BannerNotice,
   FirebaseSetupRoute,
+  NoChargeModeRoute,
   NotFoundRoute,
   SectionSkeleton,
 } from "./components/AppShell";
@@ -33,6 +34,9 @@ import {
   firebaseConfigMissingKeys,
   firebaseConfigReady,
 } from "./firebase/firebaseConfig";
+import {
+  firebaseClientDataEnabled,
+} from "./firebase/costControls";
 import {
   navigateToRoute,
   parseRouteFromLocation,
@@ -65,9 +69,9 @@ const Profile = lazy(() =>
   }))
 );
 
-const Explore = lazy(() =>
-  import("./components/Explore").then((module) => ({
-    default: module.Explore,
+const TechNews = lazy(() =>
+  import("./components/TechNews").then((module) => ({
+    default: module.TechNews,
   }))
 );
 
@@ -119,8 +123,11 @@ export default function App() {
   const [focusedEntryId, setFocusedEntryId] = useState<string | null>(
     initialRoute.focusedEntryId
   );
-  const [exploreTopic, setExploreTopic] = useState<string | null>(
-    initialRoute.tab === "explore" ? initialRoute.selectedTopic : null,
+  const [techNewsTag, setTechNewsTag] = useState<string | null>(
+    initialRoute.tab === "explore" ? initialRoute.selectedHashtag : null,
+  );
+  const [focusedTechNewsId, setFocusedTechNewsId] = useState<string | null>(
+    initialRoute.tab === "explore" ? initialRoute.focusedEntryId : null,
   );
   const [smartTalkCategory, setSmartTalkCategory] = useState<string | null>(
     initialRoute.tab === "smarttalk" ? initialRoute.selectedTopic : null
@@ -162,7 +169,8 @@ export default function App() {
     setProfileAuthorId(route.tab === "profile" ? route.profileAuthorId : null);
     setProfileUsername(route.tab === "profile" ? route.profileUsername : null);
     setFocusedEntryId(route.tab === "knowledge" ? route.focusedEntryId : null);
-    setExploreTopic(route.tab === "explore" ? route.selectedTopic : null);
+    setTechNewsTag(route.tab === "explore" ? route.selectedHashtag : null);
+    setFocusedTechNewsId(route.tab === "explore" ? route.focusedEntryId : null);
     setSmartTalkCategory(route.tab === "smarttalk" ? route.selectedTopic : null);
     setFocusedQuestionId(route.tab === "smarttalk" ? route.focusedEntryId : null);
     setLegalSlug(route.tab === "legal" ? route.legalSlug : null);
@@ -197,14 +205,6 @@ export default function App() {
     });
     handleTabChange("knowledge", null, entryId);
   }, [handleTabChange]);
-
-  const handleOpenTopic = useCallback((topicId: string | null) => {
-    setShowNotificationsPanel(false);
-    const didNavigate = navigateToRoute("explore", { selectedTopic: topicId });
-    if (!didNavigate) {
-      scheduleDocumentScrollToTop("smooth");
-    }
-  }, []);
 
   const handleHomeAction = useCallback(() => {
     setShowNotificationsPanel(false);
@@ -258,7 +258,7 @@ export default function App() {
         profileAuthorId || "",
         profileUsername || "",
         focusedEntryId || "",
-        exploreTopic || "",
+        techNewsTag || "",
         smartTalkCategory || "",
         focusedQuestionId || "",
         routeErrorPath || "",
@@ -269,7 +269,7 @@ export default function App() {
       profileAuthorId,
       profileUsername,
       focusedEntryId,
-      exploreTopic,
+      techNewsTag,
       smartTalkCategory,
       focusedQuestionId,
       routeErrorPath,
@@ -382,7 +382,7 @@ export default function App() {
 
   useEffect(() => {
     trackPageView(cookieConsentAccepted);
-  }, [activeTab, profileAuthorId, profileUsername, focusedEntryId, exploreTopic, legalSlug, routeErrorPath, cookieConsentAccepted]);
+  }, [activeTab, profileAuthorId, profileUsername, focusedEntryId, techNewsTag, legalSlug, routeErrorPath, cookieConsentAccepted]);
 
   useEffect(() => {
     const syncIdentity = () => setIdentity(getKnowledgeIdentity());
@@ -422,7 +422,11 @@ export default function App() {
   }, [cookieConsentAccepted, hydratedIdentity?.authorId]);
 
   useEffect(() => {
-    if (!firebaseConfigReady || !hydratedIdentity?.authorId) {
+    if (
+      !firebaseClientDataEnabled ||
+      !firebaseConfigReady ||
+      !hydratedIdentity?.authorId
+    ) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       setNotificationsError(null);
@@ -597,7 +601,7 @@ export default function App() {
             />
           )}
 
-          {authStatusMessage && (
+          {firebaseClientDataEnabled && authStatusMessage && (
             <BannerNotice
               title="Authentication notice"
               body={authStatusMessage}
@@ -611,6 +615,8 @@ export default function App() {
             </Suspense>
           ) : !firebaseConfigReady ? (
             <FirebaseSetupRoute missingKeys={firebaseConfigMissingKeys} />
+          ) : !firebaseClientDataEnabled ? (
+            <NoChargeModeRoute />
           ) : activeTab === "notFound" ? (
             <NotFoundRoute
               attemptedPath={routeErrorPath}
@@ -625,7 +631,7 @@ export default function App() {
                   : activeTab === "profile"
                     ? "Loading profile..."
                     : activeTab === "explore"
-                      ? "Loading Explore..."
+                      ? "Loading Tech News..."
                       : "Loading home feed..."
               }
             />
@@ -648,45 +654,54 @@ export default function App() {
               </Suspense>
             </div>
           )}
-          {firebaseConfigReady && isIdentityHydrated && activeTab === "smarttalk" && (
-            <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
-              <SmartTalk
-                currentIdentity={hydratedIdentity}
-                onIdentityChange={setIdentity}
-                selectedCategory={smartTalkCategory}
-                focusedQuestionId={focusedQuestionId}
-              />
-            </Suspense>
-          )}
-          {firebaseConfigReady && isIdentityHydrated && activeTab === "profile" && (
-            <Suspense fallback={<SectionSkeleton label="Loading profile..." />}>
-              <Profile
-                currentIdentity={hydratedIdentity}
-                viewedAuthorId={profileAuthorId}
-                viewedUsername={profileUsername}
-                onIdentityChange={setIdentity}
-                onOpenProfile={handleOpenProfile}
-                onOpenEntry={handleOpenEntry}
-              />
-            </Suspense>
-          )}
-          {firebaseConfigReady && isIdentityHydrated && activeTab === "explore" && (
-            <Suspense fallback={<SectionSkeleton label="Loading Explore..." />}>
-              <Explore
-                currentIdentity={hydratedIdentity}
-                selectedTopic={exploreTopic}
-                onOpenProfile={handleOpenProfile}
-                onOpenEntry={handleOpenEntry}
-                onOpenTopic={handleOpenTopic}
-                onOpenSmartTalk={(questionId, selectedCategory) =>
-                  navigateToRoute("smarttalk", {
-                    focusedEntryId: questionId ?? null,
-                    selectedTopic: selectedCategory ?? null,
-                  })
+          {firebaseClientDataEnabled &&
+            firebaseConfigReady &&
+            isIdentityHydrated &&
+            activeTab === "smarttalk" && (
+              <Suspense fallback={<SectionSkeleton label="Loading SmartTalk..." />}>
+                <SmartTalk
+                  currentIdentity={hydratedIdentity}
+                  onIdentityChange={setIdentity}
+                  selectedCategory={smartTalkCategory}
+                  focusedQuestionId={focusedQuestionId}
+                />
+              </Suspense>
+            )}
+          {firebaseClientDataEnabled &&
+            firebaseConfigReady &&
+            isIdentityHydrated &&
+            activeTab === "profile" && (
+              <Suspense fallback={<SectionSkeleton label="Loading profile..." />}>
+                <Profile
+                  currentIdentity={hydratedIdentity}
+                  viewedAuthorId={profileAuthorId}
+                  viewedUsername={profileUsername}
+                  onIdentityChange={setIdentity}
+                  onOpenProfile={handleOpenProfile}
+                  onOpenEntry={handleOpenEntry}
+                />
+              </Suspense>
+            )}
+          {firebaseClientDataEnabled &&
+            firebaseConfigReady &&
+            isIdentityHydrated &&
+            activeTab === "explore" && (
+              <Suspense
+                fallback={
+                  <SectionSkeleton
+                    label="Loading Tech News..."
+                  />
                 }
-              />
-            </Suspense>
-          )}
+              >
+                <TechNews
+                  currentIdentity={hydratedIdentity}
+                  onIdentityRequired={handleOpenSignInPrompt}
+                  onOpenProfile={handleOpenProfile}
+                  selectedTag={techNewsTag}
+          focusedEntryId={focusedTechNewsId}
+                />
+              </Suspense>
+            )}
         </main>
 
         <AppFooter />
@@ -797,14 +812,14 @@ export default function App() {
         )}
 
         <nav
-          className="fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 border-t border-slate-200/90 bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_36px_rgba(15,23,42,0.09)] backdrop-blur-xl md:hidden"
+          className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-slate-200/90 bg-white/95 px-1 pb-[max(env(safe-area-inset-bottom),0.375rem)] pt-1.5 shadow-[0_-14px_36px_rgba(15,23,42,0.09)] backdrop-blur-xl md:hidden"
           aria-label="Primary mobile navigation"
         >
           <button
             type="button"
             onClick={handleHomeAction}
             aria-current={activeTab === "knowledge" ? "page" : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-[10px] font-black leading-tight transition-colors ${
               activeTab === "knowledge"
                 ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
@@ -818,7 +833,7 @@ export default function App() {
             type="button"
             onClick={() => handleTabChange("smarttalk")}
             aria-current={activeTab === "smarttalk" ? "page" : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-[10px] font-black leading-tight transition-colors ${
               activeTab === "smarttalk"
                 ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
@@ -831,7 +846,7 @@ export default function App() {
           <button
             type="button"
             onClick={handleOpenComposer}
-            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg bg-emerald-700 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)] transition-colors hover:bg-emerald-800"
+            className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-emerald-700 px-0.5 text-[10px] font-black leading-tight text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)] transition-colors hover:bg-emerald-800"
             aria-label="Create"
           >
             <CirclePlus className="h-5 w-5" />
@@ -841,21 +856,21 @@ export default function App() {
             type="button"
             onClick={() => handleTabChange("explore")}
             aria-current={activeTab === "explore" ? "page" : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-[10px] font-black leading-tight transition-colors ${
               activeTab === "explore"
                 ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
             }`}
-            aria-label="Explore"
+            aria-label="Tech News"
           >
-            <Compass className="h-5 w-5" />
-            <span>Explore</span>
+            <Newspaper className="h-5 w-5" />
+            <span>Tech News</span>
           </button>
           <button
             type="button"
             onClick={() => handleTabChange("profile")}
             aria-current={activeTab === "profile" ? "page" : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-black transition-colors ${
+            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-[10px] font-black leading-tight transition-colors ${
               activeTab === "profile"
                 ? "bg-emerald-50 text-emerald-700"
                 : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"

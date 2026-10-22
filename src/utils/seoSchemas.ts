@@ -158,7 +158,7 @@ export function buildArticleSchema({
 }: ArticleSchemaInput) {
   return {
     "@context": "https://schema.org",
-    "@type": "Article",
+    "@type": section?.toLowerCase().includes("news") ? "NewsArticle" : "Article",
     headline,
     description,
     author: {

@@ -19,6 +19,7 @@ export interface RouteOptions {
   profileAuthorId?: string | null;
   profileUsername?: string | null;
   selectedHashtag?: string | null;
+  techNewsTag?: boolean;
   selectedTopic?: string | null;
   section?: string | null;
   legalSlug?: LegalSlug | null;
@@ -382,7 +383,11 @@ function parseHashRoute(hash: string) {
     });
   }
 
-  if (routePart === "explore" || routePart === "jobs") {
+  if (routePart === "explore") {
+    return createRoute("explore", "hash", attemptedLocation);
+  }
+
+  if (routePart === "tech-news" || routePart === "jobs") {
     return createRoute("explore", "hash", attemptedLocation);
   }
 
@@ -423,6 +428,22 @@ function parsePathRoute(pathname: string, search: string) {
     });
   }
 
+  const techNewsArticleMatch = normalizedPathname.match(/^\/tech-news\/article\/([^/]+)$/);
+  if (techNewsArticleMatch) {
+    const focusedEntryId = safeDecode(techNewsArticleMatch[1]);
+    return focusedEntryId
+      ? createRoute("explore", "path", attemptedLocation, { focusedEntryId })
+      : createRoute("notFound", "path", attemptedLocation);
+  }
+
+  const techNewsTagMatch = normalizedPathname.match(/^\/tech-news\/tag\/([^/]+)$/);
+  if (techNewsTagMatch) {
+    const selectedHashtag = normalizeRouteSlug(safeDecode(techNewsTagMatch[1]));
+    return selectedHashtag
+      ? createRoute("explore", "path", attemptedLocation, { selectedHashtag })
+      : createRoute("notFound", "path", attemptedLocation);
+  }
+
   const canonicalSmartTalkRoute = parseSmartTalkCanonicalRoute(
     normalizedPathname,
     "path",
@@ -430,7 +451,11 @@ function parsePathRoute(pathname: string, search: string) {
   );
   if (canonicalSmartTalkRoute) return canonicalSmartTalkRoute;
 
-  if (normalizedPathname === "/explore" || normalizedPathname === "/jobs") {
+  if (normalizedPathname === "/explore") {
+    return createRoute("explore", "path", attemptedLocation);
+  }
+
+  if (normalizedPathname === "/tech-news" || normalizedPathname === "/jobs") {
     return createRoute("explore", "path", attemptedLocation);
   }
 
@@ -477,6 +502,10 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
     const selectedHashtag = normalizeTag(options.selectedHashtag);
     const selectedTopic = normalizeKnowledgeTopic(options.selectedTopic);
 
+    if (options.techNewsTag && selectedHashtag) {
+      return `/tech-news/tag/${encodeURIComponent(selectedHashtag)}`;
+    }
+
     if (selectedHashtag && !selectedTopic) {
       return `/tag/${encodeURIComponent(selectedHashtag)}`;
     }
@@ -512,14 +541,18 @@ export function buildPublicPath(tab: AppTab, options: RouteOptions = {}) {
     return options.section ? `/profile?tab=${encodeURIComponent(options.section)}` : "/profile";
   }
 
+  if (tab === "explore" && options.focusedEntryId) {
+    return `/tech-news/article/${encodeURIComponent(options.focusedEntryId)}`;
+  }
+
   if (tab === "explore" && options.selectedTopic) {
     const selectedTopic = normalizeTopic(options.selectedTopic);
 
-    return selectedTopic ? `/topic/${encodeURIComponent(selectedTopic)}` : "/explore";
+    return selectedTopic ? `/topic/${encodeURIComponent(selectedTopic)}` : "/tech-news";
   }
 
   if (tab === "explore") {
-    return "/explore";
+    return "/tech-news";
   }
 
   if (tab === "smarttalk") {

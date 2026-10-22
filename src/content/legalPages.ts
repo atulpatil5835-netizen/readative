@@ -58,7 +58,7 @@ export interface LegalPage {
 export const EFFECTIVE_DATE = "September 6, 2026";
 export const CONTACT_EMAIL = "reader@readative.com";
 export const GITHUB_URL = "https://github.com/atulpatil5835-netizen/readative";
-export const PERSONAL_LINKEDIN_URL = "https://www.linkedin.com/in/atul-hinge-304aab155";
+export const PERSONAL_LINKEDIN_URL = "https://www.linkedin.com/in/0101010101010101010101010101/";
 export const COMPANY_LINKEDIN_URL = "https://www.linkedin.com/company/infohubinnovations";
 export const READATIVE_LINKEDIN_URL = "https://www.linkedin.com/company/innovation-infohub/";
 export const SUPPORT_READATIVE_URL = "https://razorpay.me/@atulsadanandhinge";
@@ -78,6 +78,14 @@ export const PROJECTS: InnovationProject[] = [
     category: "Finance Budget Planner",
     currentStage: "Live daily expense tracking and budget planning tool",
     href: "https://fbply.com",
+  },
+  {
+    name: "Habiterian",
+    description: "A public project at habiterian.com.",
+    status: "Live",
+    category: "Web Project",
+    currentStage: "Live website",
+    href: "https://habiterian.com",
   },
   {
     name: "Autonomous Water Cleanup System",
@@ -114,7 +122,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     slug: "about",
     title: "About Readative",
     eyebrow: "Public innovation projects",
-    description: "Learn how Readative and FBPLY fit into Info Hub's independent innovation platform, product philosophy, mission, values, and roadmap.",
+    description: "Learn how Readative, FBPLY, and Habiterian fit into Info Hub's independent innovation platform, product philosophy, mission, values, and roadmap.",
     dateModified: "2026-07-27",
     schemaType: "AboutPage",
     sections: [
@@ -164,7 +172,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       {
         title: "Vision",
         paragraphs: [
-          "The long-term vision is to build a small portfolio of public technology projects across knowledge, finance, AI, education, environment, and sustainability. Readative and FBPLY are live projects, while research and planning ideas remain clearly labeled by lifecycle stage.",
+          "The long-term vision is to build a small portfolio of public technology projects across knowledge, finance, AI, education, environment, and sustainability. Readative, FBPLY, and Habiterian are live projects, while research and planning ideas remain clearly labeled by lifecycle stage.",
           "Info Hub is not presenting research ideas as completed products. Projects in research, planning, prototype, experimental, completed, or archived stages are labeled transparently on the Projects page.",
         ],
         links: [
@@ -294,6 +302,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
         title: "Public content",
         paragraphs: [
           "Content and profile information published as public may be visible to anyone, linked by other users, included in search-engine indexes, and retained in third-party caches. Do not publish personal information you do not want publicly associated with you.",
+          "Readative Tech News articles are editorial posts published on permanent article pages. Article headlines, publication dates, images, and manually selected topic hashtags may appear in search results and public sitemaps. Search engines decide independently whether and how to display public pages; indexing is not guaranteed.",
         ],
       },
       {
@@ -534,7 +543,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     slug: "projects",
     title: "Projects",
     eyebrow: "Innovation platform",
-    description: "Explore Readative, FBPLY, and future Info Hub technology projects with transparent lifecycle stages such as Live, Research, Planning, Prototype, Experimental, Completed, or Archived.",
+    description: "Explore Readative, FBPLY, Habiterian, and future Info Hub technology projects with transparent lifecycle stages such as Live, Research, Planning, Prototype, Experimental, Completed, or Archived.",
     dateModified: "2026-07-27",
     schemaType: "WebPage",
     projects: PROJECTS,
@@ -542,7 +551,7 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
       {
         title: "Project lifecycle transparency",
         paragraphs: [
-          "Every project listed here has a visible lifecycle stage. Readative and FBPLY are live. Future technology ideas are not presented as finished products unless they actually reach that stage.",
+          "Every project listed here has a visible lifecycle stage. Readative, FBPLY, and Habiterian are live. Future technology ideas are not presented as finished products unless they actually reach that stage.",
           "Research and planning projects may evolve, pause, merge, or be archived as the work becomes clearer.",
         ],
       },

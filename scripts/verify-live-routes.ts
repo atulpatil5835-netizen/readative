@@ -531,7 +531,7 @@ async function main() {
     await checkRedirectChain("Legacy /knowledge", absoluteUrl("/knowledge"), absoluteUrl("/")),
   );
   redirectChecks.push(
-    await checkRedirectChain("Legacy /jobs", absoluteUrl("/jobs"), absoluteUrl("/explore")),
+    await checkRedirectChain("Legacy /jobs", absoluteUrl("/jobs"), absoluteUrl("/tech-news")),
   );
   redirectChecks.push(
     await checkRedirectChain(
@@ -551,7 +551,7 @@ async function main() {
     await checkRedirectChain(
       "Legacy /tags/Inspiration",
       absoluteUrl("/tags/Inspiration"),
-      absoluteUrl("/tag/inspiration"),
+      absoluteUrl("/posts"),
     ),
   );
 

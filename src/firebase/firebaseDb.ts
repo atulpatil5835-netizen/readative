@@ -6,9 +6,10 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { firebaseApp } from "./firebaseApp";
+import { firebaseClientDataEnabled } from "./costControls";
 
 function createFirestore() {
-  if (!firebaseApp) {
+  if (!firebaseApp || !firebaseClientDataEnabled) {
     return null;
   }
 

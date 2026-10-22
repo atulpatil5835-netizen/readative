@@ -51,6 +51,7 @@ export function CardContent({
   isFocusedPost,
   isNotebookMode,
   onExitNotebookMode,
+  hideHashtags = false,
 }: CardContentProps) {
   const [highlights, setHighlights] = useState<NotebookHighlight[]>([]);
   const [armedParagraphId, setArmedParagraphId] = useState<string | null>(null);
@@ -423,7 +424,7 @@ export function CardContent({
         )}
       </div>
 
-      {entry.hashtags.length > 0 && (
+      {!hideHashtags && entry.hashtags.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {entry.contentKind && (
             <span className="rounded-full border border-slate-200/80 bg-slate-50/70 px-3 py-1 text-xs font-semibold capitalize text-slate-500">

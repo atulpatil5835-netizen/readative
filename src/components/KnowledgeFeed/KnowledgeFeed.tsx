@@ -25,6 +25,10 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebaseDb";
 import {
+  firebaseClientDataDisabledMessage,
+  firebaseClientDataEnabled,
+} from "../../firebase/costControls";
+import {
   KnowledgeComment,
   KnowledgeEntry,
   KnowledgeImageLayout,
@@ -121,12 +125,19 @@ const JOURNEY_SMARTTALK_LIMIT = 12;
 const JOURNEY_SMARTTALK_CACHE_KEY = "readativeJourneySmartTalkPreview:v1";
 const JOURNEY_SMARTTALK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const USER_PROFILE_UPDATED_EVENT = "readative:user-profile-updated";
+const TECH_NEWS_EDITOR_EMAIL = "atulpatil5835@gmail.com";
+
+function isTechNewsEntry(entry: KnowledgeEntry) {
+  return (
+    entry.contentKind?.trim().toLowerCase() === "news" ||
+    entry.authorEmail.trim().toLowerCase() === TECH_NEWS_EDITOR_EMAIL
+  );
+}
 
 interface CachedJourneySmartTalkPreview {
   questions: KnowledgeJourneyQuestion[];
   cachedAt: number;
 }
-
 let journeySmartTalkMemoryCache: CachedJourneySmartTalkPreview | null = null;
 
 const EMPTY_TOPIC_FEED_STATE: TopicFeedState = {
@@ -384,11 +395,15 @@ export function KnowledgeFeed({
   refreshSignal,
   isActive,
 }: KnowledgeFeedProps) {
+  const canUseFirestore = isActive && firebaseClientDataEnabled;
   const initialRefreshSeed = useMemo(createKnowledgeFeedRefreshSeed, [
     identity?.authorId,
   ]);
   const initialFeedCache = useMemo(
-    () => readKnowledgeFeedCache(identity?.authorId),
+    () =>
+      firebaseClientDataEnabled
+        ? readKnowledgeFeedCache(identity?.authorId)
+        : null,
     [identity?.authorId],
   );
   const initialFeedOrder = useMemo(
@@ -417,7 +432,7 @@ export function KnowledgeFeed({
     KnowledgeJourneyQuestion[]
   >([]);
   const [isLoading, setIsLoading] = useState(
-    () => !initialFeedCache?.entries.length,
+    () => firebaseClientDataEnabled && !initialFeedCache?.entries.length,
   );
   const [feedLoadError, setFeedLoadError] = useState<string | null>(null);
   const [feedRetrySignal, setFeedRetrySignal] = useState(0);
@@ -493,6 +508,11 @@ export function KnowledgeFeed({
   const selectedImageLayoutSettings =
     getKnowledgeImageLayoutSettings(selectedImageLayout);
 
+  const updateHasMoreServerEntries = useCallback((hasMoreEntries: boolean) => {
+    hasMoreServerEntriesRef.current = hasMoreEntries;
+    setHasMoreServerEntries(hasMoreEntries);
+  }, []);
+
   // ── Callbacks ──
 
   const showRefreshFeedbackTemporarily = useCallback(() => {
@@ -517,6 +537,16 @@ export function KnowledgeFeed({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (firebaseClientDataEnabled) return;
+
+    setIsLoading(false);
+    setIsLoadingMoreEntries(false);
+    setIsBackgroundLoadingEntries(false);
+    updateHasMoreServerEntries(false);
+    setFeedLoadError(firebaseClientDataDisabledMessage);
+  }, [updateHasMoreServerEntries]);
 
   const handleBackToTopRefresh = useCallback(() => {
     const nextRefreshSeed = createKnowledgeFeedRefreshSeed();
@@ -580,18 +610,13 @@ export function KnowledgeFeed({
     showRefreshFeedbackTemporarily,
   ]);
 
-  const updateHasMoreServerEntries = useCallback((hasMoreEntries: boolean) => {
-    hasMoreServerEntriesRef.current = hasMoreEntries;
-    setHasMoreServerEntries(hasMoreEntries);
-  }, []);
-
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
 
   useEffect(() => {
     if (
-      !isActive ||
+      !canUseFirestore ||
       hasLoadedJourneySmartTalkRef.current ||
       isLoadingJourneySmartTalkRef.current
     ) {
@@ -644,7 +669,7 @@ export function KnowledgeFeed({
     return () => {
       cancelled = true;
     };
-  }, [isActive]);
+  }, [canUseFirestore]);
 
   useEffect(() => {
     visibleLikedEntryIdsRef.current = visibleLikedEntryIds;
@@ -678,7 +703,7 @@ export function KnowledgeFeed({
   }, []);
 
   useEffect(() => {
-    if (!isActive || typeof window === "undefined") {
+    if (!canUseFirestore || typeof window === "undefined") {
       setShowBackToTopRefresh(false);
       return;
     }
@@ -700,7 +725,7 @@ export function KnowledgeFeed({
       window.removeEventListener("scroll", updateBackToTopVisibility);
       window.removeEventListener("resize", updateBackToTopVisibility);
     };
-  }, [isActive]);
+  }, [canUseFirestore]);
 
   useEffect(() => {
     if (focusedEntryId || entries.length === 0) return;
@@ -831,7 +856,7 @@ export function KnowledgeFeed({
       !focusedEntryId &&
       (Boolean(normalizedRouteHashtag) || selectedFeedTopic !== "all");
 
-    if (!isActive || isIndependentRoute || focusedEntryId) {
+    if (!canUseFirestore || isIndependentRoute || focusedEntryId) {
       if (isIndependentRoute) {
         setIsLoading(false);
       }
@@ -956,7 +981,7 @@ export function KnowledgeFeed({
     feedRetrySignal,
     focusedEntryId,
     identity?.authorId,
-    isActive,
+    canUseFirestore,
     selectedFeedTopic,
     selectedHashtag,
     updateHasMoreServerEntries,
@@ -1066,7 +1091,7 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     if (
-      !isActive ||
+      !canUseFirestore ||
       isLoading ||
       FEED_BACKGROUND_PREFETCH_PAGE_LIMIT <= 0 ||
       focusedEntryId ||
@@ -1136,7 +1161,7 @@ export function KnowledgeFeed({
   }, [
     focusedEntryId,
     hasMoreServerEntries,
-    isActive,
+    canUseFirestore,
     isLoading,
     loadNextEntriesPage,
     selectedFeedTopic,
@@ -1146,7 +1171,7 @@ export function KnowledgeFeed({
   useEffect(() => {
     if (
       typeof window === "undefined" ||
-      !isActive ||
+      !canUseFirestore ||
       !showComposer ||
       hasLoadedProfilesDirectoryRef.current
     ) {
@@ -1374,7 +1399,7 @@ export function KnowledgeFeed({
   }, []);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!canUseFirestore) return;
 
     document.documentElement.classList.add("readative-knowledge-feed");
     document.body.classList.add("readative-knowledge-feed");
@@ -1383,7 +1408,7 @@ export function KnowledgeFeed({
       document.documentElement.classList.remove("readative-knowledge-feed");
       document.body.classList.remove("readative-knowledge-feed");
     };
-  }, [isActive]);
+  }, [canUseFirestore]);
 
   // ── Derived state ──
 
@@ -1420,7 +1445,8 @@ export function KnowledgeFeed({
     () =>
       getHelpfulAwareVisibleEntries({
         entries: entries.filter((entry) =>
-          canViewKnowledgeEntry(entry, currentAuthorId),
+          canViewKnowledgeEntry(entry, currentAuthorId) &&
+          (!isTechNewsEntry(entry) || entry.id === focusedEntryId),
         ),
         currentAuthorId,
         focusedEntryId,
@@ -1468,7 +1494,8 @@ export function KnowledgeFeed({
 
     return getHelpfulAwareVisibleEntries({
       entries: activeTopicFeedState.entries.filter((entry) =>
-        canViewKnowledgeEntry(entry, currentAuthorId),
+        canViewKnowledgeEntry(entry, currentAuthorId) &&
+        (!isTechNewsEntry(entry) || entry.id === focusedEntryId),
       ),
       currentAuthorId,
       focusedEntryId,
@@ -1586,7 +1613,7 @@ export function KnowledgeFeed({
   const shouldHoldEmptyFeedState = shouldKeepLoadingEmptyFeed;
 
   useEffect(() => {
-    if (!isActive || feedProfileIds.length === 0) return;
+    if (!canUseFirestore || feedProfileIds.length === 0) return;
 
     const profileIdsToLoad = feedProfileIds.filter(
       (profileId) =>
@@ -1811,7 +1838,7 @@ export function KnowledgeFeed({
       }
 
       if (
-        !isActive ||
+        !canUseFirestore ||
         focusedEntryId ||
         hasActiveSearch ||
         !hasMoreEntries ||
@@ -1849,14 +1876,14 @@ export function KnowledgeFeed({
       focusedEntryId,
       hasActiveSearch,
       hasMoreEntries,
-      isActive,
+      canUseFirestore,
       isPaginationBusy,
       loadMoreActiveEntries,
     ],
   );
 
   useEffect(() => {
-    if (!isActive || !shouldUseIndependentFeed) return;
+    if (!canUseFirestore || !shouldUseIndependentFeed) return;
     if (activeTopicFeedState.isLoading || activeTopicFeedState.hasLoaded) return;
     if (independentLoadingKeysRef.current.has(independentFeedKey)) return;
 
@@ -1942,13 +1969,13 @@ export function KnowledgeFeed({
     activeFeedTopic,
     feedRetrySignal,
     independentFeedKey,
-    isActive,
+    canUseFirestore,
     normalizedSelectedHashtag,
     shouldUseIndependentFeed,
   ]);
 
   useEffect(() => {
-    if (!isActive || !hasMoreEntries || typeof window === "undefined") return;
+    if (!canUseFirestore || !hasMoreEntries || typeof window === "undefined") return;
 
     const sentinel = loadMoreSentinelRef.current;
     if (!sentinel) return;
@@ -1976,7 +2003,7 @@ export function KnowledgeFeed({
 
   useEffect(() => {
     if (
-      !isActive ||
+      !canUseFirestore ||
       !shouldContinueLoadingVisibleFeed ||
       isLoading ||
       isActiveFeedLoadingMore ||
@@ -1990,7 +2017,7 @@ export function KnowledgeFeed({
       surfaceErrors: true,
     });
   }, [
-    isActive,
+    canUseFirestore,
     isBackgroundLoadingEntries,
     isActiveFeedLoadingMore,
     isLoading,
@@ -2508,7 +2535,7 @@ export function KnowledgeFeed({
   const pageTitle = focusedEntry
     ? `${focusedEntry.title} | Readative`
     : selectedHashtag
-      ? `#${selectedHashtag} Posts | Readative`
+      ? `${focusedEntry?.contentKind === "news" ? "Tech News" : "Posts"} #${selectedHashtag} | Readative`
       : activeCategory
         ? `${activeCategory.label} Knowledge Posts | Readative`
         : activeFeedTopic.id !== "all"
@@ -2517,7 +2544,7 @@ export function KnowledgeFeed({
   const pageDescription = focusedEntry
     ? createExcerpt(focusedEntry.content)
     : selectedHashtag
-      ? `Explore Readative knowledge posts tagged #${selectedHashtag}.`
+      ? `${focusedEntry?.contentKind === "news" ? "Read Readative Tech News" : "Explore Readative knowledge posts"} tagged #${selectedHashtag}.`
       : activeCategory
         ? activeCategory.description
         : activeFeedTopic.id !== "all"

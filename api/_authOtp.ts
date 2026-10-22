@@ -498,6 +498,19 @@ export function getAuthOtpHttpError(error: unknown) {
     };
   }
 
+  if (
+    error instanceof Error &&
+    error.message.includes("disabled by READATIVE_FIRESTORE_DATA_ENABLED")
+  ) {
+    return {
+      statusCode: 503,
+      body: {
+        error:
+          "Email verification is temporarily unavailable while server-side Firestore access is disabled.",
+      },
+    };
+  }
+
   console.error("Email verification auth error:", error);
   return {
     statusCode: 500,

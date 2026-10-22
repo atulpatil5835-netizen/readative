@@ -79,6 +79,7 @@ export interface CardContentProps {
   isNotebookMode: boolean;
   onPostFirstHighlight: () => void;
   onExitNotebookMode: () => void;
+  hideHashtags?: boolean;
 }
 
 export interface CardActionsProps {

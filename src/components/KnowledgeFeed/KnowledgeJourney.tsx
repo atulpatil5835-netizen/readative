@@ -359,7 +359,9 @@ export function getKnowledgeJourneyActions({
     });
   }
 
-  const authorEntry = getAuthorEntry(entry, entries, usedEntryIds);
+  const authorEntry = entry.contentKind === "news"
+    ? null
+    : getAuthorEntry(entry, entries, usedEntryIds);
   if (authorEntry) {
     addAction(
       createPostAction(

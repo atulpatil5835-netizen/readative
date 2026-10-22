@@ -156,15 +156,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       {
         "@context": "https://schema.org",
-        "@type": "Article",
+        "@type": post.isTechNews ? "NewsArticle" : "Article",
         "@id": `${canonicalUrl}#article`,
         url: canonicalUrl,
         mainEntityOfPage: canonicalUrl,
         headline: post.title,
         description: post.description,
         articleBody: post.content,
-        articleSection: post.category || undefined,
+        articleSection: post.isTechNews ? "Readative Tech News" : post.category || undefined,
         keywords: post.hashtags.join(", "),
+        image: [`${SITE_URL}${post.imageUrl || "/default-tech-news-og.svg"}`],
         author: {
           "@type": "Person",
           name: post.authorName,
@@ -178,7 +179,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           logo: { "@type": "ImageObject", url: `${SITE_URL}/logo.png` },
         },
         datePublished: post.createdAt ? new Date(post.createdAt).toISOString() : undefined,
-        dateModified: post.updatedAt ? new Date(post.updatedAt).toISOString() : undefined,
+        dateModified: new Date(post.updatedAt || post.createdAt || Date.now()).toISOString(),
       },
       ...(authorUrl
         ? [{
@@ -200,40 +201,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <meta property="og:title" content="${escapeHtml(pageTitle)}" />
       <meta property="og:description" content="${escapeHtml(post.description)}" />
       <meta property="og:url" content="${canonicalUrl}" />
-      <meta property="og:image" content="${SITE_URL}/logo.png" />
-      <meta property="og:image:alt" content="Readative" />
-      <meta property="og:image:width" content="512" />
-      <meta property="og:image:height" content="512" />
+      <meta property="og:image" content="${SITE_URL}${post.imageUrl || "/default-tech-news-og.svg"}" />
+      <meta property="og:image:alt" content="${escapeHtml(post.title)}" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
       <meta property="og:site_name" content="Readative" />
       ${post.createdAt ? `<meta property="article:published_time" content="${new Date(post.createdAt).toISOString()}" />` : ""}
       ${post.updatedAt ? `<meta property="article:modified_time" content="${new Date(post.updatedAt).toISOString()}" />` : ""}
       ${post.category ? `<meta property="article:section" content="${escapeHtml(post.category)}" />` : ""}
+      ${post.hashtags.map((tag) => `<meta property="article:tag" content="${escapeHtml(tag)}" />`).join("\n      ")}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
       <meta name="twitter:description" content="${escapeHtml(post.description)}" />
-      <meta name="twitter:image" content="${SITE_URL}/logo.png" />
-      <meta name="twitter:image:alt" content="Readative" />
+      <meta name="twitter:image" content="${SITE_URL}${post.imageUrl || "/default-tech-news-og.svg"}" />
+      <meta name="twitter:image:alt" content="${escapeHtml(post.title)}" />
       ${renderJsonLd(schemas)}
       ${SEO_DOCUMENT_STYLES}`;
 
     const meta = [
-      authorUrl ? `<a href="${escapeHtml(authorPath)}">By ${escapeHtml(post.authorName)}</a>` : `By ${escapeHtml(post.authorName)}`,
-      categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : "",
+      !post.isTechNews ? (authorUrl ? `<a href="${escapeHtml(authorPath)}">By ${escapeHtml(post.authorName)}</a>` : `By ${escapeHtml(post.authorName)}`) : "",
+      !post.isTechNews && categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : "",
       post.createdAt ? `<time datetime="${new Date(post.createdAt).toISOString()}">${new Date(post.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" })}</time>` : "",
     ].filter(Boolean).join("");
-    const tags = post.hashtags
-      .map((tag) => `<a href="/tag/${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`)
+    const tags = post.isTechNews ? "" : post.hashtags
+      .map((tag) => `<a href="${post.isTechNews ? "/tech-news/tag/" : "/tag/"}${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`)
       .join("");
     const nextPost = relatedPosts[0] || null;
     const main = `<div class="seo-document"><div class="seo-shell">
       <nav class="seo-nav" aria-label="Primary">
         <a class="seo-brand" href="/">Readative</a>
-        <span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span>
+        <span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/tech-news">Tech News</a></span>
       </nav>
       <main>
         <article class="seo-hero">
           <div class="seo-hero-inner">
-            <p class="seo-kicker">Knowledge post</p>
+            <p class="seo-kicker">${post.isTechNews ? "Tech News" : "Knowledge post"}</p>
             <h1>${escapeHtml(post.title)}</h1>
             <div class="seo-meta">${meta}</div>
             ${tags ? `<div class="seo-tags" aria-label="Tags">${tags}</div>` : ""}
@@ -248,7 +250,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             <section><h3>Related Posts</h3><ul class="seo-list">${renderPostList(relatedPosts)}</ul></section>
             <section><h3>Related SmartTalk</h3><ul class="seo-list">${renderSmartTalkList(relatedSmartTalks)}</ul></section>
             <section><h3>Same Category</h3><ul class="seo-list"><li>${categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : '<a href="/posts">Browse categories</a>'}</li></ul></section>
-            <section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="${escapeHtml(authorPath)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>
+            ${!post.isTechNews ? `<section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="${escapeHtml(authorPath)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>` : ""}
           </div>
           <section><h3>Similar Topics</h3><div class="seo-tags">${tags || '<a href="/explore">Explore topics</a>'}</div></section>
           <div class="seo-meta">

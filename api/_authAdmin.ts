@@ -9,6 +9,14 @@ function readEnv(name: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function assertServerFirestoreDataEnabled() {
+  if (readEnv("READATIVE_FIRESTORE_DATA_ENABLED").toLowerCase() !== "true") {
+    throw new Error(
+      "Firebase Admin Firestore access is disabled by READATIVE_FIRESTORE_DATA_ENABLED.",
+    );
+  }
+}
+
 export function getFirebaseAdminProjectId() {
   return (
     readEnv("FIREBASE_PROJECT_ID") ||
@@ -45,5 +53,13 @@ export function getFirebaseAdminAuth(): Auth {
 }
 
 export function getFirebaseAdminDb(): Firestore {
+  assertServerFirestoreDataEnabled();
+  return getFirestore(getFirebaseAdminApp());
+}
+
+export function getFirebaseAdminTechNewsDb(): Firestore {
+  if (readEnv("READATIVE_TECH_NEWS_ENABLED").toLowerCase() !== "true") {
+    throw new Error("Tech News publishing is disabled.");
+  }
   return getFirestore(getFirebaseAdminApp());
 }

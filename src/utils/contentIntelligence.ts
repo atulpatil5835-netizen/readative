@@ -34,7 +34,6 @@ export const CONTENT_KIND_OPTIONS: Array<{
   { id: "insight", label: "Insight", helper: "A sharp observation or lesson." },
   { id: "tutorial", label: "Tutorial", helper: "Step-by-step learning." },
   { id: "tool", label: "Tool", helper: "A useful product, app, or workflow." },
-  { id: "news", label: "News", helper: "A timely technology update." },
   { id: "opinion", label: "Opinion", helper: "A clear point of view." },
   { id: "guide", label: "Guide", helper: "A practical reference." },
 ];

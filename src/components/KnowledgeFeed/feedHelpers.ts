@@ -385,7 +385,9 @@ export function buildKnowledgeSchemas({
       datePublished: new Date(entry.createdAt).toISOString(),
       dateModified: entry.updatedAt ? new Date(entry.updatedAt).toISOString() : undefined,
       keywords: entry.hashtags,
-      section: category?.label || entry.category || undefined,
+      section: entry.contentKind === "news"
+        ? "Readative Tech News"
+        : category?.label || entry.category || undefined,
       url: buildAbsoluteRouteUrl("knowledge", {
         focusedEntryId: entry.id,
         seoTitle: entry.title,
@@ -1081,7 +1083,25 @@ export async function fetchSinglePostRelatedKnowledge(
   const related: KnowledgeEntry[] = [];
   const categorySlug = entry.category?.trim().toLowerCase();
 
-  if (categorySlug) {
+  const entryTags = [...new Set((entry.hashtags || []).map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 8);
+  if (entryTags.length > 0) {
+    try {
+      const snapshots = await Promise.all(entryTags.slice(0, 3).map((tag) =>
+        getDocs(query(collection(db, "knowledge"), where("hashtags", "array-contains", tag), limit(5))),
+      ));
+      for (const snapshot of snapshots) {
+        for (const item of snapshot.docs) {
+          if (item.id === entry.id || related.some((candidate) => candidate.id === item.id)) continue;
+          const candidate = normalizeKnowledgeEntry(item.id, item.data() as Partial<KnowledgeEntry> & { comments?: KnowledgeComment[]; createdAt?: number | { toMillis?: () => number } });
+          if (candidate && normalizeKnowledgeVisibility(candidate.visibility) === "public") related.push(candidate);
+        }
+      }
+    } catch (error) {
+      console.warn("Hashtag related knowledge fetch failed:", error);
+    }
+  }
+
+  if (categorySlug && related.length < 4) {
     try {
       const categoryQuery = query(
         collection(db, "knowledge"),
@@ -1140,6 +1160,7 @@ export async function fetchSinglePostRelatedSmartTalk(
 ): Promise<KnowledgeJourneyQuestion[]> {
   const questions: KnowledgeJourneyQuestion[] = [];
   const categorySlug = entry.category?.trim().toLowerCase();
+  const entryTerms = [...new Set([...(entry.hashtags || []), entry.title || ""].map((term) => term.replace(/^#/, "").trim().toLowerCase()).filter((term) => term.length > 1))].slice(0, 8);
 
   if (categorySlug) {
     try {
@@ -1190,6 +1211,25 @@ export async function fetchSinglePostRelatedSmartTalk(
       questions.push(...docs);
     } catch (err) {
       console.warn("Category related SmartTalk fetch failed:", err);
+    }
+  }
+
+  if (questions.length < 3 && entryTerms.length > 0) {
+    try {
+      const snapshot = await getDocs(query(collection(db, "smarttalk"), orderBy("createdAt", "desc"), limit(24)));
+      const matching = snapshot.docs.map((docItem) => {
+        const data = docItem.data();
+        const content = typeof data.content === "string" ? data.content : "";
+        const score = entryTerms.filter((term) => content.toLowerCase().includes(term)).length;
+        const rawAnswers = Array.isArray(data.answers) ? data.answers : [];
+        const rawCreatedAt = data.createdAt as number | { toMillis?: () => number } | undefined;
+        const createdAt = typeof rawCreatedAt === "number" && Number.isFinite(rawCreatedAt) ? rawCreatedAt : typeof rawCreatedAt === "object" && rawCreatedAt && typeof rawCreatedAt.toMillis === "function" ? rawCreatedAt.toMillis() : Date.now();
+        return { score, question: { id: docItem.id, author: typeof data.author === "string" && data.author ? data.author : "Unknown", authorId: typeof data.authorId === "string" ? data.authorId : "", content, category: typeof data.category === "string" ? data.category : null, createdAt, answerCount: rawAnswers.length, answerText: rawAnswers.map((answer) => answer && typeof answer === "object" && typeof (answer as { content?: unknown }).content === "string" ? (answer as { content: string }).content : "").filter(Boolean) } };
+      }).filter((item) => item.score > 0 && !questions.some((question) => question.id === item.question.id))
+        .sort((left, right) => right.score - left.score || right.question.createdAt - left.question.createdAt);
+      questions.push(...matching.map((item) => item.question));
+    } catch (error) {
+      console.warn("Text related SmartTalk fetch failed:", error);
     }
   }
 

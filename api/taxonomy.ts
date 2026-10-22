@@ -75,6 +75,41 @@ function titleCaseSlug(value: string) {
     .join(" ");
 }
 
+function getTopicPageDefinition(slug: string): SeoTopicDefinition | null {
+  const knownTopic = getTopicBySlug(slug);
+  if (knownTopic) return knownTopic;
+
+  const category = getCategoryBySlug(slug);
+  if (category) {
+    return {
+      id: category.id,
+      label: category.label,
+      categoryId: category.id,
+      path: `/topic/${category.id}`,
+      collectionTitle: `${category.label} Essentials`,
+      description: category.description,
+      keywords: category.keywords,
+      tagSlugs: category.tagSlugs,
+      aliases: category.aliases,
+    };
+  }
+
+  const id = normalizeSeoSlug(slug);
+  if (!id) return null;
+  const label = titleCaseSlug(id);
+  return {
+    id,
+    label,
+    categoryId: "technology",
+    path: `/topic/${id}`,
+    collectionTitle: `${label} Essentials`,
+    description: `Readative posts, discussions, contributors, and resources about ${label}.`,
+    keywords: [id, id.replace(/-/g, " ")],
+    tagSlugs: [],
+    aliases: [],
+  };
+}
+
 function buildDynamicTagDefinition(tag: { id: string; label: string }): SeoTagDefinition {
   const slug = normalizeSeoSlug(tag.id) || tag.id;
   const label = tag.label.trim() ? titleCaseSlug(tag.label) : titleCaseSlug(slug);
@@ -906,7 +941,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (type === "topic") {
-      const topic = getTopicBySlug(slug);
+      const topic = getTopicPageDefinition(slug);
       if (!topic) {
         if (req.method === "HEAD") return res.status(404).end();
         return res.status(404).send(renderNotFound(rawSlug));

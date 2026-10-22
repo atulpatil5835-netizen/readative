@@ -131,7 +131,7 @@ export const Header = memo(function Header({
                 tab === "smarttalk"
                   ? "SmartTalk"
                   : tab === "explore"
-                  ? "Explore"
+                  ? "Tech News"
                   : tab === "knowledge"
                   ? "Home"
                   : "Profile";

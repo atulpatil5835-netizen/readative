@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#052e2b"/><stop offset="1" stop-color="#047857"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#34d399" stop-opacity=".38"/><stop offset="1" stop-color="#34d399" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="630" rx="36" fill="url(#bg)"/>
+  <circle cx="1020" cy="120" r="400" fill="url(#glow)"/>
+  <circle cx="1030" cy="340" r="190" fill="none" stroke="#a7f3d0" stroke-opacity=".22" stroke-width="2"/>
+  <circle cx="1030" cy="340" r="135" fill="none" stroke="#a7f3d0" stroke-opacity=".28" stroke-width="2"/>
+  <path d="M840 340h380M1030 150v380M896 206l268 268M1164 206 896 474" stroke="#a7f3d0" stroke-opacity=".2" stroke-width="2"/>
+  <rect x="78" y="78" width="72" height="72" rx="22" fill="#ecfdf5"/>
+  <path d="M101 104h26M101 116h26M101 128h18" stroke="#047857" stroke-width="5" stroke-linecap="round"/>
+  <text x="174" y="128" fill="#d1fae5" font-family="Arial,sans-serif" font-size="34" font-weight="700">READATIVE</text>
+  <text x="78" y="320" fill="#ffffff" font-family="Arial,sans-serif" font-size="76" font-weight="800">TECH NEWS</text>
+  <text x="82" y="382" fill="#a7f3d0" font-family="Arial,sans-serif" font-size="30">Technology, AI &amp; innovation</text>
+  <rect x="80" y="472" width="230" height="6" rx="3" fill="#6ee7b7"/>
+  <text x="80" y="536" fill="#d1fae5" font-family="Arial,sans-serif" font-size="24">Clear updates. Useful context.</text>
+</svg>

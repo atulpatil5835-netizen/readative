@@ -395,6 +395,9 @@ export const KnowledgeCardList = memo(function KnowledgeCardList({
                 onLikeChange={onLikeChange}
                 onEntryUpdated={onEntryUpdated}
                 focused={entry.id === focusedEntryId}
+                presentation={entry.contentKind === "news"
+                  ? entry.id === focusedEntryId ? "news-article" : "news"
+                  : "default"}
               />
               {renderAfterCard?.(entry)}
             </Suspense>

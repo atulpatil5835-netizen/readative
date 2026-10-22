@@ -15,6 +15,10 @@ import {
   firebaseAuthDomain,
 } from "../firebase/firebaseConfig";
 import {
+  firebaseClientDataDisabledMessage,
+  firebaseClientDataEnabled,
+} from "../firebase/costControls";
+import {
   clearKnowledgeIdentity,
   saveKnowledgeIdentity,
   type KnowledgeIdentity,
@@ -200,6 +204,10 @@ export async function resolveUserIdentity(
   fallbackDisplayName?: string,
   providerName?: string,
 ): Promise<KnowledgeIdentity> {
+  if (!firebaseClientDataEnabled) {
+    throw new Error(firebaseClientDataDisabledMessage);
+  }
+
   const { ensureUserProfile } = await import("./userProfiles");
   const profile = await ensureUserProfile(user, fallbackDisplayName, providerName);
   return saveKnowledgeIdentity(profile.username, profile.id, profile.email);
@@ -385,6 +393,13 @@ export function subscribeToAuthIdentity(
   onChange: (identity: KnowledgeIdentity | null) => void,
   onError?: (message: string) => void,
 ) {
+  if (!firebaseClientDataEnabled) {
+    clearKnowledgeIdentity();
+    onChange(null);
+    onError?.(firebaseClientDataDisabledMessage);
+    return () => undefined;
+  }
+
   if (!firebaseConfigReady) {
     clearKnowledgeIdentity();
     onChange(null);

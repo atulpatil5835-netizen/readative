@@ -230,6 +230,34 @@ export function NotFoundRoute({
   );
 }
 
+export function NoChargeModeRoute() {
+  return (
+    <>
+      <SEO
+        title="Community features paused | Readative"
+        description="Readative community features are temporarily paused. Public information pages remain available."
+        robots="noindex"
+      />
+      <section className="readative-panel-surface border-slate-200 px-6 py-14 text-center sm:px-10">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+          <Logo className="h-10 w-10" />
+        </div>
+        <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-emerald-700">
+          Readative
+        </p>
+        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+          Community features are temporarily paused
+        </h1>
+        <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
+          The live feed, Tech News, and community actions are paused while Readative
+          stays within its current cloud budget. Public information pages are still
+          available from the footer.
+        </p>
+      </section>
+    </>
+  );
+}
+
 export function FirebaseSetupRoute({ missingKeys }: { missingKeys: string[] }) {
   return (
     <div className="readative-panel-surface border-amber-200 px-6 py-14 text-center">

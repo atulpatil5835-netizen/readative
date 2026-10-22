@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Newspaper } from "lucide-react";
 import {
   KnowledgeComment,
   KnowledgeEntry,
@@ -93,6 +94,7 @@ interface KnowledgeCardProps {
   ) => void;
   onEntryUpdated?: (entry: KnowledgeEntry) => void;
   focused?: boolean;
+  presentation?: "default" | "news" | "news-article";
 }
 
 
@@ -110,6 +112,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   onLikeChange,
   onEntryUpdated,
   focused = false,
+  presentation = "default",
 }: KnowledgeCardProps) {
   const {
     activePostId,
@@ -884,7 +887,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           "ring-2 ring-emerald-400 ring-offset-0 ring-offset-[#f7f8fb] min-[1280px]:ring-offset-4",
       )}
     >
-      <CardHeader
+      {presentation === "default" && <CardHeader
         resolvedAuthorId={resolvedAuthorId}
         authorProfile={authorProfile}
         authorDisplayName={authorDisplayName}
@@ -901,16 +904,33 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         onShare={handleShare}
         setShowEditModal={setShowEditModal}
         onDeleteEntry={handleDeleteEntry}
-      />
+      />}
 
-      <CardMedia
-        entryImages={entryImages}
-        imageLayout={imageLayout}
-        title={entry.title}
-      />
+      {(presentation === "news" || presentation === "news-article") && entryImages.length > 0 ? (
+        <img
+          src={entryImages[0].dataUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className={presentation === "news-article" ? "max-h-[min(68vh,760px)] min-h-56 w-full bg-slate-100 object-contain sm:min-h-80" : "h-36 w-full object-cover sm:h-44"}
+        />
+      ) : presentation === "news" || presentation === "news-article" ? null : (
+        <CardMedia
+          entryImages={entryImages}
+          imageLayout={imageLayout}
+          title={entry.title}
+        />
+      )}
+      {(presentation === "news" || presentation === "news-article") && entryImages.length === 0 && (
+        <div className="flex aspect-[16/8] items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900 text-emerald-200">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+            <Newspaper className="h-8 w-8" aria-hidden="true" />
+          </span>
+        </div>
+      )}
 
       <div className="p-3 pt-3 sm:p-4 min-[1280px]:p-5">
-        <CardTrust
+        {presentation === "default" && <CardTrust
           trustToneClass={trustToneClass}
           trustMetrics={trustMetrics}
           trustLabel={trustLabel}
@@ -919,9 +939,19 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           entryVisibility={entryVisibility}
           isNotebookMode={isNotebookMode}
           onToggleNotebookMode={handleToggleNotebookMode}
-        />
+        />}
 
-        <CardContent
+        {presentation === "news" ? (
+          <div className="px-1 py-1">
+            <button
+              type="button"
+              onClick={handleOpenEntryDetails}
+              className="text-left text-xl font-black leading-tight tracking-tight text-slate-950 transition-colors hover:text-emerald-800 sm:text-2xl"
+            >
+              {entry.title}
+            </button>
+          </div>
+        ) : <CardContent
           entry={entry}
           contentSections={contentSections}
           mentions={mentions}
@@ -938,9 +968,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
           isNotebookMode={isNotebookMode}
           onPostFirstHighlight={markPostHasHighlights}
           onExitNotebookMode={deactivateNotebook}
-        />
+          hideHashtags={presentation === "news-article"}
+        />}
 
-        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100/90 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        {presentation !== "news" && <div className="mt-5 flex flex-col gap-3 border-t border-slate-100/90 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <CardActions
             isHelpful={isHelpful}
             isMisleading={isMisleading}
@@ -960,7 +991,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
               Link ready
             </span>
           )}
-        </div>
+        </div>}
 
         {interactionMessage && (
           <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">

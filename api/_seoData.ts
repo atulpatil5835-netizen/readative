@@ -53,6 +53,8 @@ export interface SeoPost {
   authorName: string;
   category: string | null;
   hashtags: string[];
+  imageUrl: string | null;
+  isTechNews: boolean;
   createdAt: number;
   updatedAt: number | null;
 }
@@ -148,7 +150,7 @@ const STATIC_PAGES = [
   { path: "/", priority: "1.0", changefreq: "daily" as const, lastmod: null },
   { path: DISCOVERY_INDEX_PATH, priority: "0.95", changefreq: "daily" as const, lastmod: null },
   { path: "/smarttalks", priority: "0.9", changefreq: "weekly" as const, lastmod: null },
-  { path: "/explore", priority: "0.6", changefreq: "weekly" as const, lastmod: null },
+  { path: "/tech-news", priority: "0.8", changefreq: "daily" as const, lastmod: null },
   { path: "/about", priority: "0.6", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 27) },
   { path: "/contact", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 6, 4) },
   { path: "/privacy", priority: "0.5", changefreq: "monthly" as const, lastmod: Date.UTC(2026, 8, 6) },
@@ -170,6 +172,10 @@ const STATIC_PAGES = [
 function readEnv(name: string) {
   const value = process.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function isServerFirestoreDataEnabled() {
+  return readEnv("READATIVE_FIRESTORE_DATA_ENABLED").toLowerCase() === "true";
 }
 
 function getProjectId() {
@@ -357,7 +363,8 @@ function isPublicRecord(data: Record<string, unknown>) {
 }
 
 function normalizePost(id: string, data: Record<string, unknown>): SeoPost | null {
-  if (!id || !isPublishedPost(data)) return null;
+  const isTechNews = normalizeString(data.authorEmail).trim().toLowerCase() === "atulpatil5835@gmail.com" && normalizeString(data.contentKind) === "news";
+  if (!id || !isPublishedPost(data) || (isTechNews && data.visibility !== "public")) return null;
 
   const createdAt =
     normalizeTimestamp(data.createdAt) ||
@@ -376,8 +383,10 @@ function normalizePost(id: string, data: Record<string, unknown>): SeoPost | nul
     content: normalizeString(data.content),
     authorId: normalizeString(data.authorId),
     authorName,
-    category: normalizeSeoSlug(normalizeString(data.category)),
+    category: normalizeSeoSlug(normalizeString(data.category)) || (isTechNews ? "technology" : null),
     hashtags: normalizeContentGraphTags(normalizeStringArray(data.hashtags)),
+    imageUrl: isTechNews ? `/api/posts?action=tech-news-image&id=${encodeURIComponent(id)}` : null,
+    isTechNews,
     createdAt,
     updatedAt,
   };
@@ -573,6 +582,8 @@ function buildTags(posts: SeoPost[]) {
 }
 
 async function loadFromAdmin(): Promise<SeoData | null> {
+  if (!isServerFirestoreDataEnabled()) return null;
+
   const database = getAdminDatabase();
   if (!database) return null;
 
@@ -607,6 +618,12 @@ async function loadFromAdmin(): Promise<SeoData | null> {
 }
 
 async function loadFromRest(): Promise<SeoData> {
+  if (!isServerFirestoreDataEnabled()) {
+    throw new Error(
+      "Firestore SEO reads are disabled by READATIVE_FIRESTORE_DATA_ENABLED.",
+    );
+  }
+
   const [knowledgeDocuments, profileDocuments, smartTalkDocuments] = await Promise.all([
     fetchRestCollection("knowledge"),
     fetchRestCollection("userProfiles").catch(() => []),
