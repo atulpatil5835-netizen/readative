@@ -264,3 +264,111 @@ export function buildFAQPageSchema({ url, questions }: FAQPageInput) {
     })),
   };
 }
+
+// ─── Additional schemas ──────────────────────────────────────────────────────
+
+interface PersonSchemaInput {
+  name: string;
+  url: string;
+  description?: string;
+  image?: string;
+  sameAs?: string[];
+  knowsAbout?: string[];
+  jobTitle?: string;
+}
+
+/** Rich Person schema for user profiles – boosts profile page indexing & knowledge panel eligibility */
+export function buildPersonSchema({
+  name,
+  url,
+  description,
+  image,
+  sameAs = [],
+  knowsAbout = [],
+  jobTitle,
+}: PersonSchemaInput) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name,
+    url: getReadativeUrl(url),
+    description,
+    image: image ? getReadativeUrl(image) : undefined,
+    sameAs,
+    knowsAbout,
+    jobTitle,
+    memberOf: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+  };
+}
+
+interface QAPageInput {
+  url: string;
+  headline: string;
+  text: string;
+  authorName: string;
+  authorUrl?: string;
+  datePublished: string;
+  dateModified?: string;
+  answerCount: number;
+  answers?: Array<{
+    text: string;
+    authorName: string;
+    authorUrl?: string;
+    upvoteCount?: number;
+    dateCreated?: string;
+    isAccepted?: boolean;
+  }>;
+}
+
+/** QAPage schema for SmartTalk individual question pages – aligns with Google's Q&A rich result spec */
+export function buildQAPageSchema({
+  url,
+  headline,
+  text,
+  authorName,
+  authorUrl,
+  datePublished,
+  dateModified,
+  answerCount,
+  answers = [],
+}: QAPageInput) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "QAPage",
+    url: getReadativeUrl(url),
+    mainEntity: {
+      "@type": "Question",
+      name: headline,
+      text,
+      answerCount,
+      dateCreated: datePublished,
+      dateModified: dateModified ?? datePublished,
+      author: {
+        "@type": "Person",
+        name: authorName,
+        url: authorUrl ? getReadativeUrl(authorUrl) : undefined,
+      },
+      suggestedAnswer: answers.map((answer) => ({
+        "@type": "Answer",
+        text: answer.text,
+        upvoteCount: answer.upvoteCount ?? 0,
+        dateCreated: answer.dateCreated ?? datePublished,
+        author: {
+          "@type": "Person",
+          name: answer.authorName,
+          url: answer.authorUrl ? getReadativeUrl(answer.authorUrl) : undefined,
+        },
+        ...(answer.isAccepted ? { "@type": "Answer", "acceptedAnswer": true } : {}),
+      })),
+    },
+    isPartOf: {
+      "@type": "WebSite",
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+  };
+}

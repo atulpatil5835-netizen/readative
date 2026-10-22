@@ -1,21 +1,51 @@
 {
-  "name": "Readative",
+  "name": "Readative – Practical Knowledge & SmartTalk",
   "short_name": "Readative",
-  "description": "A knowledge feed for practical posts, visual explainers, study notes, AI tools, SmartTalk Q&A, and creator profiles.",
+  "description": "Discover practical knowledge posts, SmartTalk Q&A like Quora, tech news, and creator profiles on Readative.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#f5f5f0",
   "theme_color": "#0f766e",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": ["education", "news", "social"],
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/logo.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "SmartTalk Q&A",
+      "short_name": "SmartTalk",
+      "description": "Ask and answer learning questions",
+      "url": "/smarttalks",
+      "icons": [{ "src": "/favicon-64.png", "sizes": "64x64" }]
+    },
+    {
+      "name": "Tech News",
+      "short_name": "Tech News",
+      "description": "Latest technology news and AI updates",
+      "url": "/explore",
+      "icons": [{ "src": "/favicon-64.png", "sizes": "64x64" }]
+    },
+    {
+      "name": "All Posts",
+      "short_name": "Posts",
+      "description": "Browse all knowledge posts",
+      "url": "/posts",
+      "icons": [{ "src": "/favicon-64.png", "sizes": "64x64" }]
     }
   ]
 }

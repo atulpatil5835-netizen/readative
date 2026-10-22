@@ -1139,12 +1139,21 @@ export function Explore({
         title={pageTitle}
         description={pageDescription}
         url={pageUrl}
+        section={
+          activeTopic
+            ? activeTopic.label
+            : activeTopicCategory
+            ? activeTopicCategory.label
+            : "Explore"
+        }
         keywords={[
           "technology topics",
+          "knowledge categories",
           "SmartTalk",
           "helpful posts",
-          "contributors",
-          ...(activeTopic ? [activeTopic.label] : []),
+          "knowledge contributors",
+          ...(activeTopic ? [activeTopic.label, ...activeTopic.keywords.slice(0, 3)] : []),
+          ...(activeTopicCategory ? [activeTopicCategory.label] : []),
         ]}
         robots={shouldNoIndexExplorePage ? "noindex" : "index"}
         schema={buildExploreSchemas({

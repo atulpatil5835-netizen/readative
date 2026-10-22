@@ -197,7 +197,58 @@ export function TechNews({ currentIdentity, onIdentityRequired, onOpenProfile, s
 
   return (
     <>
-      <SEO title={focusedNewsEntry ? `${focusedNewsEntry.title} | Readative Tech News` : selectedTag ? `#${selectedTag} Tech News | Readative` : "Technology News, AI & Innovation | Readative"} description={focusedNewsEntry ? focusedNewsEntry.content.slice(0, 160) : selectedTag ? `Read Readative technology news tagged #${selectedTag}.` : "Read concise technology news, AI developments, product updates, and practical context from Readative's editorial desk."} keywords={["technology news", "tech news", "AI news", "technology updates", "Readative Tech News", ...(selectedTag ? [selectedTag] : [])]} url={focusedNewsEntry ? `/tech-news/article/${encodeURIComponent(focusedNewsEntry.id)}` : selectedTag ? `/tech-news/tag/${encodeURIComponent(selectedTag)}` : "/tech-news"} />
+      <SEO
+        title={
+          focusedNewsEntry
+            ? `${focusedNewsEntry.title} | Readative Tech News`
+            : selectedTag
+            ? `#${selectedTag} Tech News | Readative`
+            : "Technology News, AI & Innovation | Readative"
+        }
+        description={
+          focusedNewsEntry
+            ? focusedNewsEntry.content.slice(0, 155)
+            : selectedTag
+            ? `Read Readative technology news tagged #${selectedTag}. AI, product updates, and innovation coverage.`
+            : "Read concise technology news, AI developments, product updates, and practical context from Readative's editorial desk."
+        }
+        type={focusedNewsEntry ? "article" : "website"}
+        section="Technology"
+        authorName={focusedNewsEntry ? "Readative Editorial" : undefined}
+        publishedTime={
+          focusedNewsEntry
+            ? new Date(focusedNewsEntry.createdAt).toISOString()
+            : undefined
+        }
+        modifiedTime={
+          focusedNewsEntry && focusedNewsEntry.updatedAt
+            ? new Date(focusedNewsEntry.updatedAt).toISOString()
+            : undefined
+        }
+        image={
+          focusedNewsEntry
+            ? `/api/posts?action=tech-news-image&id=${encodeURIComponent(focusedNewsEntry.id)}`
+            : undefined
+        }
+        keywords={[
+          "technology news",
+          "tech news",
+          "AI news",
+          "artificial intelligence",
+          "technology updates",
+          "innovation",
+          "Readative Tech News",
+          ...(selectedTag ? [selectedTag] : []),
+          ...(focusedNewsEntry?.hashtags ?? []),
+        ]}
+        url={
+          focusedNewsEntry
+            ? `/tech-news/article/${encodeURIComponent(focusedNewsEntry.id)}`
+            : selectedTag
+            ? `/tech-news/tag/${encodeURIComponent(selectedTag)}`
+            : "/tech-news"
+        }
+      />
       <main className={focusedEntryId ? "mx-auto w-full max-w-none px-0 pb-24 pt-0 md:pb-16" : "mx-auto max-w-5xl px-4 pb-16 pt-0 md:px-6"}>
         {focusedEntryId ? (
           focusedNewsEntry ? (

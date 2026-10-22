@@ -1970,11 +1970,27 @@ export function Profile({
     <div className="space-y-6 pb-20">
       <SEO
         title={profile ? `${profileDisplayName} | Readative` : "Profile | Readative"}
-        description="Explore user profiles, shared knowledge, and helpful posts on Readative."
+        description={
+          profile
+            ? profile.bio
+              ? profile.bio.slice(0, 155)
+              : `${profileDisplayName}'s knowledge posts, SmartTalk answers, and activity on Readative.`
+            : "Explore user profiles, shared knowledge, and helpful posts on Readative."
+        }
         type="profile"
         url={profileUrl}
         schema={profileSchema}
         robots={shouldNoIndexProfilePage ? "noindex" : "index"}
+        authorName={profile ? profileDisplayName : undefined}
+        section="Profile"
+        keywords={[
+          "user profile",
+          "knowledge creator",
+          "community member",
+          ...(profileCategories.length > 0 ? profileCategories.slice(0, 3) : []),
+          ...(profile?.username ? [`@${profile.username}`] : []),
+        ]}
+        image={profile?.profileImage?.dataUrl && !profile.profileImage.dataUrl.startsWith("data:") ? profile.profileImage.dataUrl : undefined}
       />
 
       {profileLoadError && (

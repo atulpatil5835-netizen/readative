@@ -71,6 +71,7 @@ import {
   buildFAQPageSchema,
   buildItemListSchema,
   buildOrganizationSchema,
+  buildQAPageSchema,
   buildWebSiteSchema,
 } from "../utils/seoSchemas";
 import {
@@ -337,6 +338,7 @@ function buildSmartTalkSchemas(
     const primaryAnswer =
       focusedQuestion.answers.find((answer) => answer.bestAnswer) ||
       focusedQuestion.answers[0];
+    const questionIso = new Date(focusedQuestion.createdAt).toISOString();
 
     return [
       buildOrganizationSchema(),
@@ -346,13 +348,31 @@ function buildSmartTalkSchemas(
         { name: "SmartTalk", url: "/smarttalks" },
         { name: summarizeSmartTalkText(focusedQuestion.content, 90), url: pageUrl },
       ]),
+      // QAPage schema gives Google's Q&A rich result eligibility
+      buildQAPageSchema({
+        url: pageUrl,
+        headline: summarizeSmartTalkText(focusedQuestion.content, 90),
+        text: focusedQuestion.content,
+        authorName: focusedQuestion.author,
+        authorUrl: buildSmartTalkAuthorProfilePath(focusedQuestion.authorId),
+        datePublished: questionIso,
+        answerCount: focusedQuestion.answers.length,
+        answers: focusedQuestion.answers.map((answer) => ({
+          text: answer.content,
+          authorName: answer.author,
+          authorUrl: buildSmartTalkAuthorProfilePath(answer.authorId),
+          upvoteCount: answer.helpfulCount ?? 0,
+          dateCreated: new Date(answer.createdAt).toISOString(),
+          isAccepted: answer.bestAnswer === true,
+        })),
+      }),
       buildDiscussionForumPostingSchema({
         headline: summarizeSmartTalkText(focusedQuestion.content, 90),
         text: focusedQuestion.content,
         url: pageUrl,
         authorName: focusedQuestion.author,
         authorUrl: buildSmartTalkAuthorProfilePath(focusedQuestion.authorId),
-        datePublished: new Date(focusedQuestion.createdAt).toISOString(),
+        datePublished: questionIso,
         answerCount: focusedQuestion.answers.length,
         keywords: [
           getSmartTalkCategoryLabel(focusedQuestion.category) || "SmartTalk",
@@ -1499,12 +1519,23 @@ export function SmartTalk({
             : "index"
         }
         schema={buildSmartTalkSchemas(questions, focusedQuestion, selectedCategory)}
+        section={selectedCategory ? (getSmartTalkCategoryLabel(selectedCategory) || "SmartTalk") : "SmartTalk"}
+        authorName={focusedQuestion ? focusedQuestion.author : undefined}
+        publishedTime={focusedQuestion ? new Date(focusedQuestion.createdAt).toISOString() : undefined}
+        modifiedTime={
+          focusedQuestion && focusedQuestion.answers.length > 0
+            ? new Date(
+                Math.max(...focusedQuestion.answers.map((a) => a.createdAt))
+              ).toISOString()
+            : undefined
+        }
         keywords={[
           "Q&A",
           "learning questions",
-          "answers",
-          "community",
-          "knowledge",
+          "community answers",
+          "knowledge sharing",
+          "SmartTalk",
+          ...(selectedCategory ? [getSmartTalkCategoryLabel(selectedCategory) || selectedCategory] : []),
         ]}
       />
 

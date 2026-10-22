@@ -929,6 +929,22 @@ export function FeedRenderer({
               : []),
           ]}
           type={focusedEntry ? "article" : "website"}
+          section={
+            focusedEntry?.category ||
+            activeCategory?.label ||
+            (activeFeedTopic?.label ?? undefined)
+          }
+          authorName={focusedEntry?.author ?? undefined}
+          publishedTime={
+            focusedEntry
+              ? new Date(focusedEntry.createdAt).toISOString()
+              : undefined
+          }
+          modifiedTime={
+            focusedEntry?.updatedAt
+              ? new Date(focusedEntry.updatedAt).toISOString()
+              : undefined
+          }
           url={pageUrl}
           schema={buildKnowledgeSchemas({
             entry: focusedEntry,
