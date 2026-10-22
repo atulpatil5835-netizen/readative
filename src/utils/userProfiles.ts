@@ -43,6 +43,14 @@ const SOCIAL_HOSTS: Partial<Record<keyof UserSocialLinks, string[]>> = {
   twitter: ["x.com", "twitter.com"],
   youtube: ["youtube.com", "youtu.be"],
 };
+const SOCIAL_LINK_PLATFORMS: Array<keyof UserSocialLinks> = [
+  "linkedin",
+  "instagram",
+  "github",
+  "twitter",
+  "website",
+  "youtube",
+];
 
 export interface UserProfileDetailsInput {
   displayName: string;
@@ -94,10 +102,6 @@ function buildAuthUsernameCandidate(user: User, fallbackDisplayName?: string) {
   return validateUsernameInput(
     withUsernameSuffix(base, uidSuffix.slice(0, 6) || user.uid.slice(0, 6)),
   );
-}
-
-function buildGoogleUsernameCandidate(user: User) {
-  return buildAuthUsernameCandidate(user);
 }
 
 async function commitUpdates(
@@ -202,26 +206,16 @@ function normalizeSocialLink(
 function normalizeSocialLinksInput(
   rawSocialLinks: Partial<UserSocialLinks>,
 ): UserSocialLinks {
-  return {
-    ...(normalizeSocialLink("linkedin", rawSocialLinks.linkedin)
-      ? { linkedin: normalizeSocialLink("linkedin", rawSocialLinks.linkedin) }
-      : {}),
-    ...(normalizeSocialLink("instagram", rawSocialLinks.instagram)
-      ? { instagram: normalizeSocialLink("instagram", rawSocialLinks.instagram) }
-      : {}),
-    ...(normalizeSocialLink("github", rawSocialLinks.github)
-      ? { github: normalizeSocialLink("github", rawSocialLinks.github) }
-      : {}),
-    ...(normalizeSocialLink("twitter", rawSocialLinks.twitter)
-      ? { twitter: normalizeSocialLink("twitter", rawSocialLinks.twitter) }
-      : {}),
-    ...(normalizeSocialLink("website", rawSocialLinks.website)
-      ? { website: normalizeSocialLink("website", rawSocialLinks.website) }
-      : {}),
-    ...(normalizeSocialLink("youtube", rawSocialLinks.youtube)
-      ? { youtube: normalizeSocialLink("youtube", rawSocialLinks.youtube) }
-      : {}),
-  };
+  const normalizedLinks: UserSocialLinks = {};
+
+  for (const platform of SOCIAL_LINK_PLATFORMS) {
+    const normalizedLink = normalizeSocialLink(platform, rawSocialLinks[platform]);
+    if (normalizedLink) {
+      normalizedLinks[platform] = normalizedLink;
+    }
+  }
+
+  return normalizedLinks;
 }
 
 async function commitUsernameMappingTransaction({

@@ -134,23 +134,24 @@ export function getContributorReputationFromEntries(
 ): ContributorReputation {
   const authorEntries = entries.filter((entry) => entry.authorId === authorId);
   const postCount = authorEntries.length;
-  const helpfulCount = authorEntries.reduce(
-    (total, entry) => total + getTrustMetrics(entry).helpfulCount,
-    normalizeTrustCount(profile?.helpfulCount),
+  const totals = authorEntries.reduce(
+    (result, entry) => {
+      const trustMetrics = getTrustMetrics(entry);
+      result.helpfulCount += trustMetrics.helpfulCount;
+      result.misleadingCount += trustMetrics.misleadingCount;
+      result.commentCount += (entry.comments || []).length;
+      result.qualityScore +=
+        typeof entry.qualityScore === "number" ? entry.qualityScore : 0;
+      return result;
+    },
+    {
+      helpfulCount: normalizeTrustCount(profile?.helpfulCount),
+      misleadingCount: normalizeTrustCount(profile?.misleadingCount),
+      commentCount: 0,
+      qualityScore: 0,
+    },
   );
-  const misleadingCount = authorEntries.reduce(
-    (total, entry) => total + getTrustMetrics(entry).misleadingCount,
-    normalizeTrustCount(profile?.misleadingCount),
-  );
-  const commentCount = authorEntries.reduce(
-    (total, entry) => total + (entry.comments || []).length,
-    0,
-  );
-  const qualityScore = authorEntries.reduce(
-    (total, entry) =>
-      total + (typeof entry.qualityScore === "number" ? entry.qualityScore : 0),
-    0,
-  );
+  const { helpfulCount, misleadingCount, commentCount, qualityScore } = totals;
   const score = Math.max(
     0,
     Math.round(

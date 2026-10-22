@@ -39,7 +39,7 @@ import { GoogleSignInPrompt } from "../Auth";
 import { type KnowledgeIdentity } from "../../utils/knowledgeIdentity";
 import { trackPostCreated } from "../../utils/analytics";
 import { hydrateUserProfile } from "../../utils/profileData";
-import { signInWithGoogleAccount } from "../../utils/googleAuth";
+import { signInWithGoogleAccount } from "../../utils/auth";
 import {
   buildAbsoluteRouteUrl,
   buildPublicPath,

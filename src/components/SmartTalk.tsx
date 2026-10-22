@@ -47,7 +47,7 @@ import { trackSearch, trackSmartTalkAsked, trackSmartTalkAnswered } from "../uti
 
 import { moderateContent } from "../utils/contentModeration";
 import { renderRichText } from "../utils/renderRichText";
-import { signInWithGoogleAccount } from "../utils/googleAuth";
+import { signInWithGoogleAccount } from "../utils/auth";
 import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { SkeletonBlock, SmartTalkQuestionSkeleton } from "./Skeletons";
 import {

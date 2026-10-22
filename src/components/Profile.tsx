@@ -74,7 +74,7 @@ import { type KnowledgeIdentity } from "../utils/knowledgeIdentity";
 import { buildAbsoluteRouteUrl, buildPublicPath, navigateToRoute } from "../utils/routes";
 import { hydrateUserProfile } from "../utils/profileData";
 import { getProfilePathForIdentity, normalizeUsernameInput } from "../utils/usernames";
-import { signInWithGoogleAccount } from "../utils/googleAuth";
+import { signInWithGoogleAccount } from "../utils/auth";
 import {
   canViewKnowledgeEntry,
   normalizeKnowledgeVisibility,
@@ -89,7 +89,7 @@ import {
   normalizeTrustIdArray,
 } from "../utils/trustSystem";
 import { getSaveMetrics } from "../utils/bookmarks";
-import { useInk } from "../context/InkContext";
+import { useNotebook as useInk } from "../context/NotebookContext";
 import {
   buildBreadcrumbSchema,
   buildItemListSchema,

@@ -150,13 +150,12 @@
     { "source": "/tags/:path*", "destination": "/tag/:path*", "permanent": true },
     { "source": "/knowledge/:id", "destination": "/post/:id", "permanent": true },
     { "source": "/knowledge", "destination": "/", "permanent": true },
-    { "source": "/jobs", "destination": "/tech-news", "permanent": true },
-    { "source": "/explore", "destination": "/tech-news", "permanent": true },
-    { "source": "/explore/:path*", "destination": "/tech-news", "permanent": true }
+    { "source": "/jobs", "destination": "/explore", "permanent": true }
   ],
   "rewrites": [
     { "source": "/", "destination": "/api/home" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/explore", "destination": "/api/taxonomy?view=explore" },
     { "source": "/news-sitemap.xml", "destination": "/api/sitemap.xml?type=news" },
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/posts/:id", "destination": "/api/post?id=:id" },
@@ -205,6 +204,7 @@
     { "source": "/topic", "destination": "/index.html" },
     { "source": "/topic/:path*", "destination": "/index.html" },
     { "source": "/tag", "destination": "/index.html" },
-    { "source": "/tag/:path*", "destination": "/index.html" }
+    { "source": "/tag/:path*", "destination": "/index.html" },
+    { "source": "/explore/:path*", "destination": "/index.html" }
   ]
 }

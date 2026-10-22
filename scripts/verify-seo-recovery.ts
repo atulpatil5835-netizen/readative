@@ -91,13 +91,19 @@ async function main() {
   const robotsAllowsAll = /User-agent:\s*\*/i.test(robots) && /Allow:\s*\//i.test(robots);
   const robotsBlocksCanonicalDocuments = /Disallow:\s*\/(?:posts|smarttalk)\b/i.test(robots);
   const robotsCanonicalSitemap = `${SITE_URL}/sitemap.xml`;
+  const robotsNewsSitemap = `${SITE_URL}/news-sitemap.xml`;
   const robotsSitemapDirectives = robots
     .split(/\r?\n/)
     .map((line) => line.match(/^\s*Sitemap:\s*(\S+)\s*$/i)?.[1]?.trim())
     .filter((url): url is string => Boolean(url));
-  const robotsAdvertisesOnlyCanonicalSitemap =
-    robotsSitemapDirectives.length === 1 &&
-    robotsSitemapDirectives[0] === robotsCanonicalSitemap;
+  const expectedSitemapDirectives = new Set([
+    robotsCanonicalSitemap,
+    robotsNewsSitemap,
+  ]);
+  const robotsAdvertisesExpectedSitemaps =
+    robotsSitemapDirectives.length === expectedSitemapDirectives.size &&
+    new Set(robotsSitemapDirectives).size === expectedSitemapDirectives.size &&
+    robotsSitemapDirectives.every((url) => expectedSitemapDirectives.has(url));
   const indexShell = readFile("index.html");
   const rootCanonicalPattern = new RegExp(
     `<link\\b(?=[^>]*\\brel=["']canonical["'])(?=[^>]*\\bhref=["']${SITE_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/["'])[^>]*>`,
@@ -140,6 +146,11 @@ async function main() {
       rewrite.source === "/sitemap.xml" &&
       rewrite.destination === "/api/sitemap.xml",
   );
+  const hasNewsSitemapRewrite = rewrites.some(
+    (rewrite) =>
+      rewrite.source === "/news-sitemap.xml" &&
+      rewrite.destination === "/api/sitemap.xml?type=news",
+  );
   const hasDiscoveryRewrite = rewrites.some(
     (rewrite) =>
       rewrite.source === "/posts" && rewrite.destination === "/api/discovery",
@@ -171,6 +182,9 @@ async function main() {
     (rewrite) =>
       rewrite.source === "/explore" &&
       rewrite.destination === "/api/taxonomy?view=explore",
+  );
+  const hasExploreRedirectConflict = redirects.some(
+    (redirect) => redirect.source === "/explore",
   );
   const hasCategoryRewrite = rewrites.some(
     (rewrite) =>
@@ -292,6 +306,7 @@ async function main() {
     hasKnowledgeHomeRedirect ? null : "missing /knowledge legacy redirect",
     hasJobsRedirect ? null : "missing /jobs legacy redirect",
     hasSitemapRewrite ? null : "missing /sitemap.xml rewrite",
+    hasNewsSitemapRewrite ? null : "missing /news-sitemap.xml rewrite",
     hasDiscoveryRewrite ? null : "missing /posts discovery rewrite",
     hasPostCanonicalRewrite ? null : "missing canonical post rewrite",
     hasPostLegacyRewrite ? null : "missing legacy post rewrite",
@@ -314,9 +329,12 @@ async function main() {
     staticRootHasIndexRobots ? null : "static root shell is missing index/follow robots meta",
     staticRootHasDiscoveryLinks ? null : "static root shell is missing crawlable discovery links",
     robotsAllowsAll && !robotsBlocksCanonicalDocuments ? null : "robots.txt blocks canonical documents",
-    robotsAdvertisesOnlyCanonicalSitemap
+    robotsAdvertisesExpectedSitemaps
       ? null
-      : `robots.txt must advertise only ${robotsCanonicalSitemap}`,
+      : `robots.txt must advertise exactly ${robotsCanonicalSitemap} and ${robotsNewsSitemap}`,
+    hasExploreRewrite && !hasExploreRedirectConflict
+      ? null
+      : "Explore must rewrite to its taxonomy page without a redirect override",
   ].filter((failure): failure is string => Boolean(failure));
   const report = `# Release H7 Username SEO Report
 
@@ -421,7 +439,7 @@ ${markdownList(changedFiles)}
 - Static homepage robots: ${staticRootHasIndexRobots ? "PASS" : "FAIL"} - the Vite shell served at / is index/follow.
 - Static homepage discovery links: ${staticRootHasDiscoveryLinks ? "PASS" : "FAIL"} - the no-JavaScript fallback links Posts, SmartTalk, and Explore.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
-- robots.txt canonical sitemap directive: ${robotsAdvertisesOnlyCanonicalSitemap ? "PASS" : "FAIL"}
+- robots.txt sitemap directives: ${robotsAdvertisesExpectedSitemaps ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.
 - 404 noindex: PASS - not-found route emits robots=noindex.
 
@@ -492,7 +510,8 @@ ${blockingFailures.length === 0 ? "- None." : markdownList(blockingFailures)}
         blockingFailures,
         robotsAllowsAll: robotsAllowsAll && !robotsBlocksCanonicalDocuments,
         robotsSitemapDirectives,
-        robotsAdvertisesOnlyCanonicalSitemap,
+        hasNewsSitemapRewrite,
+        robotsAdvertisesExpectedSitemaps,
         staticRootHasCanonical,
         staticRootHasIndexRobots,
         staticRootHasDiscoveryLinks,
