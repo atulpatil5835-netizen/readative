@@ -116,8 +116,8 @@ function normalizeDisplayName(displayName?: string) {
 
 function validateSecurePassword(password?: string) {
   const cleanPassword = String(password || "");
-  if (cleanPassword.length < 8) {
-    throw new AuthOtpError("Password must be at least 8 characters.");
+  if (cleanPassword.length < 12) {
+    throw new AuthOtpError("Password must be at least 12 characters.");
   }
   if (!/[A-Za-z]/.test(cleanPassword) || !/[0-9]/.test(cleanPassword)) {
     throw new AuthOtpError("Password must include at least one letter and one number.");
@@ -418,35 +418,49 @@ export async function verifyEmailOtp(
   const db = getFirebaseAdminDb();
   const reference = db.collection(OTP_COLLECTION).doc(sha256(email));
 
-  await db.runTransaction(async (transaction) => {
+  const verificationFailure = await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(reference);
     const data = snapshot.exists
       ? (snapshot.data() as EmailOtpDocument)
       : undefined;
 
     if (!data?.codeHash || data.email !== email || data.purpose !== purpose) {
-      throw new AuthOtpError("This verification code is invalid or expired.");
+      return "invalid" as const;
     }
 
     if (typeof data.expiresAt !== "number" || data.expiresAt < now) {
       transaction.delete(reference);
-      throw new AuthOtpError("This verification code has expired. Request a new code.");
+      return "expired" as const;
     }
 
     const attempts = typeof data.attempts === "number" ? data.attempts : 0;
     if (attempts >= MAX_VERIFY_ATTEMPTS) {
       transaction.delete(reference);
-      throw new AuthOtpError("Too many incorrect attempts. Request a new code.", 429);
+      return "locked" as const;
     }
 
     const nextHash = hashOtp(email, code, secret);
     if (!safeHashEqual(nextHash, data.codeHash)) {
       transaction.update(reference, { attempts: attempts + 1 });
-      throw new AuthOtpError("That verification code is not correct.");
+      return "incorrect" as const;
     }
 
     transaction.delete(reference);
+    return null;
   });
+
+  if (verificationFailure === "invalid") {
+    throw new AuthOtpError("This verification code is invalid or expired.");
+  }
+  if (verificationFailure === "expired") {
+    throw new AuthOtpError("This verification code has expired. Request a new code.");
+  }
+  if (verificationFailure === "locked") {
+    throw new AuthOtpError("Too many incorrect attempts. Request a new code.", 429);
+  }
+  if (verificationFailure === "incorrect") {
+    throw new AuthOtpError("That verification code is not correct.");
+  }
 
   const { user, isNewUser } =
     purpose === "signup"

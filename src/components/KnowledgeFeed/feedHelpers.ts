@@ -684,7 +684,7 @@ export function keepEntryImagesForStorage(entry: KnowledgeEntry): KnowledgeEntry
     ...entry,
     images,
     imageLayout: images.length > 0 ? getKnowledgeEntryImageLayout(entry) : null,
-    imageDataUrl: primaryImage?.dataUrl || null,
+    imageDataUrl: null,
     imageMimeType: primaryImage?.mimeType || null,
     imageWidth: primaryImage?.width || null,
     imageHeight: primaryImage?.height || null,
@@ -1082,6 +1082,16 @@ export async function fetchSinglePostRelatedKnowledge(
 ): Promise<KnowledgeEntry[]> {
   const related: KnowledgeEntry[] = [];
   const categorySlug = entry.category?.trim().toLowerCase();
+  const addPublicCandidate = (candidate: KnowledgeEntry | null) => {
+    if (
+      candidate &&
+      candidate.id !== entry.id &&
+      !related.some((item) => item.id === candidate.id) &&
+      normalizeKnowledgeVisibility(candidate.visibility) === "public"
+    ) {
+      related.push(candidate);
+    }
+  };
 
   const entryTags = [...new Set((entry.hashtags || []).map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 8);
   if (entryTags.length > 0) {
@@ -1093,7 +1103,7 @@ export async function fetchSinglePostRelatedKnowledge(
         for (const item of snapshot.docs) {
           if (item.id === entry.id || related.some((candidate) => candidate.id === item.id)) continue;
           const candidate = normalizeKnowledgeEntry(item.id, item.data() as Partial<KnowledgeEntry> & { comments?: KnowledgeComment[]; createdAt?: number | { toMillis?: () => number } });
-          if (candidate && normalizeKnowledgeVisibility(candidate.visibility) === "public") related.push(candidate);
+          addPublicCandidate(candidate);
         }
       }
     } catch (error) {
@@ -1109,9 +1119,7 @@ export async function fetchSinglePostRelatedKnowledge(
         limit(6),
       );
       const snapshot = await getDocs(categoryQuery);
-      const docs = snapshot.docs
-        .filter((docItem) => docItem.id !== entry.id)
-        .map((docItem) =>
+      const docs = snapshot.docs.map((docItem) =>
           normalizeKnowledgeEntry(
             docItem.id,
             docItem.data() as Partial<KnowledgeEntry> & {
@@ -1120,7 +1128,7 @@ export async function fetchSinglePostRelatedKnowledge(
             },
           ),
         );
-      related.push(...docs);
+      docs.forEach(addPublicCandidate);
     } catch (err) {
       console.warn("Category related knowledge fetch failed:", err);
     }
@@ -1134,10 +1142,7 @@ export async function fetchSinglePostRelatedKnowledge(
         limit(5),
       );
       const fallbackSnapshot = await getDocs(fallbackQuery);
-      const existingIds = new Set([entry.id, ...related.map((e) => e.id)]);
-      const fallbackDocs = fallbackSnapshot.docs
-        .filter((docItem) => !existingIds.has(docItem.id))
-        .map((docItem) =>
+      const fallbackDocs = fallbackSnapshot.docs.map((docItem) =>
           normalizeKnowledgeEntry(
             docItem.id,
             docItem.data() as Partial<KnowledgeEntry> & {
@@ -1146,7 +1151,7 @@ export async function fetchSinglePostRelatedKnowledge(
             },
           ),
         );
-      related.push(...fallbackDocs);
+      fallbackDocs.forEach(addPublicCandidate);
     } catch (fallbackErr) {
       console.warn("Fallback related knowledge fetch failed:", fallbackErr);
     }

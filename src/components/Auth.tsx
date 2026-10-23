@@ -30,6 +30,7 @@ import {
 } from "../utils/auth";
 import { firebaseAuthDomain } from "../firebase/firebaseConfig";
 import type { KnowledgeIdentity } from "../utils/knowledgeIdentity";
+import { Logo } from "./Logo";
 
 export type AuthModalTab = "signin" | "signup";
 
@@ -90,7 +91,7 @@ export function GithubLogoSvg({ className = "h-4 w-4" }: { className?: string })
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
-const MIN_PASSWORD_LENGTH = 8;
+const MIN_PASSWORD_LENGTH = 12;
 
 function normalizeCodeInput(value: string) {
   return value.replace(/\D/g, "").slice(0, OTP_LENGTH);
@@ -408,7 +409,7 @@ export function AuthModal({
       return;
     }
     if (!isSignupPasswordReady) {
-      setErrorMessage("Use at least 8 characters with a letter and a number.");
+      setErrorMessage("Use at least 12 characters with a letter and a number.");
       return;
     }
 
@@ -473,7 +474,7 @@ export function AuthModal({
       return;
     }
     if (!isSignupPasswordReady) {
-      setErrorMessage("Use at least 8 characters with a letter and a number.");
+      setErrorMessage("Use at least 12 characters with a letter and a number.");
       return;
     }
     if (!signUpCodeSent) {
@@ -560,7 +561,7 @@ export function AuthModal({
       return;
     }
     if (!isResetPasswordReady) {
-      setErrorMessage("Use at least 8 characters with a letter and a number.");
+      setErrorMessage("Use at least 12 characters with a letter and a number.");
       return;
     }
     if (resetPassword !== resetPasswordConfirm) {
@@ -601,7 +602,7 @@ export function AuthModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${dialogId}-title`}
-        className="readative-dialog-surface relative flex max-h-[calc(100dvh-1rem)] w-full max-w-[540px] flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl transition-all sm:max-h-[calc(100dvh-2rem)]"
+        className="readative-dialog-surface relative flex max-h-[calc(100dvh-1rem)] w-full max-w-[560px] flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_32px_100px_-30px_rgba(2,44,34,0.65)] transition-all sm:max-h-[calc(100dvh-2rem)]"
       >
         <div className="shrink-0 border-b border-emerald-400/20 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900 px-6 py-5 text-white">
           <button
@@ -615,8 +616,8 @@ export function AuthModal({
           </button>
 
           <div className="flex items-center gap-3 pr-9">
-            <div className="inline-flex rounded-2xl bg-emerald-400/15 p-2.5 text-emerald-300 ring-1 ring-emerald-300/30">
-              <ShieldCheck className="h-6 w-6" />
+            <div className="inline-flex rounded-2xl bg-white p-2 shadow-lg shadow-black/20 ring-1 ring-white/40">
+              <Logo className="h-8 w-8" loading="eager" />
             </div>
             <div className="min-w-0">
               <h2 id={`${dialogId}-title`} className="text-xl font-black tracking-tight sm:text-2xl">
@@ -765,7 +766,7 @@ export function AuthModal({
                       required
                       value={resetPassword}
                       onChange={(event) => setResetPassword(event.target.value)}
-                      placeholder="8+ characters with a number"
+                      placeholder="12+ characters with a number"
                       className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     />
                     <button
@@ -804,7 +805,7 @@ export function AuthModal({
                         </span>
                       </div>
                       <p className="text-[11px] font-medium text-slate-500">
-                        Use at least 8 characters with a letter and a number.
+                        Use at least 12 characters with a letter and a number.
                       </p>
                     </div>
                   )}
@@ -1061,7 +1062,7 @@ export function AuthModal({
                     required
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="8+ characters with a number"
+                    placeholder="12+ characters with a number"
                     disabled={signUpCodeSent}
                     className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:opacity-70"
                   />
@@ -1101,7 +1102,7 @@ export function AuthModal({
                       </span>
                     </div>
                     <p className="text-[11px] font-medium text-slate-500">
-                      Use at least 8 characters with a letter and a number.
+                      Use at least 12 characters with a letter and a number.
                     </p>
                   </div>
                 )}

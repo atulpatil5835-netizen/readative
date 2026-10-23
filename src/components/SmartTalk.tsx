@@ -583,6 +583,8 @@ export function SmartTalk({
   const firstPageQuestionsRef = useRef<Question[]>([]);
   const loadedPageQuestionsRef = useRef<Question[]>([]);
   const useIndexFallbackRef = useRef(false);
+  const questionSubmitInFlightRef = useRef(false);
+  const answerSubmitInFlightRef = useRef(new Set<string>());
   const questions = useMemo(() => {
     const merged = mergeSmartTalkQuestions(firstPageQuestions, loadedPageQuestions);
     return merged.sort((left, right) => right.createdAt - left.createdAt);
@@ -829,7 +831,8 @@ export function SmartTalk({
 
   const submitQuestion = async (authorIdentity: KnowledgeIdentity) => {
     const questionText = newQuestion.trim();
-    if (!questionText) return false;
+    if (!questionText || questionSubmitInFlightRef.current) return false;
+    questionSubmitInFlightRef.current = true;
 
     setModerationMessage(null);
     setIsModeratingQuestion(true);
@@ -843,12 +846,14 @@ export function SmartTalk({
       console.error("Failed to validate SmartTalk question:", error);
       setModerationMessage("Could not validate this question right now. Please try again.");
       setIsModeratingQuestion(false);
+      questionSubmitInFlightRef.current = false;
       return false;
     }
 
     if (!moderation.allowed) {
       setModerationMessage(moderation.message);
       setIsModeratingQuestion(false);
+      questionSubmitInFlightRef.current = false;
       return false;
     }
 
@@ -897,6 +902,7 @@ export function SmartTalk({
       return false;
     } finally {
       setIsAsking(false);
+      questionSubmitInFlightRef.current = false;
     }
   };
 
@@ -924,7 +930,12 @@ export function SmartTalk({
   ) => {
     const answerText = answerInputs[questionId]?.trim();
     if (!answerText) return;
-    if (isAnswering[questionId] || moderatingAnswerId === questionId) return;
+    if (
+      isAnswering[questionId] ||
+      moderatingAnswerId === questionId ||
+      answerSubmitInFlightRef.current.has(questionId)
+    ) return;
+    answerSubmitInFlightRef.current.add(questionId);
 
     const localQuestion =
       fetchedQuestion?.id === questionId
@@ -935,6 +946,7 @@ export function SmartTalk({
         ...current,
         [questionId]: "This answer is already posted.",
       }));
+      answerSubmitInFlightRef.current.delete(questionId);
       return;
     }
 
@@ -954,6 +966,7 @@ export function SmartTalk({
         ...current,
         [questionId]: "Could not validate your answer right now. Please try again.",
       }));
+      answerSubmitInFlightRef.current.delete(questionId);
       return;
     }
 
@@ -963,6 +976,7 @@ export function SmartTalk({
         ...current,
         [questionId]: moderation.message,
       }));
+      answerSubmitInFlightRef.current.delete(questionId);
       return;
     }
 
@@ -1019,6 +1033,7 @@ export function SmartTalk({
       }));
     } finally {
       setIsAnswering((current) => ({ ...current, [questionId]: false }));
+      answerSubmitInFlightRef.current.delete(questionId);
     }
   };
 
@@ -1048,6 +1063,7 @@ export function SmartTalk({
 
     try {
       const questionRef = doc(db, collectionName, question.id);
+      let committedAnswers: Answer[] | null = null;
       let bestAnswerNotification:
         | { question: Question; answer: Answer }
         | null = null;
@@ -1063,6 +1079,9 @@ export function SmartTalk({
           snapshot.id,
           snapshot.data() as Partial<Question>,
         );
+        if (!currentQuestion.answers.some((answer) => answer.id === answerId)) {
+          throw new Error("This SmartTalk answer no longer exists.");
+        }
 
         const previousRankedAnswers = [...(currentQuestion.answers || [])].sort(
           (left, right) =>
@@ -1096,6 +1115,7 @@ export function SmartTalk({
           ...answer,
           bestAnswer: Boolean(topAnswer && answer.id === topAnswer.id),
         }));
+        committedAnswers = answersWithBest;
 
         if (
           voteType === "helpful" &&
@@ -1113,6 +1133,18 @@ export function SmartTalk({
           answers: answersWithBest.map(serializeSmartTalkAnswer),
         });
       });
+
+      if (committedAnswers) {
+        const updateQuestionAnswers = (currentQuestion: Question) =>
+          currentQuestion.id === question.id
+            ? { ...currentQuestion, answers: committedAnswers! }
+            : currentQuestion;
+        setFirstPageQuestions((current) => current.map(updateQuestionAnswers));
+        setLoadedPageQuestions((current) => current.map(updateQuestionAnswers));
+        setFetchedQuestion((current) =>
+          current ? updateQuestionAnswers(current) : current,
+        );
+      }
 
       const notification = bestAnswerNotification;
       if (notification) {
@@ -1188,11 +1220,24 @@ export function SmartTalk({
     setSavingQuestionIds((current) => ({ ...current, [question.id]: true }));
     setAnswerMessages((current) => ({ ...current, [question.id]: "" }));
     try {
-      await toggleSmartTalkSave({
+      const result = await toggleSmartTalkSave({
         question,
         actorId,
         shouldSave,
       });
+      const updateQuestionSaveState = (current: Question) =>
+        current.id === question.id
+          ? {
+              ...current,
+              savedBy: result.savedBy,
+              saveCount: result.saveCount,
+            }
+          : current;
+      setFirstPageQuestions((current) => current.map(updateQuestionSaveState));
+      setLoadedPageQuestions((current) => current.map(updateQuestionSaveState));
+      setFetchedQuestion((current) =>
+        current ? updateQuestionSaveState(current) : current,
+      );
     } catch (error) {
       console.error("Failed to update saved SmartTalk discussion:", error);
       setAnswerMessages((current) => ({

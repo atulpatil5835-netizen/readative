@@ -180,6 +180,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
   const [showEditModal, setShowEditModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const commentSubmitInFlightRef = useRef(false);
   const articleRef = useRef<HTMLElement | null>(null);
   const hasTrackedVisibilityRef = useRef(false);
 
@@ -585,6 +586,11 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       });
       setLocalSavedBy(result.savedBy);
       setLocalSaveCount(result.saveCount);
+      onEntryUpdated?.({
+        ...entry,
+        savedBy: result.savedBy,
+        saveCount: result.saveCount,
+      });
       setInteractionMessage(shouldSave ? "Saved to your profile." : "Removed from saved.");
     } catch (error) {
       console.error("Failed to update saved post:", error);
@@ -607,12 +613,13 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     commentIdentity: KnowledgeIdentity | null = activeIdentity,
   ) => {
     const content = commentText.trim();
-    if (!content) return;
+    if (!content || commentSubmitInFlightRef.current) return;
     if (!commentIdentity) {
       onIdentityRequired({ type: "comment", entryId: entry.id });
       return;
     }
 
+    commentSubmitInFlightRef.current = true;
     const normalizedName = commentIdentity.displayName;
     const commentMentions = resolveMentions(content, profiles);
 
@@ -628,12 +635,14 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       console.error("Failed to validate comment:", error);
       setCommentMessage("Could not validate your comment right now. Please try again.");
       setIsModeratingComment(false);
+      commentSubmitInFlightRef.current = false;
       return;
     }
 
     if (!moderation.allowed) {
       setCommentMessage(moderation.message);
       setIsModeratingComment(false);
+      commentSubmitInFlightRef.current = false;
       return;
     }
 
@@ -656,11 +665,9 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         comments: arrayUnion(savedComment),
       });
 
-      setLocalComments((current) =>
-        current.some((comment) => comment.id === savedComment.id)
-          ? current
-          : [...current, savedComment],
-      );
+      const nextComments = [...localComments, savedComment];
+      setLocalComments(nextComments);
+      onEntryUpdated?.({ ...entry, comments: nextComments });
       setCommentText("");
       recordKnowledgeFeedActivity({ type: "comment", entry });
 
@@ -701,6 +708,7 @@ export const KnowledgeCard = memo(function KnowledgeCard({
       );
     } finally {
       setIsCommenting(false);
+      commentSubmitInFlightRef.current = false;
     }
   };
 
@@ -912,7 +920,8 @@ export const KnowledgeCard = memo(function KnowledgeCard({
         <img
           src={entryImages[0].dataUrl}
           alt=""
-          loading="lazy"
+          loading={presentation === "news-article" ? "eager" : "lazy"}
+          fetchPriority={presentation === "news-article" ? "high" : "auto"}
           decoding="async"
           className={presentation === "news-article" ? "max-h-[min(68vh,760px)] min-h-56 w-full bg-slate-100 object-contain sm:min-h-80" : "h-36 w-full object-cover sm:h-44"}
         />

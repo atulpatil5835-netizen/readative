@@ -7,11 +7,33 @@ import {
 
 type AuthOtpAction = "request-otp" | "verify-otp";
 
-function setHeaders(res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+const ALLOWED_AUTH_ORIGINS = new Set([
+  "https://readative.com",
+  "https://www.readative.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
+
+function setHeaders(
+  req: VercelRequest,
+  res: VercelResponse,
+): boolean {
+  const origin = getHeaderValue(req.headers.origin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Cache-Control", "no-store");
+
+  if (origin && !ALLOWED_AUTH_ORIGINS.has(origin)) {
+    res.status(403).json({ error: "This origin cannot access the auth endpoint." });
+    return false;
+  }
+
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  return true;
 }
 
 function getHeaderValue(value: string | string[] | undefined) {
@@ -40,7 +62,7 @@ function getAction(req: VercelRequest): AuthOtpAction | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setHeaders(res);
+  if (!setHeaders(req, res)) return;
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();

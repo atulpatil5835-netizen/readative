@@ -89,7 +89,9 @@ export function NotificationsPanel({
 
     try {
       await markNotificationsAsRead(
-        notifications.map((notification) => notification.id),
+        notifications
+          .filter((notification) => !notification.read)
+          .map((notification) => notification.id),
       );
     } catch (error) {
       console.error("Failed to mark notifications as read:", error);

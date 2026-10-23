@@ -19,6 +19,12 @@ import { getCategoryBySlug } from "../../utils/seoTaxonomy";
 import { tokenizeSearch } from "../../utils/searchHelpers";
 
 const MAX_JOURNEY_ACTIONS = 5;
+const NEWS_EDITOR_EMAIL = "atulpatil5835@gmail.com";
+
+function isTechNewsEntry(entry: KnowledgeEntry) {
+  return entry.contentKind?.trim().toLowerCase() === "news" &&
+    entry.authorEmail.trim().toLowerCase() === NEWS_EDITOR_EMAIL;
+}
 
 const TERM_STOP_WORDS = new Set([
   "about",
@@ -200,11 +206,12 @@ function getBestRelatedEntry(
   entry: KnowledgeEntry,
   entries: KnowledgeEntry[],
   excludedEntryIds: Set<string>,
+  matchesKind: (candidate: KnowledgeEntry) => boolean,
 ) {
   return entries
     .filter(
       (candidate) =>
-        candidate.id !== entry.id && !excludedEntryIds.has(candidate.id),
+        candidate.id !== entry.id && !excludedEntryIds.has(candidate.id) && matchesKind(candidate),
     )
     .map((candidate) => ({
       entry: candidate,
@@ -224,11 +231,11 @@ function getContinueEntry(entry: KnowledgeEntry, entries: KnowledgeEntry[]) {
   if (entryIndex >= 0) {
     const nextEntry = entries
       .slice(entryIndex + 1)
-      .find((candidate) => candidate.id !== entry.id);
+      .find((candidate) => candidate.id !== entry.id && isTechNewsEntry(candidate) === isTechNewsEntry(entry));
     if (nextEntry) return nextEntry;
   }
 
-  return entries.find((candidate) => candidate.id !== entry.id) || null;
+  return entries.find((candidate) => candidate.id !== entry.id && isTechNewsEntry(candidate) === isTechNewsEntry(entry)) || null;
 }
 
 function getAuthorEntry(
@@ -243,6 +250,7 @@ function getAuthorEntry(
       (candidate) =>
         candidate.id !== entry.id &&
         !excludedEntryIds.has(candidate.id) &&
+        isTechNewsEntry(candidate) === isTechNewsEntry(entry) &&
         candidate.authorId === entry.authorId,
     )
     .sort(
@@ -276,8 +284,9 @@ function createPostAction(
   icon: LucideIcon,
   description: string,
 ): KnowledgeJourneyAction {
+  const isNews = isTechNewsEntry(entry);
   const route = {
-    tab: "knowledge" as const,
+    tab: (isNews ? "explore" : "knowledge") as AppTab,
     options: { focusedEntryId: entry.id, seoTitle: entry.title },
   };
 
@@ -320,17 +329,16 @@ export function getKnowledgeJourneyActions({
     );
   }
 
-  const relatedEntry = getBestRelatedEntry(entry, entries, usedEntryIds);
-  if (relatedEntry) {
-    addAction(
-      createPostAction(
-        "related-post",
-        "Related Posts",
-        relatedEntry,
-        Hash,
-        "Same category or tags",
-      ),
-    );
+  const relatedPost = getBestRelatedEntry(entry, entries, usedEntryIds, (candidate) => !isTechNewsEntry(candidate));
+  if (relatedPost) {
+    addAction(createPostAction("related-post", "Related Posts", relatedPost, Hash, "Same category or tags"));
+  }
+
+  const relatedNews = !isTechNewsEntry(entry)
+    ? getBestRelatedEntry(entry, entries, usedEntryIds, isTechNewsEntry)
+    : null;
+  if (relatedNews) {
+    addAction(createPostAction("related-news", "Related Tech News", relatedNews, BookOpenText, "News on this topic"));
   }
 
   const relatedQuestion = getRelatedQuestion(entry, questions);
@@ -403,7 +411,7 @@ export function getKnowledgeJourneyActions({
     });
   }
 
-  const secondRelatedEntry = getBestRelatedEntry(entry, entries, usedEntryIds);
+  const secondRelatedEntry = getBestRelatedEntry(entry, entries, usedEntryIds, (candidate) => !isTechNewsEntry(candidate));
   if (secondRelatedEntry && actions.length < MAX_JOURNEY_ACTIONS) {
     addAction(
       createPostAction(
@@ -416,7 +424,7 @@ export function getKnowledgeJourneyActions({
     );
   }
 
-  const category = getCategoryBySlug(entry.category);
+  const category = isTechNewsEntry(entry) ? null : getCategoryBySlug(entry.category);
   if (category) {
     const route = {
       tab: "knowledge" as const,

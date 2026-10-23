@@ -98,6 +98,7 @@ import {
   normalizeStoredHashtagValue,
   getHelpfulAwareVisibleEntries,
   mergeKnowledgeEntryPages,
+  mergeRealtimeKnowledgePage,
   loadIndependentKnowledgeFeedEntries,
   mergeIndependentKnowledgeFeedEntries,
   orderIndependentKnowledgeFeedEntries,
@@ -128,10 +129,8 @@ const USER_PROFILE_UPDATED_EVENT = "readative:user-profile-updated";
 const TECH_NEWS_EDITOR_EMAIL = "atulpatil5835@gmail.com";
 
 function isTechNewsEntry(entry: KnowledgeEntry) {
-  return (
-    entry.contentKind?.trim().toLowerCase() === "news" ||
-    entry.authorEmail.trim().toLowerCase() === TECH_NEWS_EDITOR_EMAIL
-  );
+  return entry.contentKind?.trim().toLowerCase() === "news" &&
+    entry.authorEmail.trim().toLowerCase() === TECH_NEWS_EDITOR_EMAIL;
 }
 
 interface CachedJourneySmartTalkPreview {
@@ -889,7 +888,6 @@ export function KnowledgeFeed({
       updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
       setIsLoading(false);
       setFeedLoadError(null);
-      return;
     }
 
     if (entriesRef.current.length === 0) {
@@ -941,10 +939,9 @@ export function KnowledgeFeed({
           );
         }
 
-        const nextFeedEntries = mergeKnowledgeEntryPages(
-          entriesRef.current,
-          data,
-        );
+        const nextFeedEntries = snapshot.docs.length < FEED_INITIAL_PAGE_SIZE
+          ? data
+          : mergeRealtimeKnowledgePage(entriesRef.current, data);
         entriesRef.current = nextFeedEntries;
         setEntries(nextFeedEntries);
         setFeedEntryOrder(
@@ -1290,6 +1287,11 @@ export function KnowledgeFeed({
             },
           );
 
+          if (focusedEntry && isTechNewsEntry(focusedEntry)) {
+            navigateToRoute("explore", { focusedEntryId: focusedEntry.id, seoTitle: focusedEntry.title }, "replace");
+            return;
+          }
+
           if (snapshot.id !== focusedEntryId) {
             navigateToRoute(
               "knowledge",
@@ -1304,6 +1306,11 @@ export function KnowledgeFeed({
         }
 
         if (cancelled || !focusedEntry) return;
+
+        if (isTechNewsEntry(focusedEntry)) {
+          navigateToRoute("explore", { focusedEntryId: focusedEntry.id, seoTitle: focusedEntry.title }, "replace");
+          return;
+        }
 
         const nextEntries = mergeKnowledgeEntryPages(entriesRef.current, [
           focusedEntry,
@@ -1446,7 +1453,7 @@ export function KnowledgeFeed({
       getHelpfulAwareVisibleEntries({
         entries: entries.filter((entry) =>
           canViewKnowledgeEntry(entry, currentAuthorId) &&
-          (!isTechNewsEntry(entry) || entry.id === focusedEntryId),
+          !isTechNewsEntry(entry),
         ),
         currentAuthorId,
         focusedEntryId,
@@ -1495,7 +1502,7 @@ export function KnowledgeFeed({
     return getHelpfulAwareVisibleEntries({
       entries: activeTopicFeedState.entries.filter((entry) =>
         canViewKnowledgeEntry(entry, currentAuthorId) &&
-        (!isTechNewsEntry(entry) || entry.id === focusedEntryId),
+        !isTechNewsEntry(entry),
       ),
       currentAuthorId,
       focusedEntryId,
@@ -2149,7 +2156,6 @@ export function KnowledgeFeed({
         mentions,
         images: preparedImages,
         imageLayout: preparedImages.length > 0 ? selectedImageLayout : null,
-        imageDataUrl: primaryImage?.dataUrl || null,
         imageMimeType: primaryImage?.mimeType || null,
         imageWidth: primaryImage?.width || null,
         imageHeight: primaryImage?.height || null,
