@@ -25,8 +25,10 @@ function getQueryValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
 
-function postPath(post: Pick<SeoPost, "id" | "title">) {
-  return buildPostSeoPath(post.id, post.title);
+function postPath(post: Pick<SeoPost, "id" | "title" | "isTechNews">) {
+  return post.isTechNews
+    ? `/tech-news/article/${encodeURIComponent(post.id)}`
+    : buildPostSeoPath(post.id, post.title);
 }
 
 function shouldRedirectToCanonical(
@@ -101,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const requestedSegment = getQueryValue(req.query.id);
+  const techNewsRoute = getQueryValue(req.query.kind) === "tech-news";
   const id = extractSeoDocumentId(requestedSegment);
   if (!id) {
     if (req.method === "HEAD") return res.status(404).end();
@@ -115,12 +118,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).send(renderNotFound(id));
     }
 
-    const { post, authorProfile, relatedPosts, relatedSmartTalks } = page;
+    const { post, authorProfile, relatedPosts, relatedNews, relatedSmartTalks } = page;
+    if (techNewsRoute !== post.isTechNews) {
+      if (post.isTechNews) {
+        res.setHeader("Location", postPath(post));
+        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
+        return res.status(301).end();
+      }
+
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60");
+      if (req.method === "HEAD") return res.status(404).end();
+      return res.status(404).send(renderNotFound(id));
+    }
+
     const isIndexablePost = isIndexableKnowledgeContent(post);
     const canonicalPath = postPath(post);
     const canonicalUrl = `${SITE_URL}${canonicalPath}`;
     const legacy = getQueryValue(req.query.legacy);
-    if (shouldRedirectToCanonical(requestedSegment, post, legacy)) {
+    if (!post.isTechNews && shouldRedirectToCanonical(requestedSegment, post, legacy)) {
       res.setHeader("Location", canonicalUrl);
       res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
       return res.status(301).end();
@@ -133,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? `/profile/${encodeURIComponent(post.authorId)}`
         : "";
     const authorUrl = authorPath ? `${SITE_URL}${authorPath}` : undefined;
-    const categoryPath = post.category
+    const categoryPath = !post.isTechNews && post.category
       ? `/category/${encodeURIComponent(post.category)}`
       : null;
     const breadcrumbItems = [
@@ -248,11 +263,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <p class="seo-kicker">Continue learning</p><h2 id="journey-title">Knowledge Journey</h2>
           <div class="seo-grid">
             <section><h3>Related Posts</h3><ul class="seo-list">${renderPostList(relatedPosts)}</ul></section>
+            ${relatedNews.length ? `<section><h3>Related Tech News</h3><ul class="seo-list">${renderPostList(relatedNews)}</ul></section>` : ""}
             <section><h3>Related SmartTalk</h3><ul class="seo-list">${renderSmartTalkList(relatedSmartTalks)}</ul></section>
-            <section><h3>Same Category</h3><ul class="seo-list"><li>${categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : '<a href="/posts">Browse categories</a>'}</li></ul></section>
+            ${!post.isTechNews ? `<section><h3>Same Category</h3><ul class="seo-list"><li>${categoryPath ? `<a href="${categoryPath}">${escapeHtml(post.category || "Category")}</a>` : '<a href="/posts">Browse categories</a>'}</li></ul></section>` : ""}
             ${!post.isTechNews ? `<section><h3>Same Author</h3><ul class="seo-list"><li>${authorUrl ? `<a href="${escapeHtml(authorPath)}">${escapeHtml(post.authorName)}</a>` : '<a href="/posts">Readative contributors</a>'}</li></ul></section>` : ""}
           </div>
-          <section><h3>Similar Topics</h3><div class="seo-tags">${tags || '<a href="/explore">Explore topics</a>'}</div></section>
+          <section><h3>Similar Topics</h3><div class="seo-tags">${tags || `<a href="${post.isTechNews ? "/tech-news" : "/posts"}">${post.isTechNews ? "Browse Tech News" : "Browse posts"}</a>`}</div></section>
           <div class="seo-meta">
             ${nextPost ? `<a href="${postPath(nextPost)}">Next reading: ${escapeHtml(nextPost.title)}</a>` : '<a href="/posts">Next reading</a>'}
           </div>

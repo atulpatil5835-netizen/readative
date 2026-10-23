@@ -275,7 +275,7 @@ function matchesTagQuestion(question: SeoSmartTalk, tag: SeoTagDefinition) {
 }
 
 function renderNav() {
-  return `<nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>`;
+  return `<nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/tech-news">Tech News</a></span></nav>`;
 }
 
 function renderFooter() {
@@ -332,10 +332,10 @@ function renderProfileList(profiles: SeoProfile[]) {
 
 function renderLinkPills(
   items: Array<{ href: string; label: string }>,
-  emptyHref = "/explore",
+  emptyHref = "/tech-news",
 ) {
   if (items.length === 0) {
-    return `<a href="${emptyHref}">Explore Readative topics</a>`;
+    return `<a href="${emptyHref}">Browse Tech News</a>`;
   }
 
   return items
@@ -489,7 +489,7 @@ function renderNotFound(slug: string, noun = "Topic") {
     ${SEO_DOCUMENT_STYLES}`;
   const main = `<div class="seo-document"><div class="seo-shell">
     ${renderNav()}
-    <main class="seo-card"><p class="seo-kicker">Error 404</p><h1>${noun} not found</h1><p>The requested ${lowerNoun} <code>${escapeHtml(slug || "unknown")}</code> is not part of the public Readative ${lowerNoun} map.</p><p><a href="/explore">Explore public topics</a></p></main>
+    <main class="seo-card"><p class="seo-kicker">Error 404</p><h1>${noun} not found</h1><p>The requested ${lowerNoun} <code>${escapeHtml(slug || "unknown")}</code> is not part of the public Readative ${lowerNoun} map.</p><p><a href="/tech-news">Browse Tech News</a></p></main>
     ${renderFooter()}
   </div></div>`;
 
@@ -511,78 +511,6 @@ function getProfilesForContent({
   ]);
 
   return profiles.filter((profile) => authorIds.has(profile.id));
-}
-
-function renderExplorePage({
-  posts,
-  questions,
-  profiles,
-}: {
-  posts: SeoPost[];
-  questions: SeoSmartTalk[];
-  profiles: SeoProfile[];
-}) {
-  const canonicalPath = "/explore";
-  const canonicalUrl = absoluteUrl(canonicalPath);
-  const pageTitle = "Explore | Readative";
-  const pageDescription =
-    "Explore practical Readative posts and SmartTalk discussions first, with categories and topic shortcuts for related discovery.";
-  const recentPosts = sortByActivity(posts).slice(0, PAGE_ITEM_LIMIT);
-  const activeQuestions = sortByActivity(questions).slice(0, PAGE_ITEM_LIMIT);
-  const itemList = buildItemListSchema({
-    name: "Readative Explore highlights",
-    url: canonicalUrl,
-    posts: recentPosts,
-    questions: activeQuestions,
-    profiles,
-  });
-  const schema = buildBaseSchemas({
-    pageType: "CollectionPage",
-    title: pageTitle,
-    canonicalUrl,
-    description: pageDescription,
-    itemList,
-    breadcrumbs: [
-      { name: "Home", item: SITE_URL },
-      { name: "Explore", item: canonicalUrl },
-    ],
-    about: SEO_CATEGORIES.map((category) => category.label),
-  });
-  const categoryLinks = SEO_CATEGORIES.map((category) => ({
-    href: category.path,
-    label: category.label,
-  }));
-  const topicLinks = SEO_TOPICS.slice(0, 30).map((topic) => ({
-    href: topic.path,
-    label: topic.label,
-  }));
-  const head = renderHead({
-    pageTitle,
-    description: pageDescription,
-    canonicalUrl,
-    schema,
-  });
-  const main = `<div class="seo-document"><div class="seo-shell">
-    ${renderNav()}
-    <main>
-      <header class="seo-hero"><div class="seo-hero-inner">
-        <p class="seo-kicker">Explore Readative</p>
-        <h1>Explore Posts and SmartTalk</h1>
-        <p class="seo-lede">${escapeHtml(pageDescription)}</p>
-        <div class="seo-meta"><span>${posts.length} public posts</span><span>${questions.length} SmartTalk discussions</span><span>${profiles.length} contributor profiles</span></div>
-      </div></header>
-      <section class="seo-card"><div class="seo-grid">
-        <section><h2>Recent Posts</h2><ul class="seo-list">${renderPostList(recentPosts)}</ul></section>
-        <section><h2>Active SmartTalk</h2><ul class="seo-list">${renderQuestionList(activeQuestions)}</ul></section>
-      </div></section>
-      <section class="seo-card"><h2>Knowledge Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks)}</div></section>
-      <section class="seo-card"><h2>Topic Shortcuts</h2><div class="seo-tags">${renderLinkPills(topicLinks)}</div></section>
-      <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(profiles)}</ul></section>
-    </main>
-    ${renderFooter()}
-  </div></div>`;
-
-  return renderAppDocument({ head, main });
 }
 
 function renderCategoryPage({
@@ -627,7 +555,7 @@ function renderCategoryPage({
     itemList,
     breadcrumbs: [
       { name: "Home", item: SITE_URL },
-      { name: "Explore", item: absoluteUrl("/explore") },
+      { name: "Tech News", item: absoluteUrl("/tech-news") },
       { name: category.label, item: canonicalUrl },
     ],
     about: [category.label, ...category.examples],
@@ -721,7 +649,7 @@ function renderTopicPage({
     itemList,
     breadcrumbs: [
       { name: "Home", item: SITE_URL },
-      { name: "Explore", item: absoluteUrl("/explore") },
+      { name: "Tech News", item: absoluteUrl("/tech-news") },
       ...(category ? [{ name: category.label, item: absoluteUrl(category.path) }] : []),
       { name: topic.label, item: canonicalUrl },
     ],
@@ -817,7 +745,7 @@ function renderTagPage({
     itemList,
     breadcrumbs: [
       { name: "Home", item: SITE_URL },
-      { name: "Explore", item: absoluteUrl("/explore") },
+      { name: "Tech News", item: absoluteUrl("/tech-news") },
       { name: `#${tag.label}`, item: canonicalUrl },
     ],
     about: [`#${tag.label}`, tag.id, ...tag.aliases],
@@ -857,7 +785,7 @@ function renderTagPage({
         <section><h2>Posts</h2><ul class="seo-list">${renderPostList(matchedPosts)}</ul></section>
         <section><h2>SmartTalk Discussions</h2><ul class="seo-list">${renderQuestionList(matchedQuestions)}</ul></section>
       </div></section>
-      <section class="seo-card"><h2>Related Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks, "/explore")}</div></section>
+      <section class="seo-card"><h2>Related Categories</h2><div class="seo-tags">${renderLinkPills(categoryLinks, "/tech-news")}</div></section>
       <section class="seo-card"><h2>Related Tags</h2><div class="seo-tags">${renderLinkPills(knownRelatedTags, "/posts")}</div></section>
       <section class="seo-card"><h2>Contributors</h2><ul class="seo-list">${renderProfileList(matchedProfiles)}</ul></section>
     </main>
@@ -884,6 +812,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawSlug = getQueryValue(req.query.slug);
   const slug = normalizeSeoSlug(rawSlug) || "";
 
+  if (view === "explore" || (!type && !slug)) {
+    res.setHeader("Location", absoluteUrl("/tech-news"));
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400");
+    return res.status(301).end();
+  }
+
   try {
     const data = await loadSeoData();
     if (data.source === "static") {
@@ -904,17 +838,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "X-Readative-SEO-Profile-Count",
       data.profiles.length.toString(),
     );
-
-    if (view === "explore" || (!type && !slug)) {
-      if (req.method === "HEAD") return res.status(200).end();
-      return res.status(200).send(
-        renderExplorePage({
-          posts,
-          questions,
-          profiles: data.profiles,
-        }),
-      );
-    }
 
     if (type === "category") {
       const category = getCategoryBySlug(slug);

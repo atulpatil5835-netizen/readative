@@ -279,7 +279,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ${renderSection("Important Pages", [
     renderLink("/", "Readative Home", "Knowledge feed"),
     renderLink("/smarttalks", "SmartTalk", "Community questions and answers"),
-    renderLink("/explore", "Explore", "Posts, discussions, categories, and contributors"),
+    renderLink("/tech-news", "Tech News", "Curated technology and AI news"),
     renderLink("/about", "About Readative", "Mission and platform information"),
     renderLink("/projects", "Projects", "Innovation platform project lifecycle"),
     renderLink("/mission", "Mission", "Info Hub vision and technology direction"),

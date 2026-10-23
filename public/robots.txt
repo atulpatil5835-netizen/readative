@@ -4,7 +4,8 @@ Allow: /posts
 Allow: /posts/
 Allow: /smarttalks
 Allow: /smarttalks/
-Allow: /explore
+Allow: /tech-news
+Allow: /tech-news/
 Allow: /category/
 Allow: /topic/
 Allow: /tag/
@@ -20,7 +21,6 @@ Disallow: /api/
 Disallow: /__/
 Disallow: /profile
 Disallow: /profile/
-Disallow: /tech-news/
 Disallow: /admin
 Disallow: /admin/
 

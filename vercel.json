@@ -89,7 +89,7 @@
       ]
     },
     {
-      "source": "/(posts|smarttalks|explore|category|topic|tag)(.*)",
+      "source": "/(posts|smarttalks|tech-news|category|topic|tag)(.*)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -135,7 +135,7 @@
       ]
     },
     {
-      "source": "/explore",
+      "source": "/tech-news",
       "headers": [
         {
           "key": "Content-Type",
@@ -187,19 +187,23 @@
       "destination": "https://www.readative.com/:path*",
       "permanent": true
     },
+    { "source": "/explore", "destination": "/tech-news", "permanent": true },
+    { "source": "/explore/:path*", "destination": "/tech-news", "permanent": true },
+    { "source": "/jobs", "destination": "/tech-news", "permanent": true },
     { "source": "/community-guidelines", "destination": "/community", "permanent": true },
     { "source": "/tags/Inspiration", "destination": "/posts", "permanent": true },
     { "source": "/tags/LifeTruths", "destination": "/posts", "permanent": true },
     { "source": "/tags/thoughtoftheday", "destination": "/posts", "permanent": true },
     { "source": "/tags/:path*", "destination": "/tag/:path*", "permanent": true },
     { "source": "/knowledge/:id", "destination": "/post/:id", "permanent": true },
-    { "source": "/knowledge", "destination": "/", "permanent": true },
-    { "source": "/jobs", "destination": "/explore", "permanent": true }
+    { "source": "/knowledge", "destination": "/", "permanent": true }
   ],
   "rewrites": [
     { "source": "/", "destination": "/api/home" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
-    { "source": "/explore", "destination": "/api/taxonomy?view=explore" },
+    { "source": "/tech-news/article/:id", "destination": "/api/post?id=:id&kind=tech-news" },
+    { "source": "/tech-news", "destination": "/index.html" },
+    { "source": "/tech-news/:path*", "destination": "/index.html" },
     { "source": "/news-sitemap.xml", "destination": "/api/sitemap.xml?type=news" },
     { "source": "/posts", "destination": "/api/discovery" },
     { "source": "/posts/:id", "destination": "/api/post?id=:id" },
@@ -241,14 +245,11 @@
     { "source": "/profile/:path*", "destination": "/index.html" },
     { "source": "/smarttalk", "destination": "/api/smarttalk" },
     { "source": "/smarttalk/:id", "destination": "/api/smarttalks?id=:id" },
-    { "source": "/tech-news", "destination": "/index.html" },
-    { "source": "/tech-news/:path*", "destination": "/index.html" },
     { "source": "/category", "destination": "/index.html" },
     { "source": "/category/:path*", "destination": "/index.html" },
     { "source": "/topic", "destination": "/index.html" },
     { "source": "/topic/:path*", "destination": "/index.html" },
     { "source": "/tag", "destination": "/index.html" },
-    { "source": "/tag/:path*", "destination": "/index.html" },
-    { "source": "/explore/:path*", "destination": "/index.html" }
+    { "source": "/tag/:path*", "destination": "/index.html" }
   ]
 }

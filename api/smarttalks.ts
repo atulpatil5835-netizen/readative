@@ -357,7 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? `<a href="${smartTalkPath(relatedQuestions[0])}">${escapeHtml(relatedQuestions[0].title)}</a>`
         : '<a href="/posts">Explore more knowledge</a>';
     const main = `<div class="seo-document"><div class="seo-shell">
-      <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>
+      <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/tech-news">Tech News</a></span></nav>
       <main>
         <article class="seo-hero" id="question-${escapeHtml(focusedQuestion.id)}"><div class="seo-hero-inner">
           <p class="seo-kicker">SmartTalk discussion</p>
@@ -422,7 +422,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     .join("");
   const main = `<div class="seo-document"><div class="seo-shell">
-    <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span></nav>
+    <nav class="seo-nav" aria-label="Primary"><a class="seo-brand" href="/">Readative</a><span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/tech-news">Tech News</a></span></nav>
     <main>
       <header class="seo-hero"><div class="seo-hero-inner"><p class="seo-kicker">Community knowledge</p><h1>SmartTalk Discussions</h1><p class="seo-lede">${pageDescription}</p><p class="seo-meta">${questions.length} public discussions</p></div></header>
       <section class="seo-card"><h2>Latest questions</h2><ul class="seo-list">${questionList || '<li>No public discussions are available.</li>'}</ul></section>

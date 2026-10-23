@@ -241,7 +241,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const main = `<div class="seo-document"><div class="seo-shell">
       <nav class="seo-nav" aria-label="Primary">
         <a class="seo-brand" href="/">Readative</a>
-        <span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/explore">Explore</a></span>
+        <span class="seo-navlinks"><a href="/posts">Posts</a><a href="/smarttalks">SmartTalk</a><a href="/tech-news">Tech News</a></span>
       </nav>
       <main>
         <article class="seo-hero">

@@ -55,7 +55,7 @@ export interface LegalPage {
   projects?: InnovationProject[];
 }
 
-export const EFFECTIVE_DATE = "September 6, 2026";
+export const EFFECTIVE_DATE = "October 23, 2026";
 export const CONTACT_EMAIL = "reader@readative.com";
 export const GITHUB_URL = "https://github.com/atulpatil5835-netizen/readative";
 export const PERSONAL_LINKEDIN_URL = "https://www.linkedin.com/in/0101010101010101010101010101/";
@@ -66,7 +66,7 @@ export const SUPPORT_READATIVE_URL = "https://razorpay.me/@atulsadanandhinge";
 export const PROJECTS: InnovationProject[] = [
   {
     name: "Readative",
-    description: "A live public knowledge platform for practical posts, SmartTalk Q&A, creator profiles, and reader-first discovery.",
+    description: "A live public knowledge platform for practical Posts, SmartTalk Q&A, curated Tech News, creator profiles, and reader-first discovery.",
     status: "Live",
     category: "Knowledge Platform",
     currentStage: "Production foundation and trust platform expansion",
@@ -123,14 +123,14 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     title: "About Readative",
     eyebrow: "Public innovation projects",
     description: "Learn how Readative, FBPLY, and Habiterian fit into Info Hub's independent innovation platform, product philosophy, mission, values, and roadmap.",
-    dateModified: "2026-07-27",
+    dateModified: "2026-10-23",
     schemaType: "AboutPage",
     sections: [
       {
         title: "Mission",
         paragraphs: [
           "Readative is the first public product from Info Hub's long-term independent innovation platform. Its mission is to make practical knowledge easier to publish, discover, question, and revisit.",
-          "The platform combines creator-published posts, SmartTalk questions, trust signals, profiles, and reader tools so useful knowledge can stay connected to context instead of disappearing into a feed.",
+          "The platform keeps community Posts, SmartTalk questions and answers, and editorial Tech News in separate destinations, with profiles and reader tools connecting each item to its context.",
         ],
       },
       {
@@ -270,13 +270,14 @@ export const LEGAL_PAGES: Record<LegalSlug, LegalPage> = {
     slug: "privacy",
     title: "Privacy Policy",
     eyebrow: "Your data, explained",
-    description: "Readative's privacy policy explains account, content, device, analytics, advertising, storage, and privacy-request practices.",
+    description: "Readative's privacy policy explains how account, Posts, SmartTalk, Tech News, device, analytics, advertising, and privacy-request data is handled.",
+    dateModified: "2026-10-23",
     schemaType: "WebPage",
     sections: [
       {
         title: "Scope",
         paragraphs: [
-          "This policy describes information processed when people browse Readative, sign in, publish content, participate in SmartTalk, react, comment, save preferences, or contact the platform.",
+          "This policy describes information processed when people browse Posts and Tech News, sign in, participate in SmartTalk, react, comment, save preferences, or contact Readative.",
         ],
       },
       {

@@ -96,6 +96,7 @@ export function SEO({
     "learning community",
     "educational posts",
     "SmartTalk Q&A",
+    "Tech News",
     ...keywords,
   ].filter((k, i, arr) => arr.indexOf(k) === i);
 

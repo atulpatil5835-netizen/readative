@@ -36,7 +36,7 @@ function renderNav() {
     <span class="seo-navlinks">
       <a href="/smarttalks">SmartTalk</a>
       <a href="/posts">Posts</a>
-      <a href="/explore">Explore</a>
+      <a href="/tech-news">Tech News</a>
       <a href="/about">About</a>
     </span>
   </nav>`;

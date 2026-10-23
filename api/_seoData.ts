@@ -107,6 +107,7 @@ export interface SeoPostPageData {
   post: SeoPost;
   authorProfile: SeoProfile | null;
   relatedPosts: SeoPost[];
+  relatedNews: SeoPost[];
   relatedSmartTalks: SeoSmartTalk[];
 }
 
@@ -120,7 +121,11 @@ export interface SitemapEntry {
 }
 
 export function getIndexableSeoPosts(posts: SeoPost[]) {
-  return posts.filter(isIndexableKnowledgeContent);
+  return posts.filter((post) => !post.isTechNews && isIndexableKnowledgeContent(post));
+}
+
+export function getIndexableTechNews(posts: SeoPost[]) {
+  return posts.filter((post) => post.isTechNews && isIndexableKnowledgeContent(post));
 }
 
 export function getIndexableSeoSmartTalks(smartTalks: SeoSmartTalk[]) {
@@ -698,7 +703,18 @@ export async function loadSeoPostPage(id: string): Promise<SeoPostPageData | nul
     source: data.source,
     post,
     authorProfile: findSeoProfileByAuthorId(data.profiles, post.authorId),
-    relatedPosts: getRelatedPosts(post, getIndexableSeoPosts(data.posts), 4),
+    relatedPosts: getRelatedPosts(
+      post,
+      getIndexableSeoPosts(data.posts).filter((candidate) => !candidate.isTechNews),
+      4,
+    ),
+    relatedNews: post.isTechNews
+      ? []
+      : getRelatedPosts(
+          post,
+          getIndexableTechNews(data.posts),
+          4,
+        ),
     relatedSmartTalks: getRelatedQuestions(
       post,
       getIndexableSeoSmartTalks(data.smartTalks),
@@ -773,6 +789,7 @@ function buildEntry(
 export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   const entries: SitemapEntry[] = [];
   const indexablePosts = getIndexableSeoPosts(data.posts);
+  const indexableTechNews = getIndexableTechNews(data.posts);
   const indexableSmartTalks = getIndexableSeoSmartTalks(data.smartTalks);
   const indexableTags = buildTags(indexablePosts);
   const indexableAuthorIds = new Set([
@@ -795,11 +812,25 @@ export function buildSitemapEntries(data: SeoData): SitemapEntry[] {
   for (const post of indexablePosts) {
     entries.push(
       buildEntry(
-        buildPostSeoPath(post.id, post.title),
+        post.isTechNews
+          ? `/tech-news/article/${encodeURIComponent(post.id)}`
+          : buildPostSeoPath(post.id, post.title),
         "post",
         post.updatedAt || post.createdAt,
         getChangeFrequency(post.updatedAt, post.createdAt),
         "0.95",
+      ),
+    );
+  }
+
+  for (const news of indexableTechNews) {
+    entries.push(
+      buildEntry(
+        `/tech-news/article/${encodeURIComponent(news.id)}`,
+        "post",
+        news.updatedAt || news.createdAt,
+        getChangeFrequency(news.updatedAt, news.createdAt),
+        "0.85",
       ),
     );
   }

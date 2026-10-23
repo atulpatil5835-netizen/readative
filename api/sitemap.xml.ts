@@ -5,6 +5,7 @@ import {
   buildSitemapEntries,
   buildSitemapXml,
   getIndexableSeoPosts,
+  getIndexableTechNews,
   getIndexableSeoSmartTalks,
   loadSeoData,
 } from "./_seoData.js";
@@ -37,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rawDate = entry.createdAt;
         const createdAt = typeof rawDate === "number" ? rawDate : rawDate && typeof rawDate.toMillis === "function" ? rawDate.toMillis() : 0;
         if (!createdAt || createdAt < cutoff) return "";
-        const loc = `https://www.readative.com/posts/${encodeURIComponent(item.id)}`;
+        const loc = `https://www.readative.com/tech-news/article/${encodeURIComponent(item.id)}`;
         const title = escapeXml(typeof entry.title === "string" ? entry.title : "Technology News");
         return `  <url><loc>${loc}</loc><news:news><news:publication><news:name>Readative Tech News</news:name><news:language>en</news:language></news:publication><news:publication_date>${new Date(createdAt).toISOString()}</news:publication_date><news:title>${title}</news:title></news:news></url>`;
       }).filter(Boolean);
@@ -64,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const entries = buildSitemapEntries(data);
     const xml = buildSitemapXml(entries);
     const posts = getIndexableSeoPosts(data.posts);
+    const techNews = getIndexableTechNews(data.posts);
     const smartTalks = getIndexableSeoSmartTalks(data.smartTalks);
 
     res.setHeader("X-Readative-SEO-Source", data.source);
@@ -71,6 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "X-Readative-SEO-Post-Count",
       posts.length.toString(),
     );
+    res.setHeader("X-Readative-SEO-Tech-News-Count", techNews.length.toString());
     res.setHeader("X-Readative-SEO-URL-Count", entries.length.toString());
     res.setHeader(
       "X-Readative-SEO-SmartTalk-Count",

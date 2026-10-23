@@ -1,7 +1,7 @@
 {
-  "name": "Readative – Practical Knowledge & SmartTalk",
+  "name": "Readative – Posts, SmartTalk & Tech News",
   "short_name": "Readative",
-  "description": "Discover practical knowledge posts, SmartTalk Q&A like Quora, tech news, and creator profiles on Readative.",
+  "description": "Publish and read practical posts, join SmartTalk discussions, and follow curated Tech News on Readative.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -37,7 +37,7 @@
       "name": "Tech News",
       "short_name": "Tech News",
       "description": "Latest technology news and AI updates",
-      "url": "/explore",
+      "url": "/tech-news",
       "icons": [{ "src": "/favicon-64.png", "sizes": "64x64" }]
     },
     {
