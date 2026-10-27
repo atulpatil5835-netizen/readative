@@ -212,6 +212,10 @@ function sortKnowledge(entries: KnowledgeEntry[]) {
   return [...entries].sort((left, right) => right.createdAt - left.createdAt);
 }
 
+function isRegularProfilePost(entry: KnowledgeEntry) {
+  return entry.contentKind !== "news";
+}
+
 function mergeProfileKnowledgeEntries(
   currentEntries: KnowledgeEntry[],
   nextEntries: KnowledgeEntry[],
@@ -759,7 +763,9 @@ function hydrateProfileKnowledgeDocs(
       )
       .filter(
         (entry) =>
-          includeEntry(entry) && canViewKnowledgeEntry(entry, visibleAuthorId),
+          isRegularProfilePost(entry) &&
+          includeEntry(entry) &&
+          canViewKnowledgeEntry(entry, visibleAuthorId),
       ),
   );
 }
