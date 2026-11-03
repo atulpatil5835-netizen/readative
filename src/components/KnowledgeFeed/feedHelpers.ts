@@ -66,8 +66,13 @@ import {
 } from "./feedFilters";
 export { tokenizeSearch } from "../../utils/searchHelpers";
 
-export const MAX_TOTAL_INLINE_IMAGE_CHARS = 760_000;
-export const FEED_INITIAL_PAGE_SIZE = 8;
+// Keep newly published knowledge documents compact until post media is moved
+// to object storage. This bounds the largest inline image payload per post.
+export const MAX_TOTAL_INLINE_IMAGE_CHARS = 320_000;
+// Keep the first response small. Knowledge documents can include legacy inline
+// image data, so an 8-document first page can transfer several megabytes before
+// the reader has seen a single post.
+export const FEED_INITIAL_PAGE_SIZE = 4;
 export const FEED_NEXT_PAGE_SIZE = 4;
 export const FEED_LOAD_MORE_REMAINING_THRESHOLD = 5;
 export const FEED_LOAD_TIMEOUT_MS = 7000;

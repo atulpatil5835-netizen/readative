@@ -116,7 +116,7 @@ async function main() {
   const staticRootHasDiscoveryLinks =
     /href=["']\/posts["']/i.test(indexShell) &&
     /href=["']\/smarttalks["']/i.test(indexShell) &&
-    /href=["']\/explore["']/i.test(indexShell);
+    /href=["']\/tech-news["']/i.test(indexShell);
   const vercel = JSON.parse(readFile("vercel.json")) as {
     redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
     rewrites?: Array<{ source: string; destination: string }>;
@@ -138,7 +138,7 @@ async function main() {
   const hasJobsRedirect = redirects.some(
     (redirect) =>
       redirect.source === "/jobs" &&
-      redirect.destination === "/explore" &&
+      redirect.destination === "/tech-news" &&
       redirect.permanent,
   );
   const hasSitemapRewrite = rewrites.some(
@@ -178,13 +178,11 @@ async function main() {
       rewrite.source === "/smarttalks/:id" &&
       rewrite.destination === "/api/smarttalks?id=:id&legacy=smarttalks",
   );
-  const hasExploreRewrite = rewrites.some(
+  const hasExploreRedirect = redirects.some(
     (rewrite) =>
       rewrite.source === "/explore" &&
-      rewrite.destination === "/api/taxonomy?view=explore",
-  );
-  const hasExploreRedirectConflict = redirects.some(
-    (redirect) => redirect.source === "/explore",
+      rewrite.destination === "/tech-news" &&
+      rewrite.permanent,
   );
   const hasCategoryRewrite = rewrites.some(
     (rewrite) =>
@@ -218,7 +216,7 @@ async function main() {
   const hasRedirectsProfileLegacy = /^\/profile\/\*\s+\/api\/profile\?id=:splat&legacy=profile\s+200$/m.test(
     redirectsFile,
   );
-  const hasRedirectsExplore = /^\/explore\s+\/api\/taxonomy\?view=explore\s+200$/m.test(
+  const hasRedirectsExplore = /^\/explore\s+\/tech-news\s+301$/m.test(
     redirectsFile,
   );
   const hasRedirectsCategory = /^\/category\/\*\s+\/api\/taxonomy\?type=category&slug=:splat\s+200$/m.test(
@@ -282,7 +280,6 @@ async function main() {
       ? "PASS"
       : "FAIL";
   const taxonomyRewriteStatus =
-    hasExploreRewrite &&
     hasCategoryRewrite &&
     hasTopicRewrite &&
     hasTagRewrite &&
@@ -313,7 +310,7 @@ async function main() {
     hasSmartTalkRewrite ? null : "missing SmartTalk index rewrite",
     hasSmartTalkCanonicalRewrite ? null : "missing canonical SmartTalk rewrite",
     hasSmartTalkLegacyRewrite ? null : "missing legacy SmartTalk rewrite",
-    hasExploreRewrite ? null : "missing Explore taxonomy rewrite",
+    hasExploreRedirect ? null : "missing /explore -> /tech-news legacy redirect",
     hasCategoryRewrite ? null : "missing category taxonomy rewrite",
     hasTopicRewrite ? null : "missing topic taxonomy rewrite",
     hasTagRewrite ? null : "missing tag taxonomy rewrite",
@@ -332,9 +329,6 @@ async function main() {
     robotsAdvertisesExpectedSitemaps
       ? null
       : `robots.txt must advertise exactly ${robotsCanonicalSitemap} and ${robotsNewsSitemap}`,
-    hasExploreRewrite && !hasExploreRedirectConflict
-      ? null
-      : "Explore must rewrite to its taxonomy page without a redirect override",
   ].filter((failure): failure is string => Boolean(failure));
   const report = `# Release H7 Username SEO Report
 
@@ -392,7 +386,7 @@ ${markdownList(changedFiles)}
 - Duplicate URL redirects:
   - /knowledge/:id -> /post/:id legacy bridge: ${hasKnowledgePostRedirect ? "PASS" : "FAIL"}
   - /knowledge -> /: ${hasKnowledgeHomeRedirect ? "PASS" : "FAIL"}
-  - /jobs -> /explore: ${hasJobsRedirect ? "PASS" : "FAIL"}
+  - /jobs -> /tech-news: ${hasJobsRedirect ? "PASS" : "FAIL"}
 - Dynamic sitemap rewrite: ${hasSitemapRewrite ? "PASS" : "FAIL"}
 - Discovery index rewrite: ${hasDiscoveryRewrite ? "PASS" : "FAIL"}
 - Canonical post rewrite (/posts/:slug--id): ${hasPostCanonicalRewrite ? "PASS" : "FAIL"}
@@ -400,7 +394,7 @@ ${markdownList(changedFiles)}
 - SmartTalk index rewrite: ${hasSmartTalkRewrite ? "PASS" : "FAIL"}
 - Canonical SmartTalk rewrite (/smarttalk/:slug--id): ${hasSmartTalkCanonicalRewrite ? "PASS" : "FAIL"}
 - Legacy SmartTalk rewrite (/smarttalks/:id): ${hasSmartTalkLegacyRewrite ? "PASS" : "FAIL"}
-- Explore taxonomy rewrite: ${hasExploreRewrite ? "PASS" : "FAIL"}
+- Legacy Explore redirect (/explore -> /tech-news): ${hasExploreRedirect ? "PASS" : "FAIL"}
 - Category taxonomy rewrite: ${hasCategoryRewrite ? "PASS" : "FAIL"}
 - Topic taxonomy rewrite: ${hasTopicRewrite ? "PASS" : "FAIL"}
 - Tag taxonomy rewrite: ${hasTagRewrite ? "PASS" : "FAIL"}
@@ -437,7 +431,7 @@ ${markdownList(changedFiles)}
 - Topic shortcut handling: ${topicSitemapUrls.length === 0 ? "PASS" : "FAIL"} - topic pages stay crawlable through internal links but are noindex/follow and excluded from the sitemap so posts carry search priority.
 - Static homepage canonical: ${staticRootHasCanonical ? "PASS" : "FAIL"} - the Vite shell served at / includes ${SITE_URL}/ as its canonical URL.
 - Static homepage robots: ${staticRootHasIndexRobots ? "PASS" : "FAIL"} - the Vite shell served at / is index/follow.
-- Static homepage discovery links: ${staticRootHasDiscoveryLinks ? "PASS" : "FAIL"} - the no-JavaScript fallback links Posts, SmartTalk, and Explore.
+- Static homepage discovery links: ${staticRootHasDiscoveryLinks ? "PASS" : "FAIL"} - the no-JavaScript fallback links Posts, SmartTalk, and Tech News.
 - robots.txt allows crawling: ${robotsAllowsAll && !robotsBlocksCanonicalDocuments ? "PASS" : "FAIL"}
 - robots.txt sitemap directives: ${robotsAdvertisesExpectedSitemaps ? "PASS" : "FAIL"}
 - Post noindex check: PASS - post routes use focused-entry SEO with robots=index; no post URL is emitted with noindex.

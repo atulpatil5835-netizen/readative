@@ -179,10 +179,6 @@ function readEnv(name: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-function isServerFirestoreDataEnabled() {
-  return readEnv("READATIVE_FIRESTORE_DATA_ENABLED").toLowerCase() === "true";
-}
-
 function getProjectId() {
   return (
     readEnv("FIREBASE_PROJECT_ID") ||
@@ -197,6 +193,18 @@ function getApiKey() {
     readEnv("VITE_FIREBASE_API_KEY") ||
     readEnv("VITE_FIREBASE_WEB_API_KEY")
   );
+}
+
+function isServerSeoDataEnabled() {
+  const configured = readEnv("READATIVE_SEO_DATA_ENABLED").toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+
+  // Public SEO pages must not disappear when the general Firestore feature
+  // kill switch is off. In production, use the public Firestore REST API when
+  // the site already has its Firebase web API key. Set READATIVE_SEO_DATA_ENABLED
+  // explicitly to false to disable server-side SEO reads.
+  return process.env.VERCEL_ENV === "production" && Boolean(getApiKey());
 }
 
 function getAdminDatabase() {
@@ -587,7 +595,7 @@ function buildTags(posts: SeoPost[]) {
 }
 
 async function loadFromAdmin(): Promise<SeoData | null> {
-  if (!isServerFirestoreDataEnabled()) return null;
+  if (!isServerSeoDataEnabled()) return null;
 
   const database = getAdminDatabase();
   if (!database) return null;
@@ -623,9 +631,9 @@ async function loadFromAdmin(): Promise<SeoData | null> {
 }
 
 async function loadFromRest(): Promise<SeoData> {
-  if (!isServerFirestoreDataEnabled()) {
+  if (!isServerSeoDataEnabled()) {
     throw new Error(
-      "Firestore SEO reads are disabled by READATIVE_FIRESTORE_DATA_ENABLED.",
+      "Firestore SEO reads are disabled by READATIVE_SEO_DATA_ENABLED.",
     );
   }
 

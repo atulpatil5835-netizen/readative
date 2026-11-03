@@ -1424,12 +1424,28 @@ export function SmartTalk({
     return (
       <div
         key={answer.id}
-        className={`rounded-lg p-4 transition-all duration-200 ${getAnswerBorderClass(
-          answer,
-          isTop,
-          isWorst,
-        )}`}
+        className={`rounded-2xl p-4 transition-all duration-200 ${
+          isTop
+            ? "border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 shadow-[0_12px_30px_rgba(16,185,129,0.10)]"
+            : getAnswerBorderClass(answer, false, isWorst)
+        }`}
       >
+        {isTop && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                <Trophy className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-800">Community pick</p>
+                <p className="text-[11px] text-emerald-700">Most helpful answer so far</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-800">
+              {likeCount} helpful
+            </span>
+          </div>
+        )}
         <div className="flex justify-between items-start mb-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-gray-700">
@@ -1438,7 +1454,7 @@ export function SmartTalk({
 
             {isTop && (
               <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">
-                <Trophy className="h-3 w-3" /> Best Answer
+                <Trophy className="h-3 w-3" /> Top Answer
               </span>
             )}
 
