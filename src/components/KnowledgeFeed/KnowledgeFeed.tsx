@@ -84,13 +84,11 @@ import { FEED_TOPIC_FILTERS } from "./feedFilters";
 import {
   FEED_INITIAL_PAGE_SIZE,
   FEED_NEXT_PAGE_SIZE,
-  FEED_LOAD_MORE_REMAINING_THRESHOLD,
   FEED_LOAD_TIMEOUT_MS,
   FEED_BACKGROUND_PAGE_DELAY_MS,
   FEED_BACKGROUND_PREFETCH_PAGE_LIMIT,
   PROFILE_DIRECTORY_IDLE_TIMEOUT_MS,
   PROFILE_DIRECTORY_LIMIT,
-  FEED_SUPPRESSED_AUTO_LOAD_ENTRY_LIMIT,
   MAX_TOTAL_INLINE_IMAGE_CHARS,
   readKnowledgeFeedCache,
   writeKnowledgeFeedCache,
@@ -489,7 +487,6 @@ export function KnowledgeFeed({
   const visibleLikedEntryIdsRef = useRef<string[]>(visibleLikedEntryIds);
   const feedRefreshSeedRef = useRef(initialRefreshSeed);
   const refreshFeedbackTimeoutRef = useRef<number | null>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const paginationCursorRef =
     useRef<KnowledgeFeedPaginationCursor | null>(null);
   const hasMoreServerEntriesRef = useRef(hasMoreServerEntries);
@@ -501,7 +498,6 @@ export function KnowledgeFeed({
   const hasLoadedProfilesDirectoryRef = useRef(false);
   const hasLoadedJourneySmartTalkRef = useRef(false);
   const isLoadingJourneySmartTalkRef = useRef(false);
-  const lastAutoLoadEntryCountRef = useRef(0);
   const isMountedRef = useRef(false);
   const deferredFeedSearchQuery = useDeferredValue(feedSearchQuery);
   const selectedImageLayoutSettings =
@@ -1578,8 +1574,6 @@ export function KnowledgeFeed({
       : !focusedEntryId &&
         hasMoreServerEntries &&
         Boolean(paginationCursorRef.current);
-  const canAutoLoadSuppressedEntries =
-    loadedActiveEntryCount < FEED_SUPPRESSED_AUTO_LOAD_ENTRY_LIMIT;
   const isActiveFeedLoadingMore = shouldUseIndependentFeed
     ? activeTopicFeedState.isLoadingMore
     : isLoadingMoreEntries;
@@ -1597,27 +1591,8 @@ export function KnowledgeFeed({
     filteredEntries.length === 0 &&
     Boolean(activeFeedLoadError) &&
     !shouldShowInitialFeedSkeleton;
-  const shouldKeepLoadingEmptyFeed =
-    (isIndependentFeedLoading && filteredEntries.length === 0 && !hasActiveSearch) ||
-    (!focusedEntryId &&
-      filteredEntries.length === 0 &&
-      hasMoreEntries &&
-      canAutoLoadSuppressedEntries &&
-      !hasActiveSearch &&
-      !isActiveFeedLoadingMore &&
-      (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError));
-  const shouldFillInitialVisibleBatch =
-    !focusedEntryId &&
-    !hasActiveSearch &&
-    filteredEntries.length > 0 &&
-    filteredEntries.length < FEED_INITIAL_PAGE_SIZE &&
-    loadedActiveEntryCount < FEED_INITIAL_PAGE_SIZE &&
-    hasMoreEntries &&
-    !isPaginationBusy &&
-    (shouldUseIndependentFeed ? !activeTopicFeedState.error : !feedLoadError);
-  const shouldContinueLoadingVisibleFeed =
-    shouldKeepLoadingEmptyFeed || shouldFillInitialVisibleBatch;
-  const shouldHoldEmptyFeedState = shouldKeepLoadingEmptyFeed;
+  const shouldHoldEmptyFeedState =
+    isIndependentFeedLoading && filteredEntries.length === 0 && !hasActiveSearch;
 
   useEffect(() => {
     if (!canUseFirestore || feedProfileIds.length === 0) return;
@@ -1830,65 +1805,18 @@ export function KnowledgeFeed({
   }, [independentFeedKey, shouldUseIndependentFeed]);
 
   useEffect(() => {
-    lastAutoLoadEntryCountRef.current = 0;
     setDesktopContextEntryId(null);
   }, [deferredFeedSearchQuery, focusedEntryId, independentFeedKey]);
 
-  const handleVisibleEntry = useCallback(
-    (entry: KnowledgeEntry) => {
-      markKnowledgeEntrySeen(entry);
+  const handleVisibleEntry = useCallback((entry: KnowledgeEntry) => {
+    markKnowledgeEntrySeen(entry);
 
-      if (typeof window !== "undefined" && window.innerWidth >= 1280) {
-        setDesktopContextEntryId((current) =>
-          current === entry.id ? current : entry.id,
-        );
-      }
-
-      if (
-        !canUseFirestore ||
-        focusedEntryId ||
-        hasActiveSearch ||
-        !hasMoreEntries ||
-        isPaginationBusy
-      ) {
-        return;
-      }
-
-      const visibleEntryIndex = filteredEntries.findIndex(
-        (visibleEntry) => visibleEntry.id === entry.id,
+    if (typeof window !== "undefined" && window.innerWidth >= 1280) {
+      setDesktopContextEntryId((current) =>
+        current === entry.id ? current : entry.id,
       );
-      if (visibleEntryIndex < 0) {
-        return;
-      }
-
-      const remainingEntryCount = filteredEntries.length - visibleEntryIndex - 1;
-      if (
-        filteredEntries.length <= FEED_LOAD_MORE_REMAINING_THRESHOLD ||
-        remainingEntryCount > FEED_LOAD_MORE_REMAINING_THRESHOLD ||
-        lastAutoLoadEntryCountRef.current === filteredEntries.length
-      ) {
-        return;
-      }
-
-      const entryCountAtRequest = filteredEntries.length;
-      lastAutoLoadEntryCountRef.current = entryCountAtRequest;
-      void loadMoreActiveEntries().then((result) => {
-        if (result === "error") {
-          lastAutoLoadEntryCountRef.current = 0;
-        }
-      });
-    },
-    [
-      filteredEntries,
-      focusedEntryId,
-      hasActiveSearch,
-      hasMoreEntries,
-      canUseFirestore,
-      isPaginationBusy,
-      loadMoreActiveEntries,
-    ],
-  );
-
+    }
+  }, []);
   useEffect(() => {
     if (!canUseFirestore || !shouldUseIndependentFeed) return;
     if (activeTopicFeedState.isLoading || activeTopicFeedState.hasLoaded) return;
@@ -1978,58 +1906,6 @@ export function KnowledgeFeed({
     independentFeedKey,
     canUseFirestore,
     normalizedSelectedHashtag,
-    shouldUseIndependentFeed,
-  ]);
-
-  useEffect(() => {
-    if (!canUseFirestore || !hasMoreEntries || typeof window === "undefined") return;
-
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel) return;
-
-    if (typeof window.IntersectionObserver !== "function") {
-      return;
-    }
-
-    const observer = new window.IntersectionObserver(
-      (observedEntries) => {
-        if (!observedEntries.some((entry) => entry.isIntersecting)) {
-          return;
-        }
-
-        void loadMoreActiveEntries();
-      },
-      {
-        rootMargin: "600px 0px",
-      },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMoreEntries, isActive, loadMoreActiveEntries]);
-
-  useEffect(() => {
-    if (
-      !canUseFirestore ||
-      !shouldContinueLoadingVisibleFeed ||
-      isLoading ||
-      isActiveFeedLoadingMore ||
-      (!shouldUseIndependentFeed && isBackgroundLoadingEntries)
-    ) {
-      return;
-    }
-
-    void loadMoreActiveEntries({
-      showLoadingState: true,
-      surfaceErrors: true,
-    });
-  }, [
-    canUseFirestore,
-    isBackgroundLoadingEntries,
-    isActiveFeedLoadingMore,
-    isLoading,
-    loadMoreActiveEntries,
-    shouldContinueLoadingVisibleFeed,
     shouldUseIndependentFeed,
   ]);
 
@@ -2631,7 +2507,6 @@ export function KnowledgeFeed({
         pageDescription={pageDescription}
         pageUrl={pageUrl}
         shouldNoIndexKnowledgePage={shouldNoIndexKnowledgePage}
-        loadMoreSentinelRef={loadMoreSentinelRef}
         onSetFeedSearchQuery={setFeedSearchQuery}
         onSelectFeedTopic={handleSelectFeedTopic}
         onClearSelectedHashtag={clearSelectedHashtag}
@@ -2723,3 +2598,4 @@ export function KnowledgeFeed({
     </>
   );
 }
+

@@ -445,7 +445,6 @@ export interface FeedRendererProps {
   shouldNoIndexKnowledgePage: boolean;
 
   // Sentinel
-  loadMoreSentinelRef: RefObject<HTMLDivElement | null>;
 
   // Callbacks
   onSetFeedSearchQuery: (q: string) => void;
@@ -498,7 +497,6 @@ export function FeedRenderer({
   pageDescription,
   pageUrl,
   shouldNoIndexKnowledgePage,
-  loadMoreSentinelRef,
   onSetFeedSearchQuery,
   onSelectFeedTopic,
   onClearSelectedHashtag,
@@ -887,7 +885,6 @@ export function FeedRenderer({
           )}
           {hasMoreEntries && (
             <div
-              ref={loadMoreSentinelRef}
               className="py-4 text-center"
             >
               {isActiveFeedLoadingMore ? (
