@@ -55,6 +55,7 @@ export interface IndependentKnowledgeFeedPage {
   entries: KnowledgeEntry[];
   cursor: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
+  payloadChars?: number;
 }
 
 export interface BrowserIdleCallbacks {

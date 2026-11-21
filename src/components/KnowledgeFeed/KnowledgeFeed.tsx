@@ -84,6 +84,11 @@ import { FEED_TOPIC_FILTERS } from "./feedFilters";
 import {
   FEED_INITIAL_PAGE_SIZE,
   FEED_NEXT_PAGE_SIZE,
+  adaptKnowledgeFeedPageSize,
+  estimateKnowledgeFeedPayloadChars,
+  getInitialAdaptiveFeedPageSize,
+  shouldPrefetchKnowledgeFeed,
+  withFeedLoadTimeout,
   FEED_LOAD_TIMEOUT_MS,
   FEED_BACKGROUND_PAGE_DELAY_MS,
   FEED_BACKGROUND_PREFETCH_PAGE_LIMIT,
@@ -378,7 +383,9 @@ interface KnowledgeFeedProps {
   isActive: boolean;
 }
 
-type KnowledgeFeedPaginationCursor = QueryDocumentSnapshot<DocumentData> | number;
+type KnowledgeFeedPaginationCursor =
+  | QueryDocumentSnapshot<DocumentData>
+  | { createdAt: number; id: string };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -475,8 +482,6 @@ export function KnowledgeFeed({
     () => initialFeedCache?.hasMoreServerEntries ?? true,
   );
   const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
-  const [isBackgroundLoadingEntries, setIsBackgroundLoadingEntries] =
-    useState(false);
   const [topicFeedStates, setTopicFeedStates] = useState<
     Record<string, TopicFeedState>
   >({});
@@ -489,10 +494,22 @@ export function KnowledgeFeed({
   const refreshFeedbackTimeoutRef = useRef<number | null>(null);
   const paginationCursorRef =
     useRef<KnowledgeFeedPaginationCursor | null>(null);
+  const paginationPromiseRef =
+    useRef<Promise<FeedPageLoadResult> | null>(null);
+  const feedLoadGenerationRef = useRef(0);
+  const adaptivePageSizeRef = useRef(getInitialAdaptiveFeedPageSize());
+  const adaptiveIndependentPageSizesRef = useRef(new Map<string, number>());
+  const mainPrefetchedEntryCountRef = useRef(0);
+  const mainPrefetchEpochRef = useRef(0);
   const hasMoreServerEntriesRef = useRef(hasMoreServerEntries);
   const hasPaginatedPastFirstPageRef = useRef(false);
   const isLoadingMoreEntriesRef = useRef(false);
   const independentLoadingKeysRef = useRef(new Set<string>());
+  const independentPagePromisesRef = useRef(
+    new Map<string, Promise<FeedPageLoadResult>>(),
+  );
+  const independentLoadGenerationRef = useRef(new Map<string, number>());
+  const independentPrefetchedPageKeysRef = useRef(new Set<string>());
   const loadedProfileIdsRef = useRef(new Set<string>());
   const loadingProfileIdsRef = useRef(new Set<string>());
   const hasLoadedProfilesDirectoryRef = useRef(false);
@@ -538,7 +555,6 @@ export function KnowledgeFeed({
 
     setIsLoading(false);
     setIsLoadingMoreEntries(false);
-    setIsBackgroundLoadingEntries(false);
     updateHasMoreServerEntries(false);
     setFeedLoadError(firebaseClientDataDisabledMessage);
   }, [updateHasMoreServerEntries]);
@@ -852,11 +868,24 @@ export function KnowledgeFeed({
       (Boolean(normalizedRouteHashtag) || selectedFeedTopic !== "all");
 
     if (!canUseFirestore || isIndependentRoute || focusedEntryId) {
+      feedLoadGenerationRef.current += 1;
+      isLoadingMoreEntriesRef.current = false;
+      paginationPromiseRef.current = null;
+      setIsLoadingMoreEntries(false);
+      mainPrefetchedEntryCountRef.current = 0;
       if (isIndependentRoute) {
         setIsLoading(false);
       }
       return;
     }
+
+    feedLoadGenerationRef.current += 1;
+    isLoadingMoreEntriesRef.current = false;
+    paginationPromiseRef.current = null;
+    setIsLoadingMoreEntries(false);
+    mainPrefetchedEntryCountRef.current = 0;
+    hasPaginatedPastFirstPageRef.current = false;
+    paginationCursorRef.current = null;
 
     const cachedFeed =
       feedRetrySignal === 0 ? readKnowledgeFeedCache(identity?.authorId) : null;
@@ -865,10 +894,7 @@ export function KnowledgeFeed({
         entriesRef.current,
         cachedFeed.entries,
       );
-      const cursorEntry =
-        cachedFeed.entries[Math.min(cachedFeed.entries.length, FEED_INITIAL_PAGE_SIZE) - 1] ||
-        cachedFeed.entries[cachedFeed.entries.length - 1] ||
-        null;
+      const cursorEntry = cachedFeed.entries[cachedFeed.entries.length - 1] || null;
 
       entriesRef.current = nextEntries;
       setEntries(nextEntries);
@@ -879,8 +905,10 @@ export function KnowledgeFeed({
       );
       paginationCursorRef.current =
         cursorEntry && Number.isFinite(cursorEntry.createdAt)
-          ? cursorEntry.createdAt
+          ? { createdAt: cursorEntry.createdAt, id: cursorEntry.id }
           : null;
+      hasPaginatedPastFirstPageRef.current =
+        cachedFeed.entries.length > FEED_INITIAL_PAGE_SIZE;
       updateHasMoreServerEntries(cachedFeed.hasMoreServerEntries);
       setIsLoading(false);
       setFeedLoadError(null);
@@ -893,6 +921,7 @@ export function KnowledgeFeed({
     const knowledgeQuery = query(
       collection(db, "knowledge"),
       orderBy("createdAt", "desc"),
+      orderBy(documentId(), "desc"),
       limit(FEED_INITIAL_PAGE_SIZE),
     );
     let cancelled = false;
@@ -910,6 +939,7 @@ export function KnowledgeFeed({
         : null;
 
     const loadInitialFeedPage = async () => {
+      const requestStartedAt = Date.now();
       try {
         const snapshot = await getDocs(knowledgeQuery);
         if (cancelled) return;
@@ -927,6 +957,11 @@ export function KnowledgeFeed({
             },
           ),
         );
+        adaptivePageSizeRef.current = adaptKnowledgeFeedPageSize({
+          currentPageSize: adaptivePageSizeRef.current,
+          durationMs: Date.now() - requestStartedAt,
+          payloadChars: estimateKnowledgeFeedPayloadChars(data),
+        });
         if (!hasPaginatedPastFirstPageRef.current) {
           paginationCursorRef.current =
             snapshot.docs[snapshot.docs.length - 1] || null;
@@ -985,6 +1020,24 @@ export function KnowledgeFeed({
       showLoadingState = true,
       surfaceErrors = true,
     }: LoadNextEntriesPageOptions = {}): Promise<FeedPageLoadResult> => {
+      if (isLoadingMoreEntriesRef.current && paginationPromiseRef.current) {
+        if (showLoadingState) {
+          setIsLoadingMoreEntries(true);
+        }
+
+        return paginationPromiseRef.current.then((result) => {
+          if (surfaceErrors && result === "error") {
+            setFeedLoadError(
+              "Could not load more posts right now. Please try again in a moment.",
+            );
+          }
+          if (showLoadingState && isMountedRef.current) {
+            setIsLoadingMoreEntries(false);
+          }
+          return result;
+        });
+      }
+
       if (
         isLoadingMoreEntriesRef.current ||
         !hasMoreServerEntriesRef.current ||
@@ -994,6 +1047,13 @@ export function KnowledgeFeed({
       }
 
       isLoadingMoreEntriesRef.current = true;
+      let resolveSharedPage!: (result: FeedPageLoadResult) => void;
+      const sharedPagePromise = new Promise<FeedPageLoadResult>((resolve) => {
+        resolveSharedPage = resolve;
+      });
+      paginationPromiseRef.current = sharedPagePromise;
+      const requestGeneration = feedLoadGenerationRef.current;
+      let finalPageResult: FeedPageLoadResult = "error";
       if (showLoadingState) {
         setIsLoadingMoreEntries(true);
       }
@@ -1004,24 +1064,32 @@ export function KnowledgeFeed({
       try {
         const paginationCursor = paginationCursorRef.current;
         if (paginationCursor === null) {
+          finalPageResult = "done";
           return "done";
         }
+        const requestedPageSize = adaptivePageSizeRef.current;
+        const requestStartedAt = Date.now();
 
         const nextPageQuery =
-          typeof paginationCursor === "number"
+          "createdAt" in paginationCursor
             ? query(
                 collection(db, "knowledge"),
                 orderBy("createdAt", "desc"),
-                startAfter(paginationCursor),
-                limit(FEED_NEXT_PAGE_SIZE),
+                orderBy(documentId(), "desc"),
+                startAfter(paginationCursor.createdAt, paginationCursor.id),
+                limit(requestedPageSize),
               )
             : query(
                 collection(db, "knowledge"),
                 orderBy("createdAt", "desc"),
+                orderBy(documentId(), "desc"),
                 startAfter(paginationCursor),
-                limit(FEED_NEXT_PAGE_SIZE),
+                limit(requestedPageSize),
               );
-        const snapshot = await getDocs(nextPageQuery);
+        const snapshot = await withFeedLoadTimeout(
+          getDocs(nextPageQuery),
+          FEED_LOAD_TIMEOUT_MS,
+        );
         const data = snapshot.docs.map((item) =>
           normalizeKnowledgeEntry(
             item.id,
@@ -1032,7 +1100,11 @@ export function KnowledgeFeed({
           ),
         );
 
-        if (!isMountedRef.current) {
+        if (
+          !isMountedRef.current ||
+          requestGeneration !== feedLoadGenerationRef.current
+        ) {
+          finalPageResult = "blocked";
           return "blocked";
         }
 
@@ -1044,7 +1116,13 @@ export function KnowledgeFeed({
             paginationCursorRef.current;
         }
 
-        const hasAnotherPage = snapshot.docs.length === FEED_NEXT_PAGE_SIZE;
+        adaptivePageSizeRef.current = adaptKnowledgeFeedPageSize({
+          currentPageSize: requestedPageSize,
+          durationMs: Date.now() - requestStartedAt,
+          payloadChars: estimateKnowledgeFeedPayloadChars(data),
+        });
+
+        const hasAnotherPage = snapshot.docs.length === requestedPageSize;
         updateHasMoreServerEntries(hasAnotherPage);
 
         if (data.length > 0) {
@@ -1063,20 +1141,34 @@ export function KnowledgeFeed({
           );
         }
 
-        return hasAnotherPage ? "loaded" : "done";
+        finalPageResult = hasAnotherPage ? "loaded" : "done";
+        return finalPageResult;
       } catch (error) {
         console.error("Knowledge pagination error:", error);
+        if (requestGeneration !== feedLoadGenerationRef.current) {
+          finalPageResult = "blocked";
+          return "blocked";
+        }
+        adaptivePageSizeRef.current = Math.max(
+          FEED_NEXT_PAGE_SIZE,
+          adaptivePageSizeRef.current - 2,
+        );
         if (surfaceErrors) {
           setFeedLoadError(
             "Could not load more posts right now. Please try again in a moment.",
           );
         }
-        return "error";
+        finalPageResult = "error";
+        return finalPageResult;
       } finally {
-        isLoadingMoreEntriesRef.current = false;
-        if (showLoadingState && isMountedRef.current) {
-          setIsLoadingMoreEntries(false);
+        if (paginationPromiseRef.current === sharedPagePromise) {
+          isLoadingMoreEntriesRef.current = false;
+          paginationPromiseRef.current = null;
+          if (showLoadingState && isMountedRef.current) {
+            setIsLoadingMoreEntries(false);
+          }
         }
+        resolveSharedPage(finalPageResult);
       }
     },
     [updateHasMoreServerEntries],
@@ -1086,59 +1178,67 @@ export function KnowledgeFeed({
     if (
       !canUseFirestore ||
       isLoading ||
+      isLoadingMoreEntries ||
       FEED_BACKGROUND_PREFETCH_PAGE_LIMIT <= 0 ||
+      !shouldPrefetchKnowledgeFeed() ||
       focusedEntryId ||
       selectedFeedTopic !== "all" ||
       Boolean(selectedHashtag) ||
+      Boolean(deferredFeedSearchQuery.trim()) ||
       !hasMoreServerEntries ||
+      entriesRef.current.length <= mainPrefetchedEntryCountRef.current ||
       !paginationCursorRef.current ||
       typeof window === "undefined"
     ) {
-      setIsBackgroundLoadingEntries(false);
       return;
     }
 
     let cancelled = false;
-    const timeoutIds = new Set<number>();
+    const pendingBackgroundWaits = new Map<number, () => void>();
 
     const waitForNextBackgroundPage = () =>
       new Promise<void>((resolve) => {
-        const timeoutId = window.setTimeout(() => {
-          timeoutIds.delete(timeoutId);
+        let timeoutId: number;
+        const finishWait = () => {
+          pendingBackgroundWaits.delete(timeoutId);
           resolve();
-        }, FEED_BACKGROUND_PAGE_DELAY_MS);
-        timeoutIds.add(timeoutId);
+        };
+        timeoutId = window.setTimeout(finishWait, FEED_BACKGROUND_PAGE_DELAY_MS);
+        pendingBackgroundWaits.set(timeoutId, finishWait);
       });
 
     const preloadRemainingPages = async () => {
-      setIsBackgroundLoadingEntries(true);
+      const prefetchEpoch = mainPrefetchEpochRef.current;
+      await waitForNextBackgroundPage();
 
-      try {
-        await waitForNextBackgroundPage();
-
-        let prefetchedPageCount = 0;
-        while (
-          !cancelled &&
-          hasMoreServerEntriesRef.current &&
-          paginationCursorRef.current &&
-          prefetchedPageCount < FEED_BACKGROUND_PREFETCH_PAGE_LIMIT
+      let prefetchedPageCount = 0;
+      while (
+        !cancelled &&
+        hasMoreServerEntriesRef.current &&
+        paginationCursorRef.current &&
+        prefetchedPageCount < FEED_BACKGROUND_PREFETCH_PAGE_LIMIT
+      ) {
+        const result = await loadNextEntriesPage({
+          showLoadingState: false,
+          surfaceErrors: false,
+        });
+        if (
+          result === "loaded" &&
+          prefetchEpoch === mainPrefetchEpochRef.current
         ) {
-          const result = await loadNextEntriesPage({
-            showLoadingState: false,
-            surfaceErrors: false,
-          });
-          prefetchedPageCount += result === "loaded" ? 1 : 0;
-
-          if (cancelled || result === "done" || result === "error") {
-            break;
-          }
-
-          await waitForNextBackgroundPage();
+          mainPrefetchedEntryCountRef.current = entriesRef.current.length;
         }
-      } finally {
-        if (!cancelled) {
-          setIsBackgroundLoadingEntries(false);
+        prefetchedPageCount += result === "loaded" ? 1 : 0;
+
+        if (cancelled || result === "done" || result === "error") {
+          break;
         }
+
+        if (prefetchedPageCount >= FEED_BACKGROUND_PREFETCH_PAGE_LIMIT) {
+          break;
+        }
+
+        await waitForNextBackgroundPage();
       }
     };
 
@@ -1146,19 +1246,22 @@ export function KnowledgeFeed({
 
     return () => {
       cancelled = true;
-      timeoutIds.forEach((timeoutId) => {
+      pendingBackgroundWaits.forEach((finishWait, timeoutId) => {
         window.clearTimeout(timeoutId);
+        finishWait();
       });
-      timeoutIds.clear();
+      pendingBackgroundWaits.clear();
     };
   }, [
     focusedEntryId,
     hasMoreServerEntries,
     canUseFirestore,
+    isLoadingMoreEntries,
     isLoading,
     loadNextEntriesPage,
     selectedFeedTopic,
     selectedHashtag,
+    deferredFeedSearchQuery,
   ]);
 
   useEffect(() => {
@@ -1579,7 +1682,7 @@ export function KnowledgeFeed({
     : isLoadingMoreEntries;
   const isPaginationBusy = shouldUseIndependentFeed
     ? activeTopicFeedState.isLoading || activeTopicFeedState.isLoadingMore
-    : isLoadingMoreEntries || isBackgroundLoadingEntries;
+    : isLoadingMoreEntries;
   const activeFeedLoadError = shouldUseIndependentFeed
     ? activeTopicFeedState.error
     : feedLoadError;
@@ -1664,6 +1767,59 @@ export function KnowledgeFeed({
       showLoadingState = true,
       surfaceErrors = true,
     }: LoadNextEntriesPageOptions = {}): Promise<FeedPageLoadResult> => {
+      if (showLoadingState) {
+        independentPrefetchedPageKeysRef.current.delete(independentFeedKey);
+      }
+
+      const activePagePromise = independentPagePromisesRef.current.get(
+        independentFeedKey,
+      );
+      if (activePagePromise) {
+        if (showLoadingState) {
+          setTopicFeedStates((current) => {
+            const existing = current[independentFeedKey];
+            if (!existing || existing.isLoading || existing.isLoadingMore) {
+              return current;
+            }
+            return {
+              ...current,
+              [independentFeedKey]: { ...existing, isLoadingMore: true },
+            };
+          });
+        }
+
+        return activePagePromise.then((result) => {
+          if (surfaceErrors && result === "error") {
+            setTopicFeedStates((current) => {
+              const existing = current[independentFeedKey];
+              if (!existing) return current;
+              return {
+                ...current,
+                [independentFeedKey]: {
+                  ...existing,
+                  isLoadingMore: false,
+                  error: normalizedSelectedHashtag
+                    ? `Could not load more posts for #${normalizedSelectedHashtag} right now.`
+                    : activeFeedTopic.id === "trending"
+                      ? "Could not load more trending posts right now. Please try again in a moment."
+                      : `Could not load more ${activeFeedTopic.label.toLowerCase()} posts right now.`,
+                },
+              };
+            });
+          } else if (showLoadingState && isMountedRef.current) {
+            setTopicFeedStates((current) => {
+              const existing = current[independentFeedKey];
+              if (!existing?.isLoadingMore) return current;
+              return {
+                ...current,
+                [independentFeedKey]: { ...existing, isLoadingMore: false },
+              };
+            });
+          }
+          return result;
+        });
+      }
+
       if (
         !shouldUseIndependentFeed ||
         activeTopicFeedState.isLoading ||
@@ -1679,6 +1835,19 @@ export function KnowledgeFeed({
       }
 
       independentLoadingKeysRef.current.add(independentFeedKey);
+      let resolveSharedPage!: (result: FeedPageLoadResult) => void;
+      const sharedPagePromise = new Promise<FeedPageLoadResult>((resolve) => {
+        resolveSharedPage = resolve;
+      });
+      independentPagePromisesRef.current.set(
+        independentFeedKey,
+        sharedPagePromise,
+      );
+      let finalPageResult: FeedPageLoadResult = "error";
+      const requestedPageSize =
+        adaptiveIndependentPageSizesRef.current.get(independentFeedKey) ||
+        getInitialAdaptiveFeedPageSize();
+      const requestStartedAt = Date.now();
 
       if (showLoadingState) {
         setTopicFeedStates((current) => {
@@ -1699,15 +1868,31 @@ export function KnowledgeFeed({
       }
 
       try {
-        const page = await loadIndependentKnowledgeFeedEntries({
-          topic: activeFeedTopic,
-          selectedHashtag: normalizedSelectedHashtag,
-          cursor: activeTopicFeedState.cursor,
-        });
+        const page = await withFeedLoadTimeout(
+          loadIndependentKnowledgeFeedEntries({
+            topic: activeFeedTopic,
+            selectedHashtag: normalizedSelectedHashtag,
+            cursor: activeTopicFeedState.cursor,
+            nextPageSize: requestedPageSize,
+          }),
+          FEED_LOAD_TIMEOUT_MS,
+        );
 
         if (!isMountedRef.current) {
+          finalPageResult = "blocked";
           return "blocked";
         }
+
+        adaptiveIndependentPageSizesRef.current.set(
+          independentFeedKey,
+          adaptKnowledgeFeedPageSize({
+            currentPageSize: requestedPageSize,
+            durationMs: Date.now() - requestStartedAt,
+            payloadChars:
+              page.payloadChars ?? estimateKnowledgeFeedPayloadChars(page.entries),
+            maxPageSize: 6,
+          }),
+        );
 
         setTopicFeedStates((current) => {
           const existing = current[independentFeedKey] || activeTopicFeedState;
@@ -1732,9 +1917,14 @@ export function KnowledgeFeed({
           };
         });
 
-        return page.hasMore ? "loaded" : "done";
+        finalPageResult = page.hasMore ? "loaded" : "done";
+        return finalPageResult;
       } catch (error) {
         console.error("Independent knowledge pagination error:", error);
+        adaptiveIndependentPageSizesRef.current.set(
+          independentFeedKey,
+          Math.max(FEED_NEXT_PAGE_SIZE, requestedPageSize - 2),
+        );
 
         setTopicFeedStates((current) => {
           const existing = current[independentFeedKey] || activeTopicFeedState;
@@ -1756,9 +1946,12 @@ export function KnowledgeFeed({
           };
         });
 
-        return "error";
+        finalPageResult = "error";
+        return finalPageResult;
       } finally {
         independentLoadingKeysRef.current.delete(independentFeedKey);
+        independentPagePromisesRef.current.delete(independentFeedKey);
+        resolveSharedPage(finalPageResult);
       }
     },
     [
@@ -1770,11 +1963,66 @@ export function KnowledgeFeed({
     ],
   );
 
+  useEffect(() => {
+    if (
+      !shouldUseIndependentFeed ||
+      !shouldPrefetchKnowledgeFeed() ||
+      Boolean(deferredFeedSearchQuery.trim()) ||
+      !activeTopicFeedState.hasLoaded ||
+      !activeTopicFeedState.hasMore ||
+      !activeTopicFeedState.cursor ||
+      activeTopicFeedState.isLoading ||
+      activeTopicFeedState.isLoadingMore ||
+      independentPrefetchedPageKeysRef.current.has(independentFeedKey) ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let requestStarted = false;
+    independentPrefetchedPageKeysRef.current.add(independentFeedKey);
+    const timeoutId = window.setTimeout(() => {
+      requestStarted = true;
+      if (cancelled) return;
+      void loadNextIndependentFeedPage({
+        showLoadingState: false,
+        surfaceErrors: false,
+      });
+    }, FEED_BACKGROUND_PAGE_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+      if (!requestStarted) {
+        independentPrefetchedPageKeysRef.current.delete(independentFeedKey);
+      }
+    };
+  }, [
+    activeTopicFeedState.cursor,
+    activeTopicFeedState.hasLoaded,
+    activeTopicFeedState.hasMore,
+    activeTopicFeedState.isLoading,
+    activeTopicFeedState.isLoadingMore,
+    independentFeedKey,
+    loadNextIndependentFeedPage,
+    deferredFeedSearchQuery,
+    shouldUseIndependentFeed,
+  ]);
+
   const loadMoreActiveEntries = useCallback(
-    (options?: LoadNextEntriesPageOptions) =>
-      shouldUseIndependentFeed
+    (options?: LoadNextEntriesPageOptions) => {
+      if (
+        !shouldUseIndependentFeed &&
+        options?.showLoadingState !== false
+      ) {
+        mainPrefetchEpochRef.current += 1;
+      }
+
+      return shouldUseIndependentFeed
         ? loadNextIndependentFeedPage(options)
-        : loadNextEntriesPage(options),
+        : loadNextEntriesPage(options);
+    },
     [loadNextEntriesPage, loadNextIndependentFeedPage, shouldUseIndependentFeed],
   );
 
@@ -1823,6 +2071,9 @@ export function KnowledgeFeed({
     if (independentLoadingKeysRef.current.has(independentFeedKey)) return;
 
     let cancelled = false;
+    const loadGeneration =
+      (independentLoadGenerationRef.current.get(independentFeedKey) || 0) + 1;
+    independentLoadGenerationRef.current.set(independentFeedKey, loadGeneration);
     independentLoadingKeysRef.current.add(independentFeedKey);
 
     setTopicFeedStates((current) => {
@@ -1844,13 +2095,30 @@ export function KnowledgeFeed({
     });
 
     const loadFeed = async () => {
+      const requestStartedAt = Date.now();
+      const nextPageSize =
+        adaptiveIndependentPageSizesRef.current.get(independentFeedKey) ||
+        getInitialAdaptiveFeedPageSize();
       try {
-        const page = await loadIndependentKnowledgeFeedEntries({
-          topic: activeFeedTopic,
-          selectedHashtag: normalizedSelectedHashtag,
-        });
+        const page = await withFeedLoadTimeout(
+          loadIndependentKnowledgeFeedEntries({
+            topic: activeFeedTopic,
+            selectedHashtag: normalizedSelectedHashtag,
+          }),
+          FEED_LOAD_TIMEOUT_MS,
+        );
 
         if (cancelled) return;
+        adaptiveIndependentPageSizesRef.current.set(
+          independentFeedKey,
+          adaptKnowledgeFeedPageSize({
+            currentPageSize: nextPageSize,
+            durationMs: Date.now() - requestStartedAt,
+            payloadChars:
+              page.payloadChars ?? estimateKnowledgeFeedPayloadChars(page.entries),
+            maxPageSize: 6,
+          }),
+        );
 
         setTopicFeedStates((current) => ({
           ...current,
@@ -1890,7 +2158,12 @@ export function KnowledgeFeed({
           },
         }));
       } finally {
-        independentLoadingKeysRef.current.delete(independentFeedKey);
+        if (
+          independentLoadGenerationRef.current.get(independentFeedKey) ===
+          loadGeneration
+        ) {
+          independentLoadingKeysRef.current.delete(independentFeedKey);
+        }
       }
     };
 
@@ -1898,7 +2171,32 @@ export function KnowledgeFeed({
 
     return () => {
       cancelled = true;
+      if (
+        independentLoadGenerationRef.current.get(independentFeedKey) ===
+        loadGeneration
+      ) {
+        independentLoadGenerationRef.current.set(
+          independentFeedKey,
+          loadGeneration + 1,
+        );
+      }
       independentLoadingKeysRef.current.delete(independentFeedKey);
+      if (isMountedRef.current) {
+        setTopicFeedStates((current) => {
+          const existing = current[independentFeedKey];
+          if (!existing?.isLoading) return current;
+
+          return {
+            ...current,
+            [independentFeedKey]: {
+              ...existing,
+              isLoading: false,
+              isLoadingMore: false,
+              hasLoaded: false,
+            },
+          };
+        });
+      }
     };
   }, [
     activeFeedTopic,

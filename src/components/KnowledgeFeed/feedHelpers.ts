@@ -64,6 +64,14 @@ import {
 import {
   normalizeFeedTopicId,
 } from "./feedFilters";
+import { FEED_MAX_INDEPENDENT_PAGE_SIZE } from "./feedLoadingStrategy";
+export {
+  adaptKnowledgeFeedPageSize,
+  estimateKnowledgeFeedPayloadChars,
+  getInitialAdaptiveFeedPageSize,
+  shouldPrefetchKnowledgeFeed,
+  withFeedLoadTimeout,
+} from "./feedLoadingStrategy";
 export { tokenizeSearch } from "../../utils/searchHelpers";
 
 // Keep newly published knowledge documents compact until post media is moved
@@ -76,8 +84,8 @@ export const FEED_INITIAL_PAGE_SIZE = 3;
 export const FEED_NEXT_PAGE_SIZE = 3;
 export const FEED_LOAD_MORE_REMAINING_THRESHOLD = 5;
 export const FEED_LOAD_TIMEOUT_MS = 7000;
-export const FEED_BACKGROUND_PAGE_DELAY_MS = 1200;
-export const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 0;
+export const FEED_BACKGROUND_PAGE_DELAY_MS = 100;
+export const FEED_BACKGROUND_PREFETCH_PAGE_LIMIT = 1;
 export const FEED_CACHE_STORAGE_WRITE_TIMEOUT_MS = 1800;
 export const FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const FEED_CACHE_MEMORY_ENTRY_LIMIT = 120;
@@ -978,12 +986,14 @@ export function mergeRealtimeKnowledgePage(
   }
 
   const firstPageIds = new Set(firstPageEntries.map((entry) => entry.id));
-  const oldestFirstPageCreatedAt =
-    firstPageEntries[firstPageEntries.length - 1]?.createdAt || 0;
+  const oldestFirstPageEntry = firstPageEntries[firstPageEntries.length - 1];
+  const oldestFirstPageCreatedAt = oldestFirstPageEntry?.createdAt || 0;
   const retainedOlderEntries = currentEntries.filter(
     (entry) =>
       !firstPageIds.has(entry.id) &&
-      entry.createdAt < oldestFirstPageCreatedAt,
+      (entry.createdAt < oldestFirstPageCreatedAt ||
+        (entry.createdAt === oldestFirstPageCreatedAt &&
+          entry.id.localeCompare(oldestFirstPageEntry?.id || "") < 0)),
   );
 
   return mergeKnowledgeEntryPages(firstPageEntries, retainedOlderEntries);
@@ -1349,8 +1359,14 @@ export async function getDocsWithIndexFallback(
 
 export function getIndependentFeedPageSize(
   cursor: QueryDocumentSnapshot<DocumentData> | null,
+  nextPageSize = FEED_NEXT_PAGE_SIZE,
 ) {
-  return cursor ? FEED_NEXT_PAGE_SIZE : FEED_INITIAL_PAGE_SIZE;
+  return cursor
+    ? Math.max(
+        FEED_NEXT_PAGE_SIZE,
+        Math.min(FEED_MAX_INDEPENDENT_PAGE_SIZE, nextPageSize),
+      )
+    : FEED_INITIAL_PAGE_SIZE;
 }
 
 export function buildIndependentKnowledgeFeedPage(
@@ -1359,11 +1375,46 @@ export function buildIndependentKnowledgeFeedPage(
   pageSize: number,
   previousCursor: QueryDocumentSnapshot<DocumentData> | null,
   hasMoreOverride?: boolean,
+  payloadDocs = docs,
 ): IndependentKnowledgeFeedPage {
   return {
     entries,
     cursor: docs[docs.length - 1] || previousCursor,
     hasMore: hasMoreOverride ?? docs.length === pageSize,
+    payloadChars: payloadDocs.reduce((total, docSnapshot) => {
+      const data = docSnapshot.data();
+      const images = Array.isArray(data.images) ? data.images : [];
+      const comments = Array.isArray(data.comments) ? data.comments : [];
+      return (
+        total +
+        (typeof data.title === "string" ? data.title.length : 0) +
+        (typeof data.content === "string" ? data.content.length : 0) +
+        (typeof data.excerpt === "string" ? data.excerpt.length : 0) +
+        (typeof data.imageDataUrl === "string" ? data.imageDataUrl.length : 0) +
+        images.reduce(
+          (imageTotal: number, image: unknown) =>
+            imageTotal +
+            (image &&
+            typeof image === "object" &&
+            "dataUrl" in image &&
+            typeof image.dataUrl === "string"
+              ? image.dataUrl.length
+              : 0),
+          0,
+        ) +
+        comments.reduce(
+          (commentTotal: number, comment: unknown) =>
+            commentTotal +
+            (comment &&
+            typeof comment === "object" &&
+            "text" in comment &&
+            typeof comment.text === "string"
+              ? comment.text.length
+              : 0),
+          0,
+        )
+      );
+    }, 0),
   };
 }
 
@@ -1456,6 +1507,7 @@ export async function loadHashtagKnowledgeEntries(
   selectedHashtag: string,
   topic: FeedTopicFilter,
   cursor: QueryDocumentSnapshot<DocumentData> | null = null,
+  nextPageSize = FEED_NEXT_PAGE_SIZE,
 ): Promise<IndependentKnowledgeFeedPage> {
   const normalizedHashtag = normalizeStoredHashtagValue(selectedHashtag);
   if (!normalizedHashtag) {
@@ -1463,7 +1515,7 @@ export async function loadHashtagKnowledgeEntries(
   }
 
   const knowledgeCollection = collection(db, "knowledge");
-  const pageSize = getIndependentFeedPageSize(cursor);
+  const pageSize = getIndependentFeedPageSize(cursor, nextPageSize);
   const orderedHashtagQuery = cursor
     ? query(
         knowledgeCollection,
@@ -1511,9 +1563,10 @@ export async function loadHashtagKnowledgeEntries(
 
 export async function loadTrendingKnowledgeEntries(
   cursor: QueryDocumentSnapshot<DocumentData> | null = null,
+  nextPageSize = FEED_NEXT_PAGE_SIZE,
 ): Promise<IndependentKnowledgeFeedPage> {
   const knowledgeCollection = collection(db, "knowledge");
-  const pageSize = getIndependentFeedPageSize(cursor);
+  const pageSize = getIndependentFeedPageSize(cursor, nextPageSize);
   const candidatePageSize = pageSize * TRENDING_CANDIDATE_PAGE_MULTIPLIER;
   const recentDocs = await loadRecentKnowledgeDocs(cursor, candidatePageSize);
   const likeCountDocs =
@@ -1535,8 +1588,9 @@ export async function loadTrendingKnowledgeEntries(
       : [];
   const sourceDocs = sortKnowledgeQueryDocs(recentDocs);
   const candidateDocs = mergeKnowledgeQueryDocs([...likeCountDocs, ...recentDocs]);
+  const candidateEntries = normalizeKnowledgeQueryDocs(candidateDocs);
   const entries = getTrendingKnowledgeEntries(
-    normalizeKnowledgeQueryDocs(candidateDocs),
+    candidateEntries,
     pageSize,
   );
 
@@ -1546,17 +1600,21 @@ export async function loadTrendingKnowledgeEntries(
     candidatePageSize,
     cursor,
     sourceDocs.length === candidatePageSize,
+    candidateDocs,
   );
 }
 
 export async function loadTopicKnowledgeEntries(
   topic: FeedTopicFilter,
   cursor: QueryDocumentSnapshot<DocumentData> | null = null,
+  nextPageSize = FEED_NEXT_PAGE_SIZE,
 ): Promise<IndependentKnowledgeFeedPage> {
   if (topic.id === "all") {
     return { entries: [], cursor: null, hasMore: false };
   }
-  if (topic.id === "trending") return loadTrendingKnowledgeEntries(cursor);
+  if (topic.id === "trending") {
+    return loadTrendingKnowledgeEntries(cursor, nextPageSize);
+  }
 
   const hashtagValues = getTopicHashtagQueryValues(topic);
   if (hashtagValues.length === 0) {
@@ -1564,7 +1622,7 @@ export async function loadTopicKnowledgeEntries(
   }
 
   const knowledgeCollection = collection(db, "knowledge");
-  const pageSize = getIndependentFeedPageSize(cursor);
+  const pageSize = getIndependentFeedPageSize(cursor, nextPageSize);
   const orderedTopicQuery = cursor
     ? query(
         knowledgeCollection,
@@ -1632,16 +1690,23 @@ export async function loadIndependentKnowledgeFeedEntries({
   topic,
   selectedHashtag,
   cursor = null,
+  nextPageSize = FEED_NEXT_PAGE_SIZE,
 }: {
   topic: FeedTopicFilter;
   selectedHashtag: string | null;
   cursor?: QueryDocumentSnapshot<DocumentData> | null;
+  nextPageSize?: number;
 }): Promise<IndependentKnowledgeFeedPage> {
   if (selectedHashtag) {
-    return loadHashtagKnowledgeEntries(selectedHashtag, topic, cursor);
+    return loadHashtagKnowledgeEntries(
+      selectedHashtag,
+      topic,
+      cursor,
+      nextPageSize,
+    );
   }
 
-  return loadTopicKnowledgeEntries(topic, cursor);
+  return loadTopicKnowledgeEntries(topic, cursor, nextPageSize);
 }
 
 export interface IndependentFeedOrderOptions {

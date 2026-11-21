@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Globe2 } from "lucide-react";
 import { ProfileAvatar } from "../ProfileAvatar";
 import { renderRichText } from "../../utils/renderRichText";
 import { buildPublicPath } from "../../utils/routes";
@@ -16,6 +17,44 @@ import {
   type NotebookHighlight,
 } from "../../highlights/types";
 import { useNotebook } from "../../context/NotebookContext";
+
+interface ProductResourceLink {
+  label: string;
+  url: string;
+  host: string;
+}
+
+const PRODUCT_LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
+
+function isSafeExternalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function getProductResourceLinks(text: string): ProductResourceLink[] {
+  const seenUrls = new Set<string>();
+
+  return Array.from(text.matchAll(PRODUCT_LINK_PATTERN)).flatMap((match) => {
+    const label = match[1]?.trim();
+    const url = match[2]?.trim();
+    if (!label || !url || !isSafeExternalUrl(url) || seenUrls.has(url)) {
+      return [];
+    }
+
+    seenUrls.add(url);
+    return [{ label, url, host: new URL(url).hostname.replace(/^www\./i, "") }];
+  });
+}
+
+function getParagraphTextWithoutInlineProductLinks(text: string) {
+  return text.replace(PRODUCT_LINK_PATTERN, (match, label: string, url: string) =>
+    isSafeExternalUrl(url) ? label : match,
+  );
+}
 
 function getNodeElement(node: Node) {
   return node.nodeType === Node.ELEMENT_NODE
@@ -317,6 +356,11 @@ export function CardContent({
           <div className="readative-reading-body relative mt-5 space-y-0 text-[15.5px] leading-[1.72] text-slate-700 sm:mt-6 sm:text-[16.5px] sm:leading-[1.76]">
             {contentSections.map((section, index) => {
               const paragraphId = paragraphIds[index];
+              const productLinks = getProductResourceLinks(section);
+              const paragraphSource =
+                productLinks.length > 0
+                  ? getParagraphTextWithoutInlineProductLinks(section)
+                  : section;
               const renderedParagraphText = getRenderedParagraphText(section);
               const renderedParagraphLength = renderedParagraphText.length;
               const paragraphHighlights = highlights.filter(
@@ -331,7 +375,7 @@ export function CardContent({
                   highlight.endOffset >= renderedParagraphLength,
               );
               const richText = renderRichText({
-                text: section,
+                text: paragraphSource,
                 mentions: resolvedMentions,
                 onOpenProfile: onOpenAuthorProfile,
               });
@@ -413,6 +457,46 @@ export function CardContent({
                           )
                         : richText}
                     </p>
+                    {productLinks.length > 0 && (
+                      <div
+                        role="group"
+                        className="mt-3 flex flex-wrap gap-2"
+                        aria-label="Links mentioned in this post"
+                      >
+                        {productLinks.map((link) => (
+                          <a
+                            key={`${paragraphId}-${link.url}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            aria-label={`Visit ${link.label} at ${link.host}`}
+                            className="group inline-flex w-fit max-w-full items-center gap-3 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50/80 to-white px-3 py-2.5 text-left shadow-sm shadow-emerald-950/[0.03] transition hover:border-emerald-200 hover:shadow-md hover:shadow-emerald-950/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                          >
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-white text-emerald-700 shadow-sm">
+                              <Globe2
+                                className="h-[18px] w-[18px]"
+                                aria-hidden="true"
+                              />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-bold leading-5 text-slate-800 group-hover:text-emerald-800">
+                                {link.label}
+                              </span>
+                              <span className="block truncate text-xs leading-4 text-slate-500">
+                                {link.host}
+                              </span>
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700">
+                              <span className="hidden sm:inline">Visit</span>
+                              <ArrowUpRight
+                                className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

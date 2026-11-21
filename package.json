@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "verify:auth": "tsx scripts/verify-auth-runtime.ts",
+    "verify:feed-loading": "tsx scripts/verify-feed-loading.ts",
     "verify:seo": "tsx scripts/verify-seo-recovery.ts",
     "verify:live-routes": "tsx scripts/verify-live-routes.ts",
     "seo:v2:dry-run": "tsx scripts/build-seo-documents.ts --source=fixture",
