@@ -37,6 +37,8 @@ export interface EmailOtpRequestResult {
   resendCooldownSeconds: number;
 }
 
+const pendingIdentityResolutions = new Map<string, Promise<KnowledgeIdentity>>();
+
 interface EmailOtpVerifyResult {
   customToken: string;
   email: string;
@@ -115,6 +117,16 @@ export function getAuthErrorMessage(error: unknown, fallbackMessage = "Authentic
     (details.includes("identitytoolkit") && details.includes("blocked"))
   ) {
     return "Sign-in is blocked by the Firebase API key settings. Allow Identity Toolkit API in Google Cloud Console.";
+  }
+
+  if (
+    code === "auth/quota-exceeded" ||
+    code === "resource-exhausted" ||
+    code === "8" ||
+    details.includes("quota exceeded") ||
+    details.includes("resource exhausted")
+  ) {
+    return "Sign-in is temporarily unavailable because Firebase reached a usage limit. Please try again later.";
   }
 
   switch (code) {
@@ -199,18 +211,31 @@ async function postAuthJson<T>(
   return data as T;
 }
 
-export async function resolveUserIdentity(
+export function resolveUserIdentity(
   user: User,
   fallbackDisplayName?: string,
   providerName?: string,
 ): Promise<KnowledgeIdentity> {
   if (!firebaseClientDataEnabled) {
-    throw new Error(firebaseClientDataDisabledMessage);
+    return Promise.reject(new Error(firebaseClientDataDisabledMessage));
   }
 
-  const { ensureUserProfile } = await import("./userProfiles");
-  const profile = await ensureUserProfile(user, fallbackDisplayName, providerName);
-  return saveKnowledgeIdentity(profile.username, profile.id, profile.email);
+  const pendingResolution = pendingIdentityResolutions.get(user.uid);
+  if (pendingResolution) return pendingResolution;
+
+  const resolution = (async () => {
+    const { ensureUserProfile } = await import("./userProfiles");
+    const profile = await ensureUserProfile(user, fallbackDisplayName, providerName);
+    return saveKnowledgeIdentity(profile.username, profile.id, profile.email);
+  })();
+  let trackedResolution: Promise<KnowledgeIdentity>;
+  trackedResolution = resolution.finally(() => {
+    if (pendingIdentityResolutions.get(user.uid) === trackedResolution) {
+      pendingIdentityResolutions.delete(user.uid);
+    }
+  });
+  pendingIdentityResolutions.set(user.uid, trackedResolution);
+  return trackedResolution;
 }
 
 export async function resolveGoogleUserIdentity(user: User): Promise<KnowledgeIdentity> {

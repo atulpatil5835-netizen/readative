@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   MoreVertical,
+  SlidersHorizontal,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -29,6 +30,7 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onOpenSignIn: () => void;
   onOpenCreate: () => void;
+  onOpenSettings: () => void;
   onSignOut: () => void;
 }
 
@@ -43,6 +45,7 @@ export const Header = memo(function Header({
   onOpenNotifications,
   onOpenSignIn,
   onOpenCreate,
+  onOpenSettings,
   onSignOut,
 }: HeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -245,6 +248,15 @@ export const Header = memo(function Header({
                 >
                   <Bookmark className="h-4 w-4" />
                   <span className="flex-1">Saved Posts</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMenuAction(onOpenSettings)}
+                  role="menuitem"
+                  className="flex min-h-11 w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left font-bold text-slate-800 transition-colors hover:bg-slate-50 hover:text-emerald-700"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Settings
                 </button>
                 <a
                   href="/about"

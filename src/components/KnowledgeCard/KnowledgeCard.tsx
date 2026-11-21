@@ -73,6 +73,25 @@ function clearNotebookSelection() {
   }
 }
 
+function getTrustUpdateErrorMessage(error: unknown, fallbackMessage: string) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const details = error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (
+    code === "resource-exhausted" ||
+    code === "8" ||
+    details.includes("quota exceeded") ||
+    details.includes("resource exhausted")
+  ) {
+    return "Feedback is temporarily unavailable because Firebase reached a usage limit. Please try again later.";
+  }
+
+  return fallbackMessage;
+}
+
 interface KnowledgeCardProps {
   entry: KnowledgeEntry;
   currentIdentity: KnowledgeIdentity | null;
@@ -492,7 +511,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     } catch (error) {
       console.error("Failed to update helpful trust:", error);
       setInteractionMessage(
-        "Could not update helpful feedback right now. Please try again.",
+        getTrustUpdateErrorMessage(
+          error,
+          "Could not update helpful feedback right now. Please try again.",
+        ),
       );
     } finally {
       setIsUpdatingTrust(false);
@@ -529,7 +551,10 @@ export const KnowledgeCard = memo(function KnowledgeCard({
     } catch (error) {
       console.error("Failed to update misleading trust:", error);
       setInteractionMessage(
-        "Could not update misleading feedback right now. Please try again.",
+        getTrustUpdateErrorMessage(
+          error,
+          "Could not update misleading feedback right now. Please try again.",
+        ),
       );
     } finally {
       setIsUpdatingTrust(false);

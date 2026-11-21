@@ -440,3 +440,244 @@ body.readative-knowledge-feed::-webkit-scrollbar {
     animation: none;
   }
 }
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background: #0b1220 !important;
+  color: #e2e8f0;
+}
+
+html.dark .readative-app-background {
+  background:
+    radial-gradient(ellipse at top, rgba(6, 78, 59, 0.2), transparent 48%),
+    linear-gradient(180deg, #0b1220 0%, #0f172a 58%, #101a2b 100%);
+}
+
+html.dark :is(
+  .readative-panel-surface,
+  .readative-card-surface,
+  .readative-dialog-surface,
+  .readative-menu-surface
+) {
+  border-color: rgba(71, 85, 105, 0.72);
+  background-color: #111c2e;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+}
+
+html.dark :is(
+  [class~="bg-white"],
+  [class~="bg-white/75"],
+  [class~="bg-white/80"],
+  [class~="bg-white/90"],
+  [class~="bg-white/95"],
+  [class~="bg-slate-50"],
+  [class~="bg-slate-50/60"],
+  [class~="bg-slate-50/70"],
+  [class~="bg-slate-50/80"],
+  [class~="bg-slate-50/90"]
+) {
+  background-color: #111c2e;
+}
+
+html.dark :is(
+  [class~="bg-slate-100"],
+  [class~="bg-slate-100/80"],
+  [class~="bg-slate-100/90"]
+) {
+  background-color: #1b293d;
+}
+
+html.dark :is(
+  [class~="bg-emerald-50"],
+  [class~="bg-emerald-50/40"],
+  [class~="bg-emerald-50/70"],
+  [class~="bg-emerald-50/80"],
+  [class~="bg-emerald-100"]
+) {
+  background-color: #12392f;
+}
+
+html.dark :is(
+  [class~="bg-amber-50"],
+  [class~="bg-amber-50/40"],
+  [class~="bg-amber-50/95"]
+) {
+  background-color: #3b2c12;
+}
+
+html.dark :is(
+  [class~="bg-indigo-50"],
+  [class~="bg-indigo-50/50"],
+  [class~="bg-indigo-50/60"],
+  [class~="bg-indigo-50/70"]
+) {
+  background-color: #242449;
+}
+
+html.dark :is(
+  [class~="bg-amber-100"]
+) {
+  background-color: #4a3715;
+}
+
+html.dark :is(
+  [class~="bg-cyan-100"]
+) {
+  background-color: #123842;
+}
+
+html.dark :is(
+  [class~="bg-indigo-100"]
+) {
+  background-color: #302d5a;
+}
+
+html.dark :is(
+  [class~="bg-red-100"]
+) {
+  background-color: #4b2427;
+}
+
+html.dark :is(
+  [class~="bg-rose-50"]
+) {
+  background-color: #3b202d;
+}
+
+html.dark :is(
+  [class~="bg-sky-50"],
+  [class~="bg-sky-50/60"],
+  [class~="bg-sky-50/70"],
+  [class~="bg-sky-100"]
+) {
+  background-color: #123449;
+}
+
+html.dark :is(
+  [class~="bg-teal-50"]
+) {
+  background-color: #103735;
+}
+
+html.dark :is(
+  [class~="text-slate-950"],
+  [class~="text-slate-900"],
+  [class~="text-slate-800"]
+) {
+  color: #f1f5f9;
+}
+
+html.dark :is(
+  [class~="text-slate-700"],
+  [class~="text-slate-600"]
+) {
+  color: #cbd5e1;
+}
+
+html.dark :is(
+  [class~="text-slate-500"],
+  [class~="text-slate-400"]
+) {
+  color: #94a3b8;
+}
+
+html.dark [class~="text-slate-300"] {
+  color: #cbd5e1;
+}
+
+html.dark :is(
+  [class~="text-emerald-700"],
+  [class~="text-emerald-800"],
+  [class~="text-emerald-900"],
+  [class~="text-emerald-950"]
+) {
+  color: #6ee7b7;
+}
+
+html.dark [class~="hover:text-emerald-700"]:hover {
+  color: #6ee7b7;
+}
+
+html.dark [class~="text-amber-700"] {
+  color: #fcd34d;
+}
+
+html.dark :is(
+  [class~="text-amber-800"],
+  [class~="text-amber-900"]
+) {
+  color: #fde68a;
+}
+
+html.dark :is(
+  [class~="text-cyan-700"],
+  [class~="text-teal-700"]
+) {
+  color: #67e8f9;
+}
+
+html.dark :is(
+  [class~="text-indigo-500"],
+  [class~="text-indigo-600"],
+  [class~="text-indigo-700"]
+) {
+  color: #a5b4fc;
+}
+
+html.dark :is(
+  [class~="text-sky-600"],
+  [class~="text-sky-700"],
+  [class~="text-sky-800"]
+) {
+  color: #7dd3fc;
+}
+
+html.dark :is(
+  [class~="text-red-600"],
+  [class~="text-rose-600"],
+  [class~="text-rose-700"]
+) {
+  color: #fda4af;
+}
+
+html.dark :is(
+  [class~="text-gray-400"],
+  [class~="text-gray-500"]
+) {
+  color: #94a3b8;
+}
+
+html.dark :is(
+  [class~="text-gray-700"],
+  [class~="text-gray-800"]
+) {
+  color: #e2e8f0;
+}
+
+html.dark :is(
+  [class~="border-slate-100"],
+  [class~="border-slate-100/90"],
+  [class~="border-slate-200"],
+  [class~="border-slate-200/55"],
+  [class~="border-slate-200/70"],
+  [class~="border-slate-200/80"],
+  [class~="border-slate-200/90"],
+  [class~="border-slate-300"]
+) {
+  border-color: #334155;
+}
+
+html.dark .readative-reading-paragraph,
+html.dark .readative-reading-body :where(strong, b),
+html.dark .readative-reading-body :where(em, i),
+html.dark .readative-reading-body :where(blockquote) {
+  color: #cbd5e1;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b;
+}

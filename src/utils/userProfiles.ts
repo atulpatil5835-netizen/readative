@@ -4,6 +4,7 @@ import {
   collection,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
   query,
@@ -311,9 +312,70 @@ async function migrateGuestActivityToGoogleProfile(
     data: Record<string, unknown>;
   }> = [];
   const migratedLikedEntryIds: string[] = [];
+  const knowledgeCollection = collection(db, "knowledge");
+  const [
+    authoredEntries,
+    legacyHelpfulEntries,
+    helpfulEntries,
+    legacyMisleadingEntries,
+    misleadingEntries,
+    targetNotifications,
+    actorNotifications,
+  ] = await Promise.all([
+    getDocs(query(knowledgeCollection, where("authorId", "==", guestAuthorId))),
+    getDocs(query(knowledgeCollection, where("likes", "array-contains", guestAuthorId))),
+    getDocs(query(knowledgeCollection, where("helpfulIds", "array-contains", guestAuthorId))),
+    getDocs(query(knowledgeCollection, where("dislikes", "array-contains", guestAuthorId))),
+    getDocs(query(knowledgeCollection, where("misleadingIds", "array-contains", guestAuthorId))),
+    getDocs(
+      query(
+        collection(db, "notifications"),
+        where("targetAuthorId", "==", guestAuthorId),
+      ),
+    ),
+    getDocs(
+      query(
+        collection(db, "notifications"),
+        where("actorAuthorId", "==", guestAuthorId),
+      ),
+    ),
+  ]);
 
-  const knowledgeSnapshot = await getDocs(collection(db, "knowledge"));
-  knowledgeSnapshot.docs.forEach((item) => {
+  const knowledgeDocuments = new Map<string, (typeof authoredEntries.docs)[number]>();
+  [
+    authoredEntries,
+    legacyHelpfulEntries,
+    helpfulEntries,
+    legacyMisleadingEntries,
+    misleadingEntries,
+  ].forEach((snapshot) => {
+    snapshot.docs.forEach((item) => knowledgeDocuments.set(item.id, item));
+  });
+
+  const notificationDocsById = new Map(
+    [...targetNotifications.docs, ...actorNotifications.docs].map(
+      (item) => [item.id, item] as const,
+    ),
+  );
+  const notificationEntryIds = [
+    ...new Set(
+      [...notificationDocsById.values()]
+        .map((item) => item.data().entryId)
+        .filter((entryId): entryId is string => typeof entryId === "string" && !!entryId),
+    ),
+  ].filter((entryId) => !knowledgeDocuments.has(entryId));
+
+  // Resolve entries referenced by this guest's notifications so comments and
+  // mentions can migrate without scanning the full knowledge collection.
+  for (let index = 0; index < notificationEntryIds.length; index += 30) {
+    const entryIds = notificationEntryIds.slice(index, index + 30);
+    const entries = await getDocs(
+      query(knowledgeCollection, where(documentId(), "in", entryIds)),
+    );
+    entries.docs.forEach((item) => knowledgeDocuments.set(item.id, item));
+  }
+
+  knowledgeDocuments.forEach((item) => {
     const data = item.data() as Partial<KnowledgeEntry>;
     const payload: Record<string, unknown> = {};
 
@@ -396,26 +458,6 @@ async function migrateGuestActivityToGoogleProfile(
       },
     });
   }
-
-  const [targetNotificationSnapshot, actorNotificationSnapshot] = await Promise.all([
-    getDocs(
-      query(
-        collection(db, "notifications"),
-        where("targetAuthorId", "==", guestAuthorId),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, "notifications"),
-        where("actorAuthorId", "==", guestAuthorId),
-      ),
-    ),
-  ]);
-  const notificationDocsById = new Map(
-    [...targetNotificationSnapshot.docs, ...actorNotificationSnapshot.docs].map(
-      (item) => [item.id, item] as const,
-    ),
-  );
 
   notificationDocsById.forEach((item) => {
     const data = item.data() as {

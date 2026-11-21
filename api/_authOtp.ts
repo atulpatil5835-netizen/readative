@@ -499,6 +499,27 @@ export function getAuthOtpHttpError(error: unknown) {
     };
   }
 
+  const errorCode =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const errorMessage = error instanceof Error ? error.message.toLowerCase() : "";
+  if (
+    errorCode === "resource-exhausted" ||
+    errorCode === "auth/quota-exceeded" ||
+    errorCode === "8" ||
+    errorMessage.includes("quota exceeded") ||
+    errorMessage.includes("resource exhausted")
+  ) {
+    return {
+      statusCode: 503,
+      body: {
+        error:
+          "Email verification is temporarily unavailable because Firebase reached a usage limit. Please try again later.",
+      },
+    };
+  }
+
   if (
     error instanceof Error &&
     error.message.includes("Firebase Admin credentials are not configured")

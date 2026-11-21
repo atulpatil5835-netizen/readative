@@ -41,4 +41,17 @@ assert.deepEqual(
     },
   },
 );
-console.log("Auth runtime imports and both OTP endpoint validation checks passed.");
+
+assert.deepEqual(
+  getAuthOtpHttpError(
+    Object.assign(new Error("RESOURCE_EXHAUSTED: quota exceeded"), { code: 8 }),
+  ),
+  {
+    statusCode: 503,
+    body: {
+      error:
+        "Email verification is temporarily unavailable because Firebase reached a usage limit. Please try again later.",
+    },
+  },
+);
+console.log("Auth runtime, OTP validation, and quota error checks passed.");

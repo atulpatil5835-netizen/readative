@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { Header } from "./components/Header";
+import { AppSettings } from "./components/AppSettings";
+import { ProductSpotlight } from "./components/ProductSpotlight";
 import {
   AppFooter,
   BannerNotice,
@@ -50,6 +52,7 @@ import type { LegalSlug } from "./content/legalRoutes";
 import { trackPageView, trackLogin, trackLogout, setAnalyticsUser } from "./utils/analytics";
 import { scheduleThirdPartyScripts } from "./utils/loadThirdPartyScripts";
 import { scheduleDocumentScrollToTop } from "./utils/scrollRestoration";
+import { useUserPreferences } from "./context/UserPreferencesContext";
 
 const KnowledgeFeed = lazy(() =>
   import("./components/KnowledgeFeed").then((module) => ({
@@ -152,6 +155,7 @@ export default function App() {
   const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
   const [showGoogleSignInPrompt, setShowGoogleSignInPrompt] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
   const [cookieConsentAccepted, setCookieConsentAccepted] = useState(
@@ -162,6 +166,7 @@ export default function App() {
   const lastHomeActionAtRef = useRef(0);
   const pendingRouteScrollRef = useRef(false);
   const previousRouteScrollKeyRef = useRef<string | null>(null);
+  const { preferences, setShowProductSpotlight } = useUserPreferences();
 
   const syncRouteState = useCallback(() => {
     const route = parseRouteFromLocation();
@@ -242,6 +247,10 @@ export default function App() {
     setShowNotificationsPanel(false);
     setComposerOpenSignal((current) => current + 1);
   }, [activeTab, handleTabChange]);
+
+  const handleCloseAppSettings = useCallback(() => {
+    setShowAppSettings(false);
+  }, []);
 
   const handleOpenNotifications = useCallback(() => {
     setShowNotificationsPanel((current) => !current);
@@ -583,6 +592,7 @@ export default function App() {
           onOpenNotifications={handleOpenNotifications}
           onOpenSignIn={handleOpenSignInPrompt}
           onOpenCreate={handleOpenComposer}
+          onOpenSettings={() => setShowAppSettings(true)}
           onSignOut={handleHeaderSignOut}
         />
 
@@ -705,6 +715,14 @@ export default function App() {
         </main>
 
         <AppFooter />
+        {preferences.showProductSpotlight && (
+          <ProductSpotlight
+            onDismiss={() => setShowProductSpotlight(false)}
+          />
+        )}
+        {showAppSettings && (
+          <AppSettings onClose={handleCloseAppSettings} />
+        )}
         {showNotificationsPanel && (
           <Suspense fallback={null}>
             <NotificationsPanel
